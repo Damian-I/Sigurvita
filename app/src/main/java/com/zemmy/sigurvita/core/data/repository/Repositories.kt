@@ -7,10 +7,13 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.zemmy.sigurvita.core.data.api.KavitaApi
+import com.zemmy.sigurvita.core.data.api.dto.FilterStatementDto
 import com.zemmy.sigurvita.core.data.api.dto.FilterV2Dto
 import com.zemmy.sigurvita.core.data.api.dto.LibraryDto
 import com.zemmy.sigurvita.core.data.api.dto.ReaderProgressDto
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListDto
+import com.zemmy.sigurvita.core.data.api.dto.ReadingListItemDto
+import com.zemmy.sigurvita.core.data.api.dto.SeriesDto
 import com.zemmy.sigurvita.core.data.db.SigurvitaDatabase
 import com.zemmy.sigurvita.core.data.db.entity.CachedReadingListEntity
 import com.zemmy.sigurvita.core.data.db.entity.CachedSeriesEntity
@@ -26,17 +29,19 @@ import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.model.ReadingListItem
 import com.zemmy.sigurvita.core.model.Series
 import com.zemmy.sigurvita.core.model.Volume
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class AuthRepository(
     private val api: KavitaApi,
     private val preferencesRepository: UserPreferencesRepository
 ) {
-    suspend fun testConnectionAndSave(serverUrl: String, apiKey: String): Result<Boolean> {
-        return try {
+    suspend fun testConnectionAndSave(serverUrl: String, apiKey: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
             val formattedUrl = serverUrl.trim().removeSuffix("/")
             preferencesRepository.saveServerConfig(serverUrl = formattedUrl, apiKey = apiKey)
 
@@ -75,8 +80,8 @@ class LibraryRepository(
     private val database: SigurvitaDatabase,
     private val preferencesRepository: UserPreferencesRepository
 ) {
-    suspend fun getLibraries(): Result<List<Library>> {
-        return try {
+    suspend fun getLibraries(): Result<List<Library>> = withContext(Dispatchers.IO) {
+        try {
             val config = preferencesRepository.serverConfigFlow.first()
             var dtoList: List<LibraryDto>? = null
 
@@ -105,8 +110,8 @@ class LibraryRepository(
         }
     }
 
-    suspend fun getOnDeckSeries(): Result<List<Series>> {
-        return try {
+    suspend fun getOnDeckSeries(): Result<List<Series>> = withContext(Dispatchers.IO) {
+        try {
             val config = preferencesRepository.serverConfigFlow.first()
             var dtoList = api.getOnDeckSeries().body()
 
@@ -151,8 +156,8 @@ class LibraryRepository(
         }
     }
 
-    suspend fun getRecentlyUpdatedSeries(): Result<List<Series>> {
-        return try {
+    suspend fun getRecentlyUpdatedSeries(): Result<List<Series>> = withContext(Dispatchers.IO) {
+        try {
             val config = preferencesRepository.serverConfigFlow.first()
             var dtoList = api.getRecentlyUpdatedSeries().body()
 
@@ -180,34 +185,56 @@ class LibraryRepository(
         }
     }
 
-    suspend fun getSeriesForLibrary(libraryId: Int): Result<List<Series>> {
-        return try {
+    suspend fun getSeriesForLibrary(libraryId: Int): Result<List<Series>> = withContext(Dispatchers.IO) {
+        try {
             val config = preferencesRepository.serverConfigFlow.first()
-            val res = api.getSeriesV2(
-                libraryId = libraryId,
-                filter = FilterV2Dto(),
-                pageNumber = 1,
-                pageSize = 5000
-            )
+            var dtoList: List<SeriesDto>? = null
 
-            if (res.isSuccessful) {
-                val seriesList = res.body()?.map { dto ->
-                    Series(
-                        id = dto.id,
-                        libraryId = dto.libraryId,
-                        name = dto.name,
-                        localizedName = dto.localizedName,
-                        coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
-                        summary = dto.summary,
-                        pagesRead = dto.pagesRead,
-                        totalPages = dto.totalPages,
-                        userRating = dto.userRating
+            if (libraryId > 0) {
+                val filter = FilterV2Dto(
+                    statements = listOf(
+                        FilterStatementDto(field = 18, comparison = 0, value = libraryId.toString())
                     )
-                } ?: emptyList()
-                Result.success(seriesList)
-            } else {
-                Result.failure(Exception("HTTP ${res.code()}: ${res.message()}"))
+                )
+                val resWithFilter = api.getSeriesV2(libraryId = libraryId, filter = filter, pageNumber = 1, pageSize = 5000)
+                if (resWithFilter.isSuccessful && !resWithFilter.body().isNullOrEmpty()) {
+                    dtoList = resWithFilter.body()
+                } else {
+                    val resQuery = api.getSeriesV2(libraryId = libraryId, filter = FilterV2Dto(), pageNumber = 1, pageSize = 5000)
+                    if (resQuery.isSuccessful && !resQuery.body().isNullOrEmpty()) {
+                        dtoList = resQuery.body()
+                    }
+                }
             }
+
+            // Fallback: If dtoList is null, fetch all series and filter client-side by libraryId
+            if (dtoList == null) {
+                val resAll = api.getSeriesV2(libraryId = 0, filter = FilterV2Dto(), pageNumber = 1, pageSize = 5000)
+                if (resAll.isSuccessful) {
+                    val allSeries = resAll.body() ?: emptyList()
+                    dtoList = if (libraryId > 0) {
+                        allSeries.filter { it.libraryId == libraryId }
+                    } else {
+                        allSeries
+                    }
+                }
+            }
+
+            val seriesList = dtoList?.map { dto ->
+                Series(
+                    id = dto.id,
+                    libraryId = dto.libraryId,
+                    name = dto.name,
+                    localizedName = dto.localizedName,
+                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
+                    summary = dto.summary,
+                    pagesRead = dto.pagesRead,
+                    totalPages = dto.totalPages,
+                    userRating = dto.userRating
+                )
+            } ?: emptyList()
+
+            Result.success(seriesList)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -219,12 +246,12 @@ class ReadingListRepository(
     private val database: SigurvitaDatabase,
     private val preferencesRepository: UserPreferencesRepository
 ) {
-    suspend fun getReadingLists(): Result<List<ReadingList>> {
-        return try {
+    suspend fun getReadingLists(): Result<List<ReadingList>> = withContext(Dispatchers.IO) {
+        try {
             val config = preferencesRepository.serverConfigFlow.first()
             var dtoList: List<ReadingListDto>? = null
 
-            val resPost = api.getReadingLists()
+            val resPost = api.getReadingLists(filter = FilterV2Dto())
             if (resPost.isSuccessful && !resPost.body().isNullOrEmpty()) {
                 dtoList = resPost.body()
             } else {
@@ -233,7 +260,7 @@ class ReadingListRepository(
                     dtoList = resGet.body()
                 } else {
                     val resAll = api.getReadingListsAll()
-                    if (resAll.isSuccessful) {
+                    if (resAll.isSuccessful && !resAll.body().isNullOrEmpty()) {
                         dtoList = resAll.body()
                     }
                 }
@@ -269,27 +296,40 @@ class ReadingListRepository(
         }
     }
 
-    suspend fun getReadingListItems(readingListId: Int): Result<List<ReadingListItem>> {
-        return try {
-            val res = api.getReadingListItems(readingListId)
-            if (res.isSuccessful) {
-                val config = preferencesRepository.serverConfigFlow.first()
-                val items = res.body()?.map { dto ->
-                    ReadingListItem(
-                        id = dto.id,
-                        readingListId = dto.readingListId,
-                        seriesId = dto.seriesId,
-                        seriesName = dto.seriesName,
-                        volumeId = dto.volumeId,
-                        chapterId = dto.chapterId,
-                        title = dto.title,
-                        coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}"
-                    )
-                } ?: emptyList()
-                Result.success(items)
+    suspend fun getReadingListItems(readingListId: Int): Result<List<ReadingListItem>> = withContext(Dispatchers.IO) {
+        try {
+            val config = preferencesRepository.serverConfigFlow.first()
+            var dtoList: List<ReadingListItemDto>? = null
+
+            val resPath = api.getReadingListItems(readingListId)
+            if (resPath.isSuccessful && !resPath.body().isNullOrEmpty()) {
+                dtoList = resPath.body()
             } else {
-                Result.failure(Exception("Failed to fetch reading list items"))
+                val resQuery1 = api.getReadingListItemsQuery(readingListId)
+                if (resQuery1.isSuccessful && !resQuery1.body().isNullOrEmpty()) {
+                    dtoList = resQuery1.body()
+                } else {
+                    val resQuery2 = api.getReadingListItemsReadingListId(readingListId)
+                    if (resQuery2.isSuccessful && !resQuery2.body().isNullOrEmpty()) {
+                        dtoList = resQuery2.body()
+                    }
+                }
             }
+
+            val items = dtoList?.map { dto ->
+                ReadingListItem(
+                    id = dto.id,
+                    readingListId = dto.readingListId,
+                    seriesId = dto.seriesId,
+                    seriesName = dto.seriesName,
+                    volumeId = dto.volumeId,
+                    chapterId = dto.chapterId,
+                    title = dto.title,
+                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}"
+                )
+            } ?: emptyList()
+
+            Result.success(items)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -301,8 +341,8 @@ class SeriesRepository(
     private val database: SigurvitaDatabase,
     private val preferencesRepository: UserPreferencesRepository
 ) {
-    suspend fun getSeriesDetail(seriesId: Int): Result<Series> {
-        return try {
+    suspend fun getSeriesDetail(seriesId: Int): Result<Series> = withContext(Dispatchers.IO) {
+        try {
             val res = api.getSeriesDetail(seriesId)
             if (res.isSuccessful && res.body() != null) {
                 val dto = res.body()!!
@@ -326,8 +366,8 @@ class SeriesRepository(
         }
     }
 
-    suspend fun getSeriesVolumes(seriesId: Int): Result<List<Volume>> {
-        return try {
+    suspend fun getSeriesVolumes(seriesId: Int): Result<List<Volume>> = withContext(Dispatchers.IO) {
+        try {
             val res = api.getSeriesVolumes(seriesId)
             if (res.isSuccessful) {
                 val volumes = res.body()?.map { vDto ->
@@ -367,11 +407,11 @@ class ReaderRepository(
     private val context: Context,
     private val preferencesRepository: UserPreferencesRepository
 ) {
-    suspend fun getPages(chapterId: Int, totalPages: Int): List<ReaderPage> {
+    suspend fun getPages(chapterId: Int, totalPages: Int): List<ReaderPage> = withContext(Dispatchers.IO) {
         val config = preferencesRepository.serverConfigFlow.first()
         val chapterDir = File(context.filesDir, "downloads/chapters/$chapterId")
 
-        return (0 until totalPages).map { pageIdx ->
+        (0 until totalPages).map { pageIdx ->
             val localFile = File(chapterDir, "page_$pageIdx.jpg")
             if (localFile.exists()) {
                 ReaderPage(
@@ -391,7 +431,7 @@ class ReaderRepository(
         }
     }
 
-    suspend fun saveProgress(seriesId: Int, volumeId: Int, chapterId: Int, pageNum: Int) {
+    suspend fun saveProgress(seriesId: Int, volumeId: Int, chapterId: Int, pageNum: Int) = withContext(Dispatchers.IO) {
         try {
             api.setReaderProgress(
                 ReaderProgressDto(
@@ -434,7 +474,7 @@ class DownloadRepository(
         title: String,
         coverUrl: String?,
         totalPages: Int
-    ) {
+    ) = withContext(Dispatchers.IO) {
         val task = DownloadTaskEntity(
             chapterId = chapterId,
             seriesId = seriesId,
@@ -465,7 +505,7 @@ class DownloadRepository(
         WorkManager.getInstance(context).enqueue(downloadWork)
     }
 
-    suspend fun cancelDownload(chapterId: Int) {
+    suspend fun cancelDownload(chapterId: Int) = withContext(Dispatchers.IO) {
         WorkManager.getInstance(context).cancelAllWorkByTag("download_$chapterId")
         database.downloadDao().deleteDownloadTask(chapterId)
     }

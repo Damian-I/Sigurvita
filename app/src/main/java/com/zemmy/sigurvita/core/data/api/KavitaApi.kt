@@ -67,6 +67,7 @@ interface KavitaApi {
 
     @POST("api/ReadingList/lists")
     suspend fun getReadingLists(
+        @Body filter: FilterV2Dto = FilterV2Dto(),
         @Query("includePromoted") includePromoted: Boolean = true,
         @Query("sortByLastModified") sortByLastModified: Boolean = true,
         @Query("PageNumber") pageNumber: Int = 1,
@@ -87,6 +88,16 @@ interface KavitaApi {
     @GET("api/ReadingList/{id}")
     suspend fun getReadingListItems(
         @Path("id") readingListId: Int
+    ): Response<List<ReadingListItemDto>>
+
+    @GET("api/ReadingList/items")
+    suspend fun getReadingListItemsQuery(
+        @Query("userReadingListId") readingListId: Int
+    ): Response<List<ReadingListItemDto>>
+
+    @GET("api/ReadingList/items")
+    suspend fun getReadingListItemsReadingListId(
+        @Query("readingListId") readingListId: Int
     ): Response<List<ReadingListItemDto>>
 
     @GET("api/Reader/get-progress")

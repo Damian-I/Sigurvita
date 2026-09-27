@@ -49,7 +49,7 @@ class ReadingListViewModel : ViewModel() {
             } else {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    errorMessage = "Failed to load Reading Lists"
+                    errorMessage = result.exceptionOrNull()?.message ?: "Failed to load Reading Lists"
                 )
             }
         }
@@ -71,7 +71,7 @@ class ReadingListViewModel : ViewModel() {
             } else {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    errorMessage = "Failed to load items for $title"
+                    errorMessage = result.exceptionOrNull()?.message ?: "Failed to load items for $title"
                 )
             }
         }
