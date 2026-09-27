@@ -1,0 +1,72 @@
+package com.zemmy.sigurvita.ui.screens.seriesdetail
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.zemmy.sigurvita.SigurvitaApp
+import com.zemmy.sigurvita.core.data.api.NetworkClient
+import com.zemmy.sigurvita.core.data.repository.DownloadRepository
+import com.zemmy.sigurvita.core.data.repository.SeriesRepository
+import com.zemmy.sigurvita.core.model.Chapter
+import com.zemmy.sigurvita.core.model.Series
+import com.zemmy.sigurvita.core.model.Volume
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+data class SeriesDetailUiState(
+    val series: Series? = null,
+    val volumes: List<Volume> = emptyList(),
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null
+)
+
+class SeriesDetailViewModel : ViewModel() {
+
+    private val app = SigurvitaApp.instance
+    private val preferencesRepository = app.userPreferencesRepository
+    private val seriesRepository = SeriesRepository(
+        NetworkClient.createKavitaApi(preferencesRepository),
+        app.database,
+        preferencesRepository
+    )
+    private val downloadRepository = DownloadRepository(app.database, app)
+
+    private val _uiState = MutableStateFlow(SeriesDetailUiState())
+    val uiState: StateFlow<SeriesDetailUiState> = _uiState.asStateFlow()
+
+    fun loadSeriesDetail(seriesId: Int) {
+        _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+        viewModelScope.launch {
+            val seriesRes = seriesRepository.getSeriesDetail(seriesId)
+            val volumesRes = seriesRepository.getSeriesVolumes(seriesId)
+
+            if (seriesRes.isSuccess) {
+                _uiState.value = SeriesDetailUiState(
+                    series = seriesRes.getOrNull(),
+                    volumes = volumesRes.getOrDefault(emptyList()),
+                    isLoading = false
+                )
+            } else {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = "Failed to load series"
+                )
+            }
+        }
+    }
+
+    fun downloadChapter(chapter: Chapter) {
+        val series = _uiState.value.series ?: return
+        viewModelScope.launch {
+            downloadRepository.enqueueDownload(
+                chapterId = chapter.id,
+                seriesId = series.id,
+                volumeId = chapter.volumeId,
+                title = "${series.name} - ${chapter.title}",
+                coverUrl = series.coverUrl,
+                totalPages = chapter.pages
+            )
+        }
+    }
+}
