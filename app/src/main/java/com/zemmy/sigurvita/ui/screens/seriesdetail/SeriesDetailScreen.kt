@@ -29,6 +29,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -38,6 +41,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zemmy.sigurvita.ui.components.CoverImage
 import com.zemmy.sigurvita.ui.components.ErrorState
 import com.zemmy.sigurvita.ui.components.LoadingState
+import com.zemmy.sigurvita.ui.components.MassDownloadDialog
 import kotlin.math.abs
 
 private fun formatVolumeHeader(name: String, number: Float): String {
@@ -71,9 +75,22 @@ fun SeriesDetailScreen(
     viewModel: SeriesDetailViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    var showMassDownloadDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(seriesId) {
         viewModel.loadSeriesDetail(seriesId)
+    }
+
+    if (showMassDownloadDialog) {
+        val unreadCount = state.totalChapters - state.chaptersRead
+        MassDownloadDialog(
+            totalAvailableIssues = state.totalChapters,
+            unreadIssuesCount = if (unreadCount > 0) unreadCount else state.totalChapters,
+            onDismiss = { showMassDownloadDialog = false },
+            onConfirmDownload = { count, unreadOnly ->
+                viewModel.downloadBulk(count, unreadOnly)
+            }
+        )
     }
 
     Scaffold(
@@ -83,6 +100,11 @@ fun SeriesDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showMassDownloadDialog = true }) {
+                        Icon(Icons.Default.Download, contentDescription = "Mass Download")
                     }
                 }
             )
@@ -134,8 +156,14 @@ fun SeriesDetailScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedButton(onClick = { viewModel.toggleMarkRead() }) {
-                                Text(if (series.isCompleted) "Mark Unread" else "Mark Read")
+                            Row {
+                                OutlinedButton(onClick = { viewModel.toggleMarkRead() }) {
+                                    Text(if (series.isCompleted) "Mark Unread" else "Mark Read")
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                OutlinedButton(onClick = { showMassDownloadDialog = true }) {
+                                    Text("Download...")
+                                }
                             }
                             if (series.summary?.isNotBlank() == true) {
                                 Spacer(modifier = Modifier.height(8.dp))

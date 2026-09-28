@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.data.api.NetworkClient
+import com.zemmy.sigurvita.core.data.repository.LibraryRepository
 import com.zemmy.sigurvita.core.data.repository.ReaderRepository
+import com.zemmy.sigurvita.core.data.repository.SeriesRepository
 import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
@@ -29,21 +31,39 @@ class ReaderViewModel : ViewModel() {
 
     private val app = SigurvitaApp.instance
     private val preferencesRepository = app.userPreferencesRepository
-    private val readerRepository = ReaderRepository(
-        NetworkClient.createKavitaApi(preferencesRepository),
-        app,
-        preferencesRepository
-    )
+    private val api = NetworkClient.createKavitaApi(preferencesRepository)
+    private val readerRepository = ReaderRepository(api, app, preferencesRepository)
+    private val seriesRepository = SeriesRepository(api, preferencesRepository)
+    private val libraryRepository = LibraryRepository(api, app.database, preferencesRepository)
 
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
     fun loadChapter(chapterId: Int, totalPages: Int, seriesId: Int, volumeId: Int) {
         viewModelScope.launch {
-            val settings = preferencesRepository.readerSettingsFlow.first()
+            val userSettings = preferencesRepository.readerSettingsFlow.first()
+
+            var effectiveReadingMode = userSettings.readingMode
+            try {
+                if (seriesId > 0) {
+                    val seriesRes = seriesRepository.getSeriesDetail(seriesId)
+                    if (seriesRes.isSuccess) {
+                        val series = seriesRes.getOrNull()
+                        val libraryRes = libraryRepository.getLibraries()
+                        val library = libraryRes.getOrNull()?.find { it.id == series?.libraryId }
+                        if (library != null) {
+                            val isManga = library.type == 0 || library.name.lowercase().contains("manga")
+                            effectiveReadingMode = if (isManga) ReadingMode.RTL else ReadingMode.LTR
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            val effectiveSettings = userSettings.copy(readingMode = effectiveReadingMode)
+
             _uiState.value = _uiState.value.copy(
                 isLoading = true,
-                settings = settings,
+                settings = effectiveSettings,
                 chapterId = chapterId,
                 seriesId = seriesId,
                 volumeId = volumeId
@@ -99,15 +119,12 @@ class ReaderViewModel : ViewModel() {
         if (!_uiState.value.settings.volumeKeyNavigationEnabled) return false
 
         val invert = _uiState.value.settings.volumeKeyInvert
-        val mode = _uiState.value.settings.readingMode
-
         val isNext = if (invert) isVolumeUp else !isVolumeUp
 
-        // For RTL (Right to Left Manga), Volume Down = Next Page
-        if (mode == ReadingMode.RTL) {
-            if (isNext) nextPage() else previousPage()
+        if (isNext) {
+            nextPage()
         } else {
-            if (isNext) nextPage() else previousPage()
+            previousPage()
         }
         return true
     }

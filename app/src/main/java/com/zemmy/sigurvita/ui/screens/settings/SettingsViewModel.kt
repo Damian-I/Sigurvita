@@ -52,6 +52,12 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
+    fun updateDownloadPath(path: String) {
+        viewModelScope.launch {
+            preferencesRepository.updateDownloadPath(path)
+        }
+    }
+
     fun logout() {
         viewModelScope.launch {
             preferencesRepository.clearServerConfig()

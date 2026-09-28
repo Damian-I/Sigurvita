@@ -37,7 +37,13 @@ class DownloadWorker(
 
         database.downloadDao().updateProgress(chapterId, 0, DownloadStatus.DOWNLOADING)
 
-        val targetDir = File(context.filesDir, "downloads/chapters/$chapterId")
+        val customPath = userPreferencesRepository.readerSettingsFlow.first().downloadPath
+        val targetDir = if (customPath.isNotBlank()) {
+            File(customPath, "chapters/$chapterId")
+        } else {
+            File(context.filesDir, "downloads/chapters/$chapterId")
+        }
+
         if (!targetDir.exists()) {
             targetDir.mkdirs()
         }
@@ -78,7 +84,7 @@ class DownloadWorker(
             )
 
             Result.success()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             database.downloadDao().updateProgress(chapterId, 0, DownloadStatus.FAILED)
             Result.failure()
         }

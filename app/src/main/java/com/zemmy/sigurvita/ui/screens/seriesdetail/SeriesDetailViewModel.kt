@@ -94,9 +94,34 @@ class SeriesDetailViewModel : ViewModel() {
                 seriesId = series.id,
                 volumeId = chapter.volumeId,
                 title = "${series.name} - ${chapter.title}",
-                coverUrl = series.coverUrl,
+                coverUrl = chapter.coverUrl ?: series.coverUrl,
                 totalPages = chapter.pages
             )
+        }
+    }
+
+    fun downloadBulk(count: Int, unreadOnly: Boolean) {
+        val series = _uiState.value.series ?: return
+        val allChapters = _uiState.value.volumes.flatMap { it.chapters }
+        val eligibleChapters = if (unreadOnly) {
+            allChapters.filter { !it.isRead }
+        } else {
+            allChapters
+        }
+
+        val chaptersToDownload = eligibleChapters.take(count)
+
+        viewModelScope.launch {
+            chaptersToDownload.forEach { chapter ->
+                downloadRepository.enqueueDownload(
+                    chapterId = chapter.id,
+                    seriesId = series.id,
+                    volumeId = chapter.volumeId,
+                    title = "${series.name} - ${chapter.title}",
+                    coverUrl = chapter.coverUrl ?: series.coverUrl,
+                    totalPages = chapter.pages
+                )
+            }
         }
     }
 

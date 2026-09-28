@@ -38,6 +38,7 @@ class UserPreferencesRepository(private val context: Context) {
         val VOLUME_KEY_NAV = booleanPreferencesKey("volume_key_nav")
         val VOLUME_KEY_INVERT = booleanPreferencesKey("volume_key_invert")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+        val DOWNLOAD_PATH = stringPreferencesKey("download_path")
     }
 
     @Volatile
@@ -83,7 +84,8 @@ class UserPreferencesRepository(private val context: Context) {
                 fitMode = fitMode,
                 volumeKeyNavigationEnabled = preferences[Keys.VOLUME_KEY_NAV] ?: true,
                 volumeKeyInvert = preferences[Keys.VOLUME_KEY_INVERT] ?: false,
-                keepScreenOn = preferences[Keys.KEEP_SCREEN_ON] ?: true
+                keepScreenOn = preferences[Keys.KEEP_SCREEN_ON] ?: true,
+                downloadPath = preferences[Keys.DOWNLOAD_PATH] ?: ""
             )
         }
 
@@ -156,6 +158,12 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun updateKeepScreenOn(keep: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[Keys.KEEP_SCREEN_ON] = keep
+        }
+    }
+
+    suspend fun updateDownloadPath(path: String) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.DOWNLOAD_PATH] = path.trim()
         }
     }
 }

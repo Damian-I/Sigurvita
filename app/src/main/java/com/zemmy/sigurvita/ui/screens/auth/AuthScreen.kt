@@ -52,7 +52,7 @@ fun AuthScreen(
                 color = MaterialTheme.colorScheme.primary
             )
             Text(
-                text = "Self-hosted Kavita Client for S25 Ultra",
+                text = "Self-hosted Kavita Client",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

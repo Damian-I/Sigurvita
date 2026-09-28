@@ -26,7 +26,8 @@ data class ReaderSettings(
     val volumeKeyNavigationEnabled: Boolean = true,
     val volumeKeyInvert: Boolean = false,
     val keepScreenOn: Boolean = true,
-    val backgroundColorHex: String = "#000000"
+    val backgroundColorHex: String = "#000000",
+    val downloadPath: String = ""
 )
 
 data class Library(
@@ -80,7 +81,10 @@ data class ReadingList(
     val itemCount: Int = 0,
     val coverUrl: String? = null,
     val promoted: Boolean = false,
-    val items: List<ReadingListItem> = emptyList()
+    val items: List<ReadingListItem> = emptyList(),
+    val totalPages: Int = 0,
+    val pagesRead: Int = 0,
+    val issuesRead: Int = 0
 )
 
 data class ReadingListItem(
@@ -91,7 +95,10 @@ data class ReadingListItem(
     val volumeId: Int? = null,
     val chapterId: Int? = null,
     val title: String,
-    val coverUrl: String? = null
+    val coverUrl: String? = null,
+    val pages: Int = 0,
+    val pagesRead: Int = 0,
+    val isRead: Boolean = false
 )
 
 data class ReaderPage(
