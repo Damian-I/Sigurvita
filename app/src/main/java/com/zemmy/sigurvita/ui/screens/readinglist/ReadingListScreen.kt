@@ -18,11 +18,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -60,6 +63,7 @@ fun ReadingListScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var showMassDownloadDialog by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
 
     if (showMassDownloadDialog) {
         val unreadCount = state.totalIssues - state.issuesRead
@@ -76,7 +80,7 @@ fun ReadingListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(state.selectedListTitle ?: "Reading Lists") },
+                title = { Text(if (state.selectedListTitle != null) cleanReadingListTitle(state.selectedListTitle!!) else "Reading Lists") },
                 navigationIcon = {
                     IconButton(
                         onClick = {
@@ -94,6 +98,31 @@ fun ReadingListScreen(
                     if (state.selectedListTitle != null) {
                         IconButton(onClick = { showMassDownloadDialog = true }) {
                             Icon(Icons.Default.Download, contentDescription = "Mass Download")
+                        }
+                    } else {
+                        Box {
+                            IconButton(onClick = { showSortMenu = true }) {
+                                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
+                            }
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false }
+                            ) {
+                                ReadingListSortOption.entries.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = option.displayName,
+                                                fontWeight = if (state.sortOption == option) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        },
+                                        onClick = {
+                                            viewModel.selectSortOption(option)
+                                            showSortMenu = false
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -125,20 +154,33 @@ fun ReadingListScreen(
             )
 
             // Era/Year Pills (when viewing reading lists overview)
-            if (state.selectedListTitle == null && state.eras.size > 1) {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp)
-                ) {
-                    items(state.eras) { era ->
-                        FilterChip(
-                            selected = (state.selectedEra == era),
-                            onClick = { viewModel.selectEra(era) },
-                            label = { Text(era) }
+            if (state.selectedListTitle == null && state.eraCategories.size > 1) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(state.eraCategories, key = { it.name }) { category ->
+                            FilterChip(
+                                selected = (state.selectedEraName == category.name),
+                                onClick = { viewModel.selectEra(category.name) },
+                                label = { Text(category.name) }
+                            )
+                        }
+                    }
+
+                    // Selected Era Year Subtitle
+                    val activeEra = state.selectedEraCategory
+                    if (activeEra?.years != null) {
+                        Text(
+                            text = "Years: ${activeEra.years}",
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
                         )
+                    } else {
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
             }
@@ -262,7 +304,8 @@ fun ReadingListScreen(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(lists, key = { it.id }) { list ->
-                        val eraTag = extractEraCategory(list.title)
+                        val eraInfo = extractEraInfo(list.title)
+                        val displayTitle = cleanReadingListTitle(list.title)
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -282,12 +325,12 @@ fun ReadingListScreen(
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column {
                                     Text(
-                                        text = list.title,
+                                        text = displayTitle,
                                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "$eraTag • ${list.itemCount} items",
+                                        text = "${eraInfo.name} • ${list.itemCount} items",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )

@@ -13,47 +13,109 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-fun extractEraCategory(title: String): String {
+fun naturalCompare(s1: String, s2: String): Int {
+    val regex = Regex("""(\d+\.?\d*|\D+)""")
+    val chunks1 = regex.findAll(s1).map { it.value }.toList()
+    val chunks2 = regex.findAll(s2).map { it.value }.toList()
+
+    val size = minOf(chunks1.size, chunks2.size)
+    for (i in 0 until size) {
+        val c1 = chunks1[i]
+        val c2 = chunks2[i]
+
+        val num1 = c1.toDoubleOrNull()
+        val num2 = c2.toDoubleOrNull()
+
+        val cmp = if (num1 != null && num2 != null) {
+            num1.compareTo(num2)
+        } else {
+            c1.lowercase().compareTo(c2.lowercase())
+        }
+
+        if (cmp != 0) return cmp
+    }
+
+    return chunks1.size.compareTo(chunks2.size)
+}
+
+fun cleanReadingListTitle(title: String): String {
+    var result = title.trim()
+
+    // 1. Strip bracket prefix like [Marvel] or [DC]
+    result = result.replace(Regex("""^\[[^\]]+\]\s*"""), "")
+
+    // 2. Strip year range like 2012-2015 or 1961-1970
+    result = result.replace(Regex("""\b\d{4}-\d{4}\b\s*"""), "")
+
+    // 3. Strip trailing parenthetical suffixes like (MG) or (WEB-CBRO) or (CBRO)
+    result = result.replace(Regex("""\s*\([A-Z0-9\s-]+\)$"""), "")
+
+    return result.trim().ifBlank { title }
+}
+
+data class EraCategory(
+    val name: String,
+    val years: String? = null
+)
+
+fun extractEraInfo(title: String): EraCategory {
     val cleanTitle = title.trim()
 
+    // Star Wars special rule
+    if (cleanTitle.contains("Star Wars", ignoreCase = true)) {
+        return EraCategory(name = "Star Wars", years = null)
+    }
+
+    // Alternate Universes special rule
+    if (cleanTitle.contains("Alternate Universes", ignoreCase = true)) {
+        return EraCategory(name = "Alternate Universes", years = null)
+    }
+
+    // Year range matching
     val yearRangeRegex = Regex("""(\d{4}-\d{4})""")
     val yearMatch = yearRangeRegex.find(cleanTitle)?.groupValues?.get(1)
 
     if (yearMatch != null) {
-        return when (yearMatch) {
-            "1939-1956" -> "1939-1956 Golden Age"
-            "1961-1970" -> "1961-1970 Silver Age"
-            "1970-1984" -> "1970-1984 Bronze Age"
-            "1984-1997" -> "1984-1997 Modern Age Begins"
-            "1997-2004" -> "1997-2004 Heroes Relaunched"
-            "2004-2012" -> "2004-2012 Marvel Disassembled"
-            "2012-2015" -> "2012-2015 Marvel NOW!"
-            "2015-2018" -> "2015-2018 ANAD Marvel"
-            "2018-2021" -> "2018-2021 Fresh Start"
-            "2021-2024" -> "2021-2024 Timeless"
+        val name = when (yearMatch) {
+            "1939-1956" -> "Golden Age"
+            "1961-1970" -> "Silver Age"
+            "1970-1984" -> "Bronze Age"
+            "1984-1997" -> "Modern Age Begins"
+            "1997-2004" -> "Heroes Relaunched"
+            "2004-2012" -> "Marvel Disassembled"
+            "2012-2015" -> "Marvel NOW!"
+            "2015-2018" -> "ANAD Marvel"
+            "2018-2021" -> "Fresh Start"
+            "2021-2024" -> "Timeless"
             else -> yearMatch
         }
+        return EraCategory(name = name, years = yearMatch)
     }
 
-    if (cleanTitle.contains("Alternate Universes", ignoreCase = true)) {
-        return "Alternate Universes"
-    }
-
+    // Bracket prefix
     val bracketRegex = Regex("""^\[([^]]+)\]""")
     val bracketMatch = bracketRegex.find(cleanTitle)?.groupValues?.get(1)
-    if (bracketMatch != null) {
-        return bracketMatch
+    if (bracketMatch != null && !bracketMatch.equals("Marvel", ignoreCase = true)) {
+        return EraCategory(name = bracketMatch, years = null)
     }
 
-    return "Other Lists"
+    return EraCategory(name = "General", years = null)
+}
+
+enum class ReadingListSortOption(val displayName: String) {
+    TITLE_NATURAL_ASC("Title (A-Z)"),
+    TITLE_NATURAL_DESC("Title (Z-A)"),
+    ITEM_COUNT_DESC("Most Items"),
+    ITEM_COUNT_ASC("Fewest Items")
 }
 
 data class ReadingListUiState(
     val readingLists: List<ReadingList> = emptyList(),
     val selectedListItems: List<ReadingListItem> = emptyList(),
     val selectedListTitle: String? = null,
-    val selectedEra: String = "All",
+    val selectedEraName: String = "All",
     val searchQuery: String = "",
+    val sortOption: ReadingListSortOption = ReadingListSortOption.TITLE_NATURAL_ASC,
     val totalIssues: Int = 0,
     val issuesRead: Int = 0,
     val totalPages: Int = 0,
@@ -61,19 +123,37 @@ data class ReadingListUiState(
     val isLoading: Boolean = false,
     val errorMessage: String? = null
 ) {
-    val eras: List<String>
+    val eraCategories: List<EraCategory>
         get() {
-            val extracted = readingLists.map { extractEraCategory(it.title) }.distinct().sorted()
-            return listOf("All") + extracted
+            val extracted = readingLists.map { extractEraInfo(it.title) }.distinctBy { it.name }.sortedBy { it.name }
+            return listOf(EraCategory(name = "All", years = null)) + extracted
         }
 
+    val selectedEraCategory: EraCategory?
+        get() = eraCategories.find { it.name == selectedEraName }
+
     val filteredReadingLists: List<ReadingList>
-        get() = readingLists.filter { list ->
-            val matchesEra = selectedEra == "All" || extractEraCategory(list.title) == selectedEra
-            val matchesQuery = searchQuery.isBlank() ||
-                    list.title.contains(searchQuery, ignoreCase = true) ||
-                    (list.summary?.contains(searchQuery, ignoreCase = true) == true)
-            matchesEra && matchesQuery
+        get() {
+            val filtered = readingLists.filter { list ->
+                val eraInfo = extractEraInfo(list.title)
+                val matchesEra = selectedEraName == "All" || eraInfo.name == selectedEraName
+                val matchesQuery = searchQuery.isBlank() ||
+                        list.title.contains(searchQuery, ignoreCase = true) ||
+                        cleanReadingListTitle(list.title).contains(searchQuery, ignoreCase = true) ||
+                        (list.summary?.contains(searchQuery, ignoreCase = true) == true)
+                matchesEra && matchesQuery
+            }
+
+            return when (sortOption) {
+                ReadingListSortOption.TITLE_NATURAL_ASC ->
+                    filtered.sortedWith { l1, l2 -> naturalCompare(l1.title, l2.title) }
+                ReadingListSortOption.TITLE_NATURAL_DESC ->
+                    filtered.sortedWith { l1, l2 -> naturalCompare(l2.title, l1.title) }
+                ReadingListSortOption.ITEM_COUNT_DESC ->
+                    filtered.sortedByDescending { it.itemCount }
+                ReadingListSortOption.ITEM_COUNT_ASC ->
+                    filtered.sortedBy { it.itemCount }
+            }
         }
 
     val filteredListItems: List<ReadingListItem>
@@ -166,8 +246,12 @@ class ReadingListViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(searchQuery = query)
     }
 
-    fun selectEra(era: String) {
-        _uiState.value = _uiState.value.copy(selectedEra = era)
+    fun selectEra(eraName: String) {
+        _uiState.value = _uiState.value.copy(selectedEraName = eraName)
+    }
+
+    fun selectSortOption(option: ReadingListSortOption) {
+        _uiState.value = _uiState.value.copy(sortOption = option)
     }
 
     fun downloadBulk(count: Int, unreadOnly: Boolean) {
