@@ -463,6 +463,17 @@ class ReaderRepository(
         }
     }
 
+    suspend fun getProgress(chapterId: Int): Int = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val res = api.getReaderProgress(chapterId)
+            if (res.isSuccessful && res.body() != null) {
+                res.body()!!.pageNum
+            } else 0
+        } catch (_: Exception) {
+            0
+        }
+    }
+
     suspend fun saveProgress(seriesId: Int, volumeId: Int, chapterId: Int, pageNum: Int) = withContext(Dispatchers.IO) {
         try {
             api.setReaderProgress(

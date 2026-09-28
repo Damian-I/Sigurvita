@@ -50,8 +50,14 @@ class ReaderViewModel : ViewModel() {
             )
 
             val pageList = readerRepository.getPages(chapterId, totalPages)
+            val savedPageNum = readerRepository.getProgress(chapterId)
+            val initialIndex = if (savedPageNum in 1..pageList.size) {
+                savedPageNum - 1
+            } else 0
+
             _uiState.value = _uiState.value.copy(
                 pages = pageList,
+                currentPageIndex = initialIndex,
                 isLoading = false
             )
         }

@@ -42,9 +42,29 @@ class SeriesDetailViewModel : ViewModel() {
             val volumesRes = seriesRepository.getSeriesVolumes(seriesId)
 
             if (seriesRes.isSuccess) {
+                val fetchedSeries = seriesRes.getOrNull()
+                val volumes = volumesRes.getOrDefault(emptyList())
+
+                val calculatedTotalPages = if (fetchedSeries?.totalPages ?: 0 > 0) {
+                    fetchedSeries!!.totalPages
+                } else {
+                    volumes.sumOf { v -> if (v.totalPages > 0) v.totalPages else v.chapters.sumOf { c -> c.pages } }
+                }
+
+                val calculatedPagesRead = if (fetchedSeries?.pagesRead ?: 0 > 0) {
+                    fetchedSeries!!.pagesRead
+                } else {
+                    volumes.sumOf { v -> if (v.pagesRead > 0) v.pagesRead else v.chapters.sumOf { c -> c.pagesRead } }
+                }
+
+                val updatedSeries = fetchedSeries?.copy(
+                    totalPages = calculatedTotalPages,
+                    pagesRead = calculatedPagesRead
+                )
+
                 _uiState.value = SeriesDetailUiState(
-                    series = seriesRes.getOrNull(),
-                    volumes = volumesRes.getOrDefault(emptyList()),
+                    series = updatedSeries,
+                    volumes = volumes,
                     isLoading = false
                 )
             } else {
