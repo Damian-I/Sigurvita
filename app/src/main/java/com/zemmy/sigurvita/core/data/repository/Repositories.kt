@@ -318,6 +318,24 @@ class ReadingListRepository(
             }
 
             val items = dtoList?.filter { it.id > 0 }?.map { dto ->
+                var pages = dto.pages
+                var pagesRead = dto.pagesRead
+                var isRead = dto.isRead
+
+                if (dto.chapterId != null && dto.chapterId > 0 && pages <= 0) {
+                    try {
+                        val cRes = api.getChapterById(dto.chapterId)
+                        if (cRes.isSuccessful && cRes.body() != null) {
+                            val cBody = cRes.body()!!
+                            pages = cBody.pages
+                            pagesRead = cBody.pagesRead
+                            isRead = cBody.isRead || (cBody.pages > 0 && cBody.pagesRead >= cBody.pages)
+                        }
+                    } catch (_: Exception) {}
+                } else {
+                    isRead = dto.isRead || (pages > 0 && pagesRead >= pages)
+                }
+
                 ReadingListItem(
                     id = dto.id,
                     readingListId = dto.readingListId,
@@ -326,7 +344,10 @@ class ReadingListRepository(
                     volumeId = dto.volumeId,
                     chapterId = dto.chapterId,
                     title = dto.title,
-                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}"
+                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}",
+                    pages = pages,
+                    pagesRead = pagesRead,
+                    isRead = isRead
                 )
             } ?: emptyList()
 
@@ -414,6 +435,7 @@ class SeriesRepository(
                         pagesRead = vDto.pagesRead,
                         totalPages = vDto.totalPages,
                         chapters = vDto.chapters.map { cDto ->
+                            val isChapterRead = cDto.isRead || (cDto.pages > 0 && cDto.pagesRead >= cDto.pages)
                             Chapter(
                                 id = cDto.id,
                                 volumeId = cDto.volumeId,
@@ -422,7 +444,7 @@ class SeriesRepository(
                                 title = cDto.title,
                                 pages = cDto.pages,
                                 pagesRead = cDto.pagesRead,
-                                isRead = cDto.isRead,
+                                isRead = isChapterRead,
                                 coverUrl = "${config.serverUrl}/api/image/chapter-cover?chapterId=${cDto.id}&apiKey=${config.apiKey}"
                             )
                         }
@@ -465,7 +487,12 @@ class ReaderRepository(
 ) {
     suspend fun getPages(chapterId: Int, totalPages: Int): List<ReaderPage> = withContext(Dispatchers.IO) {
         val config = preferencesRepository.serverConfigFlow.first()
-        val chapterDir = File(context.filesDir, "downloads/chapters/$chapterId")
+        val settings = preferencesRepository.readerSettingsFlow.first()
+        val chapterDir = if (settings.downloadPath.isNotBlank()) {
+            File(settings.downloadPath, "chapters/$chapterId")
+        } else {
+            File(context.filesDir, "downloads/chapters/$chapterId")
+        }
 
         var pageCount = totalPages
         if (pageCount <= 0) {

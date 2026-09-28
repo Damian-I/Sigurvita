@@ -168,7 +168,7 @@ fun SeriesDetailScreen(
                             if (series.summary?.isNotBlank() == true) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = series.summary!!,
+                                    text = series.summary,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 4,

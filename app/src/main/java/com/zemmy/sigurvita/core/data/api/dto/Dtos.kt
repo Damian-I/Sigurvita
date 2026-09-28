@@ -95,7 +95,10 @@ data class ReadingListItemDto(
     val volumeId: Int? = null,
     val chapterId: Int? = null,
     val title: String = "",
-    val coverImage: String? = null
+    val coverImage: String? = null,
+    val pages: Int = 0,
+    val pagesRead: Int = 0,
+    val isRead: Boolean = false
 )
 
 @Serializable
