@@ -17,6 +17,10 @@ import kotlinx.coroutines.launch
 data class SeriesDetailUiState(
     val series: Series? = null,
     val volumes: List<Volume> = emptyList(),
+    val totalChapters: Int = 0,
+    val chaptersRead: Int = 0,
+    val totalPages: Int = 0,
+    val pagesRead: Int = 0,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
 )
@@ -27,7 +31,6 @@ class SeriesDetailViewModel : ViewModel() {
     private val preferencesRepository = app.userPreferencesRepository
     private val seriesRepository = SeriesRepository(
         NetworkClient.createKavitaApi(preferencesRepository),
-        app.database,
         preferencesRepository
     )
     private val downloadRepository = DownloadRepository(app.database, app)
@@ -45,13 +48,16 @@ class SeriesDetailViewModel : ViewModel() {
                 val fetchedSeries = seriesRes.getOrNull()
                 val volumes = volumesRes.getOrDefault(emptyList())
 
-                val calculatedTotalPages = if (fetchedSeries?.totalPages ?: 0 > 0) {
+                val computedTotalChapters = volumes.sumOf { it.chapters.size }
+                val computedChaptersRead = volumes.sumOf { v -> v.chapters.count { it.isRead } }
+
+                val calculatedTotalPages = if ((fetchedSeries?.totalPages ?: 0) > 0) {
                     fetchedSeries!!.totalPages
                 } else {
                     volumes.sumOf { v -> if (v.totalPages > 0) v.totalPages else v.chapters.sumOf { c -> c.pages } }
                 }
 
-                val calculatedPagesRead = if (fetchedSeries?.pagesRead ?: 0 > 0) {
+                val calculatedPagesRead = if ((fetchedSeries?.pagesRead ?: 0) > 0) {
                     fetchedSeries!!.pagesRead
                 } else {
                     volumes.sumOf { v -> if (v.pagesRead > 0) v.pagesRead else v.chapters.sumOf { c -> c.pagesRead } }
@@ -65,6 +71,10 @@ class SeriesDetailViewModel : ViewModel() {
                 _uiState.value = SeriesDetailUiState(
                     series = updatedSeries,
                     volumes = volumes,
+                    totalChapters = computedTotalChapters,
+                    chaptersRead = computedChaptersRead,
+                    totalPages = calculatedTotalPages,
+                    pagesRead = calculatedPagesRead,
                     isLoading = false
                 )
             } else {

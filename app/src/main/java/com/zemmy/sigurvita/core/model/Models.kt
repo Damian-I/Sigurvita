@@ -69,7 +69,8 @@ data class Chapter(
     val pagesRead: Int = 0,
     val isRead: Boolean = false,
     val isDownloaded: Boolean = false,
-    val localPath: String? = null
+    val localPath: String? = null,
+    val coverUrl: String? = null
 )
 
 data class ReadingList(

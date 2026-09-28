@@ -32,11 +32,35 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zemmy.sigurvita.ui.components.CoverImage
 import com.zemmy.sigurvita.ui.components.ErrorState
 import com.zemmy.sigurvita.ui.components.LoadingState
+import kotlin.math.abs
+
+private fun formatVolumeHeader(name: String, number: Float): String {
+    if (name.contains("100000") || abs(number) >= 10000f) {
+        return "Issues"
+    }
+    return if (name.isNotBlank()) "Volume $name" else "Volume $number"
+}
+
+private fun formatChapterTitle(title: String, chapterNumber: String): String {
+    val isSentinelNumber = chapterNumber.contains("100000") ||
+            chapterNumber.toIntOrNull()?.let { abs(it) >= 10000 } == true
+
+    val cleanNumber = if (!isSentinelNumber && chapterNumber.isNotBlank()) "Issue #$chapterNumber" else ""
+    val cleanTitle = if (title.trim() == chapterNumber.trim()) "" else title
+
+    return when {
+        cleanNumber.isNotBlank() && cleanTitle.isNotBlank() -> "$cleanNumber - $cleanTitle"
+        cleanTitle.isNotBlank() -> cleanTitle
+        cleanNumber.isNotBlank() -> cleanNumber
+        else -> "Issue"
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,8 +113,8 @@ fun SeriesDetailScreen(
                         CoverImage(
                             url = series.coverUrl,
                             modifier = Modifier
-                                .width(110.dp)
-                                .height(160.dp)
+                                .width(120.dp)
+                                .height(175.dp)
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
@@ -100,8 +124,14 @@ fun SeriesDetailScreen(
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Progress: ${series.pagesRead} / ${series.totalPages} pages",
-                                style = MaterialTheme.typography.bodyMedium
+                                text = "${state.chaptersRead} / ${state.totalChapters} issues read",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "(${state.pagesRead} / ${state.totalPages} pages)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             OutlinedButton(onClick = { viewModel.toggleMarkRead() }) {
@@ -112,7 +142,9 @@ fun SeriesDetailScreen(
                                 Text(
                                     text = series.summary!!,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 4,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -121,7 +153,7 @@ fun SeriesDetailScreen(
 
                 items(state.volumes, key = { it.id }) { volume ->
                     Text(
-                        text = "Volume ${volume.name}",
+                        text = formatVolumeHeader(volume.name, volume.number),
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(vertical = 4.dp)
@@ -134,25 +166,44 @@ fun SeriesDetailScreen(
                                 .clickable {
                                     onChapterClick(chapter.id, chapter.pages, volume.id)
                                 },
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                                    .padding(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                CoverImage(
+                                    url = chapter.coverUrl ?: series.coverUrl,
+                                    modifier = Modifier
+                                        .width(60.dp)
+                                        .height(85.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = chapter.title.ifBlank { "Chapter ${chapter.chapterNumber}" },
-                                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
+                                        text = formatChapterTitle(chapter.title, chapter.chapterNumber),
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
                                     )
-                                    Text(
-                                        text = "${chapter.pages} pages",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "${chapter.pages} pages",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (chapter.isRead) {
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "• Read",
+                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
                                 }
                                 IconButton(onClick = { viewModel.downloadChapter(chapter) }) {
                                     Icon(

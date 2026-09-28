@@ -95,7 +95,7 @@ class LibraryRepository(
                 }
             }
 
-            val libraries = dtoList?.map { dto ->
+            val libraries = dtoList?.filter { it.id > 0 && it.name.isNotBlank() }?.map { dto ->
                 Library(
                     id = dto.id,
                     name = dto.name,
@@ -119,7 +119,7 @@ class LibraryRepository(
                 dtoList = api.getSeriesV2(libraryId = 0, filter = FilterV2Dto(), pageNumber = 1, pageSize = 20).body()
             }
 
-            val seriesList = dtoList?.map { dto ->
+            val seriesList = dtoList?.filter { it.id > 0 && it.name.isNotBlank() }?.map { dto ->
                 Series(
                     id = dto.id,
                     libraryId = dto.libraryId,
@@ -165,7 +165,7 @@ class LibraryRepository(
                 dtoList = api.getSeriesV2(libraryId = 0, filter = FilterV2Dto(), pageNumber = 1, pageSize = 20).body()
             }
 
-            val seriesList = dtoList?.map { dto ->
+            val seriesList = dtoList?.filter { it.id > 0 && it.name.isNotBlank() }?.map { dto ->
                 Series(
                     id = dto.id,
                     libraryId = dto.libraryId,
@@ -221,7 +221,7 @@ class LibraryRepository(
                 }
             }
 
-            val seriesList = dtoList?.map { dto ->
+            val seriesList = dtoList?.filter { it.id > 0 && it.name.isNotBlank() }?.map { dto ->
                 Series(
                     id = dto.id,
                     libraryId = dto.libraryId,
@@ -267,7 +267,7 @@ class ReadingListRepository(
                 }
             }
 
-            val lists = dtoList?.map { dto ->
+            val lists = dtoList?.filter { it.id > 0 && it.title.isNotBlank() }?.map { dto ->
                 ReadingList(
                     id = dto.id,
                     title = dto.title,
@@ -317,7 +317,7 @@ class ReadingListRepository(
                 }
             }
 
-            val items = dtoList?.map { dto ->
+            val items = dtoList?.filter { it.id > 0 }?.map { dto ->
                 ReadingListItem(
                     id = dto.id,
                     readingListId = dto.readingListId,
@@ -339,36 +339,70 @@ class ReadingListRepository(
 
 class SeriesRepository(
     private val api: KavitaApi,
-    private val database: SigurvitaDatabase,
     private val preferencesRepository: UserPreferencesRepository
 ) {
     suspend fun getSeriesDetail(seriesId: Int): Result<Series> = withContext(Dispatchers.IO) {
         try {
-            val res = api.getSeriesDetail(seriesId)
-            if (res.isSuccessful && res.body() != null) {
-                val dto = res.body()!!
-                val config = preferencesRepository.serverConfigFlow.first()
-                val series = Series(
+            val config = preferencesRepository.serverConfigFlow.first()
+            var series: Series? = null
+
+            val resById = api.getSeriesById(seriesId)
+            if (resById.isSuccessful && resById.body() != null) {
+                val dto = resById.body()!!
+                series = Series(
                     id = dto.id,
                     libraryId = dto.libraryId,
                     name = dto.name,
+                    localizedName = dto.localizedName,
                     coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
                     summary = dto.summary,
                     pagesRead = dto.pagesRead,
                     totalPages = dto.totalPages,
-                    isCompleted = dto.isCompleted
+                    userRating = dto.userRating
                 )
-                Result.success(series)
             } else {
-                Result.failure(Exception("Failed to load series details"))
+                val resDetail = api.getSeriesDetail(seriesId)
+                if (resDetail.isSuccessful && resDetail.body() != null) {
+                    val dto = resDetail.body()!!
+                    series = Series(
+                        id = dto.id,
+                        libraryId = dto.libraryId,
+                        name = dto.name,
+                        coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
+                        summary = dto.summary,
+                        pagesRead = dto.pagesRead,
+                        totalPages = dto.totalPages,
+                        isCompleted = dto.isCompleted
+                    )
+                }
             }
+
+            if (series == null) {
+                series = Series(
+                    id = seriesId,
+                    libraryId = 0,
+                    name = "Series Details",
+                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${seriesId}&apiKey=${config.apiKey}"
+                )
+            }
+
+            Result.success(series)
         } catch (e: Exception) {
-            Result.failure(e)
+            val config = preferencesRepository.serverConfigFlow.first()
+            Result.success(
+                Series(
+                    id = seriesId,
+                    libraryId = 0,
+                    name = "Series Details",
+                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${seriesId}&apiKey=${config.apiKey}"
+                )
+            )
         }
     }
 
     suspend fun getSeriesVolumes(seriesId: Int): Result<List<Volume>> = withContext(Dispatchers.IO) {
         try {
+            val config = preferencesRepository.serverConfigFlow.first()
             val res = api.getSeriesVolumes(seriesId)
             if (res.isSuccessful) {
                 val volumes = res.body()?.map { vDto ->
@@ -388,7 +422,8 @@ class SeriesRepository(
                                 title = cDto.title,
                                 pages = cDto.pages,
                                 pagesRead = cDto.pagesRead,
-                                isRead = cDto.isRead
+                                isRead = cDto.isRead,
+                                coverUrl = "${config.serverUrl}/api/image/chapter-cover?chapterId=${cDto.id}&apiKey=${config.apiKey}"
                             )
                         }
                     )

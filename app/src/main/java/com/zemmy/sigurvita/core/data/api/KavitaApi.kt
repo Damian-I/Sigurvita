@@ -61,6 +61,11 @@ interface KavitaApi {
         @Query("seriesId") seriesId: Int
     ): Response<SeriesDetailDto>
 
+    @GET("api/Series/{seriesId}")
+    suspend fun getSeriesById(
+        @Path("seriesId") seriesId: Int
+    ): Response<SeriesDto>
+
     @GET("api/Series/volumes")
     suspend fun getSeriesVolumes(
         @Query("seriesId") seriesId: Int
