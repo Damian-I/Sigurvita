@@ -3,6 +3,7 @@ package com.zemmy.sigurvita.ui.screens.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
+import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,6 +25,12 @@ class SettingsViewModel : ViewModel() {
     fun updateReadingMode(mode: ReadingMode) {
         viewModelScope.launch {
             preferencesRepository.updateReadingMode(mode)
+        }
+    }
+
+    fun updateFitMode(mode: FitMode) {
+        viewModelScope.launch {
+            preferencesRepository.updateFitMode(mode)
         }
     }
 

@@ -69,4 +69,16 @@ class SeriesDetailViewModel : ViewModel() {
             )
         }
     }
+
+    fun toggleMarkRead() {
+        val series = _uiState.value.series ?: return
+        viewModelScope.launch {
+            if (series.isCompleted) {
+                seriesRepository.markSeriesUnread(series.id)
+            } else {
+                seriesRepository.markSeriesRead(series.id)
+            }
+            loadSeriesDetail(series.id)
+        }
+    }
 }

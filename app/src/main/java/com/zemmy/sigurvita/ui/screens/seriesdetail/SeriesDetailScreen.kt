@@ -21,6 +21,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -102,6 +103,10 @@ fun SeriesDetailScreen(
                                 text = "Progress: ${series.pagesRead} / ${series.totalPages} pages",
                                 style = MaterialTheme.typography.bodyMedium
                             )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedButton(onClick = { viewModel.toggleMarkRead() }) {
+                                Text(if (series.isCompleted) "Mark Unread" else "Mark Read")
+                            }
                             if (series.summary?.isNotBlank() == true) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(

@@ -42,6 +42,7 @@ import com.zemmy.sigurvita.ui.components.LoadingState
 fun ReadingListScreen(
     onBackClick: () -> Unit,
     onSeriesClick: (Int) -> Unit,
+    onChapterClick: (chapterId: Int, seriesId: Int, volumeId: Int) -> Unit,
     viewModel: ReadingListViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -78,7 +79,13 @@ fun ReadingListScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onSeriesClick(item.seriesId) },
+                            .clickable {
+                                if (item.chapterId != null && item.chapterId > 0) {
+                                    onChapterClick(item.chapterId, item.seriesId, item.volumeId ?: 0)
+                                } else {
+                                    onSeriesClick(item.seriesId)
+                                }
+                            },
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Row(
@@ -94,12 +101,12 @@ fun ReadingListScreen(
                             Spacer(modifier = Modifier.width(16.dp))
                             Column {
                                 Text(
-                                    text = item.seriesName,
+                                    text = item.title.ifBlank { item.seriesName },
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = item.title,
+                                    text = item.seriesName,
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

@@ -13,7 +13,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -25,6 +24,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReadingMode
 
@@ -33,6 +33,7 @@ fun ImageReader(
     pages: List<ReaderPage>,
     currentPageIndex: Int,
     readingMode: ReadingMode,
+    fitMode: FitMode = FitMode.FIT_WIDTH,
     onPageChanged: (Int) -> Unit,
     onTap: () -> Unit,
     modifier: Modifier = Modifier
@@ -58,6 +59,7 @@ fun ImageReader(
                 itemsIndexed(pages) { _, page ->
                     ZoomableImage(
                         page = page,
+                        fitMode = fitMode,
                         onTap = onTap,
                         modifier = Modifier.fillMaxSize()
                     )
@@ -89,6 +91,7 @@ fun ImageReader(
             ) { pageIdx ->
                 ZoomableImage(
                     page = pages[pageIdx],
+                    fitMode = fitMode,
                     onTap = onTap,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -100,6 +103,7 @@ fun ImageReader(
 @Composable
 private fun ZoomableImage(
     page: ReaderPage,
+    fitMode: FitMode,
     onTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -107,6 +111,12 @@ private fun ZoomableImage(
     var scale by remember { mutableFloatStateOf(1f) }
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
+
+    val contentScale = when (fitMode) {
+        FitMode.FIT_WIDTH -> ContentScale.FillWidth
+        FitMode.FIT_HEIGHT -> ContentScale.FillHeight
+        FitMode.FIT_SCREEN -> ContentScale.Fit
+    }
 
     Box(
         modifier = modifier
@@ -132,7 +142,7 @@ private fun ZoomableImage(
                 .crossfade(true)
                 .build(),
             contentDescription = "Page ${page.pageNumber}",
-            contentScale = ContentScale.Fit,
+            contentScale = contentScale,
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(

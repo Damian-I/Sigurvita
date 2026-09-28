@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReadingMode
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,6 +72,20 @@ fun SettingsScreen(
                     FilterChip(
                         selected = (settings.readingMode == mode),
                         onClick = { viewModel.updateReadingMode(mode) },
+                        label = { Text(mode.name) },
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text("Fit Mode", style = MaterialTheme.typography.bodyLarge)
+            Row(modifier = Modifier.padding(vertical = 8.dp)) {
+                FitMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = (settings.fitMode == mode),
+                        onClick = { viewModel.updateFitMode(mode) },
                         label = { Text(mode.name) },
                         modifier = Modifier.padding(end = 8.dp)
                     )

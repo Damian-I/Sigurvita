@@ -1,6 +1,5 @@
 package com.zemmy.sigurvita.ui.screens.reader
 
-import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.view.WindowManager
@@ -89,6 +88,7 @@ fun ReaderScreen(
                 pages = state.pages,
                 currentPageIndex = state.currentPageIndex,
                 readingMode = state.settings.readingMode,
+                fitMode = state.settings.fitMode,
                 onPageChanged = { viewModel.onPageChanged(it) },
                 onTap = { viewModel.toggleControls() }
             )

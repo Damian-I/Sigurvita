@@ -55,6 +55,16 @@ fun SigurvitaNavGraph(
                 onBackClick = { navController.popBackStack() },
                 onSeriesClick = { seriesId ->
                     navController.navigate(Screen.SeriesDetail.createRoute(seriesId))
+                },
+                onChapterClick = { chapterId, seriesId, volumeId ->
+                    navController.navigate(
+                        Screen.Reader.createRoute(
+                            chapterId = chapterId,
+                            totalPages = 0,
+                            seriesId = seriesId,
+                            volumeId = volumeId
+                        )
+                    )
                 }
             )
         }

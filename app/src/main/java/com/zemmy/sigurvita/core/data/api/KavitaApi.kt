@@ -1,5 +1,6 @@
 package com.zemmy.sigurvita.core.data.api
 
+import com.zemmy.sigurvita.core.data.api.dto.ChapterDto
 import com.zemmy.sigurvita.core.data.api.dto.FilterV2Dto
 import com.zemmy.sigurvita.core.data.api.dto.LibraryDto
 import com.zemmy.sigurvita.core.data.api.dto.ReaderProgressDto
@@ -64,6 +65,11 @@ interface KavitaApi {
     suspend fun getSeriesVolumes(
         @Query("seriesId") seriesId: Int
     ): Response<List<VolumeDto>>
+
+    @GET("api/Series/chapter")
+    suspend fun getChapterById(
+        @Query("chapterId") chapterId: Int
+    ): Response<ChapterDto>
 
     @POST("api/ReadingList/lists")
     suspend fun getReadingLists(

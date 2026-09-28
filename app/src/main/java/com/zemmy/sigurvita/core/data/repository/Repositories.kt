@@ -193,8 +193,9 @@ class LibraryRepository(
             if (libraryId > 0) {
                 val filter = FilterV2Dto(
                     statements = listOf(
-                        FilterStatementDto(field = 18, comparison = 0, value = libraryId.toString())
-                    )
+                        FilterStatementDto(field = 19, comparison = 0, value = libraryId.toString())
+                    ),
+                    combination = 1
                 )
                 val resWithFilter = api.getSeriesV2(libraryId = libraryId, filter = filter, pageNumber = 1, pageSize = 5000)
                 if (resWithFilter.isSuccessful && !resWithFilter.body().isNullOrEmpty()) {
@@ -400,6 +401,26 @@ class SeriesRepository(
             Result.failure(e)
         }
     }
+
+    suspend fun markSeriesRead(seriesId: Int): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val res = api.markSeriesRead(seriesId)
+            if (res.isSuccessful) Result.success(true)
+            else Result.failure(Exception("Failed to mark as read"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun markSeriesUnread(seriesId: Int): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val res = api.markSeriesUnread(seriesId)
+            if (res.isSuccessful) Result.success(true)
+            else Result.failure(Exception("Failed to mark as unread"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
 
 class ReaderRepository(
@@ -411,7 +432,18 @@ class ReaderRepository(
         val config = preferencesRepository.serverConfigFlow.first()
         val chapterDir = File(context.filesDir, "downloads/chapters/$chapterId")
 
-        (0 until totalPages).map { pageIdx ->
+        var pageCount = totalPages
+        if (pageCount <= 0) {
+            try {
+                val chapterRes = api.getChapterById(chapterId)
+                if (chapterRes.isSuccessful && chapterRes.body() != null) {
+                    pageCount = chapterRes.body()!!.pages
+                }
+            } catch (_: Exception) {}
+        }
+        if (pageCount <= 0) pageCount = 50
+
+        (0 until pageCount).map { pageIdx ->
             val localFile = File(chapterDir, "page_$pageIdx.jpg")
             if (localFile.exists()) {
                 ReaderPage(
