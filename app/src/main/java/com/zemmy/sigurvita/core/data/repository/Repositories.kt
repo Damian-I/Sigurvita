@@ -463,6 +463,26 @@ class SeriesRepository(
         }
     }
 
+    suspend fun markChapterRead(chapterId: Int, seriesId: Int = 0): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val res = api.markChapterRead(seriesId = seriesId, chapterId = chapterId)
+            if (res.isSuccessful) Result.success(true)
+            else Result.failure(Exception("Failed to mark chapter read"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun markChapterUnread(chapterId: Int, seriesId: Int = 0): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val res = api.markChapterUnread(seriesId = seriesId, chapterId = chapterId)
+            if (res.isSuccessful) Result.success(true)
+            else Result.failure(Exception("Failed to mark chapter unread"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun markSeriesRead(seriesId: Int): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             val res = api.markSeriesRead(seriesId)
@@ -593,7 +613,8 @@ class ReaderRepository(
         }
     }
 
-    suspend fun saveProgress(seriesId: Int, volumeId: Int, chapterId: Int, pageNum: Int) = withContext(Dispatchers.IO) {
+    suspend fun saveProgress(seriesId: Int, volumeId: Int, chapterId: Int, pageNum: Int, totalPages: Int = 0) = withContext(Dispatchers.IO) {
+        val isFinished = totalPages > 0 && pageNum >= totalPages
         try {
             api.setReaderProgress(
                 ReaderProgressDto(
@@ -603,9 +624,18 @@ class ReaderRepository(
                     pageNum = pageNum
                 )
             )
+            if (isFinished) {
+                api.markChapterRead(seriesId = seriesId, chapterId = chapterId)
+            }
         } catch (_: Exception) {
-            // Local fallback / optimistic update
+            // Local fallback
         }
+    }
+
+    suspend fun markChapterRead(chapterId: Int, seriesId: Int = 0) = withContext(Dispatchers.IO) {
+        try {
+            api.markChapterRead(seriesId = seriesId, chapterId = chapterId)
+        } catch (_: Exception) {}
     }
 }
 

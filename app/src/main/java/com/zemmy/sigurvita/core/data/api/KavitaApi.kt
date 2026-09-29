@@ -121,12 +121,24 @@ interface KavitaApi {
         @Body body: ReaderProgressDto
     ): Response<Unit>
 
-    @POST("api/reader/mark-read")
+    @POST("api/Reader/mark-chapter-read")
+    suspend fun markChapterRead(
+        @Query("seriesId") seriesId: Int = 0,
+        @Query("chapterId") chapterId: Int = 0
+    ): Response<Unit>
+
+    @POST("api/Reader/mark-chapter-unread")
+    suspend fun markChapterUnread(
+        @Query("seriesId") seriesId: Int = 0,
+        @Query("chapterId") chapterId: Int = 0
+    ): Response<Unit>
+
+    @POST("api/Reader/mark-read")
     suspend fun markSeriesRead(
         @Query("seriesId") seriesId: Int
     ): Response<Unit>
 
-    @POST("api/reader/mark-unread")
+    @POST("api/Reader/mark-unread")
     suspend fun markSeriesUnread(
         @Query("seriesId") seriesId: Int
     ): Response<Unit>

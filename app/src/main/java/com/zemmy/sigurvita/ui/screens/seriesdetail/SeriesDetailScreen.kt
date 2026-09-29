@@ -127,6 +127,8 @@ fun SeriesDetailScreen(
             )
         } else if (state.series != null) {
             val series = state.series!!
+            val isSeriesCompleted = series.isCompleted || (state.chaptersRead >= state.totalChapters && state.totalChapters > 0)
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -163,14 +165,8 @@ fun SeriesDetailScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(modifier = Modifier.height(8.dp))
-                            Row {
-                                OutlinedButton(onClick = { viewModel.toggleMarkRead() }) {
-                                    Text(if (series.isCompleted) "Mark Unread" else "Mark Read")
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                OutlinedButton(onClick = { showMassDownloadDialog = true }) {
-                                    Text("Download...")
-                                }
+                            OutlinedButton(onClick = { viewModel.toggleMarkRead() }) {
+                                Text(if (isSeriesCompleted) "Mark Unread" else "Mark Read")
                             }
                             if (series.summary?.isNotBlank() == true) {
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -238,7 +234,16 @@ fun SeriesDetailScreen(
                                             Text(
                                                 text = "• Read",
                                                 style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                                color = MaterialTheme.colorScheme.primary
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.clickable { viewModel.toggleChapterRead(chapter) }
+                                            )
+                                        } else {
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "• Unread",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.clickable { viewModel.toggleChapterRead(chapter) }
                                             )
                                         }
                                     }

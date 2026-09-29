@@ -59,7 +59,7 @@ class SeriesDetailViewModel : ViewModel() {
 
             if (seriesRes.isSuccess) {
                 val fetchedSeries = seriesRes.getOrNull()
-                val volumes = volumesRes.getOrDefault(emptyList())
+                var volumes = volumesRes.getOrDefault(emptyList())
 
                 val libraryRes = libraryRepository.getLibraries()
                 val library = libraryRes.getOrNull()?.find { it.id == fetchedSeries?.libraryId }
@@ -71,7 +71,7 @@ class SeriesDetailViewModel : ViewModel() {
                 }
 
                 val computedTotalChapters = volumes.sumOf { it.chapters.size }
-                val computedChaptersRead = volumes.sumOf { v -> v.chapters.count { it.isRead } }
+                var computedChaptersRead = volumes.sumOf { v -> v.chapters.count { it.isRead } }
 
                 val calculatedTotalPages = if ((fetchedSeries?.totalPages ?: 0) > 0) {
                     fetchedSeries!!.totalPages
@@ -79,10 +79,19 @@ class SeriesDetailViewModel : ViewModel() {
                     volumes.sumOf { v -> if (v.totalPages > 0) v.totalPages else v.chapters.sumOf { c -> c.pages } }
                 }
 
-                val calculatedPagesRead = if ((fetchedSeries?.pagesRead ?: 0) > 0) {
+                var calculatedPagesRead = if ((fetchedSeries?.pagesRead ?: 0) > 0) {
                     fetchedSeries!!.pagesRead
                 } else {
                     volumes.sumOf { v -> if (v.pagesRead > 0) v.pagesRead else v.chapters.sumOf { c -> c.pagesRead } }
+                }
+
+                // Sync completed series status
+                if (fetchedSeries?.isCompleted == true) {
+                    computedChaptersRead = computedTotalChapters
+                    calculatedPagesRead = calculatedTotalPages
+                    volumes = volumes.map { v ->
+                        v.copy(chapters = v.chapters.map { c -> c.copy(isRead = true) })
+                    }
                 }
 
                 val updatedSeries = fetchedSeries?.copy(
@@ -167,15 +176,63 @@ class SeriesDetailViewModel : ViewModel() {
         }
     }
 
+    fun toggleChapterRead(chapter: Chapter) {
+        val targetSeriesId = if (chapter.seriesId > 0) chapter.seriesId else (_uiState.value.series?.id ?: 0)
+        val newReadState = !chapter.isRead
+
+        // Optimistic UI Update
+        val updatedVolumes = _uiState.value.volumes.map { vol ->
+            vol.copy(
+                chapters = vol.chapters.map { c ->
+                    if (c.id == chapter.id) c.copy(isRead = newReadState) else c
+                }
+            )
+        }
+        val newChaptersRead = updatedVolumes.sumOf { v -> v.chapters.count { it.isRead } }
+        val newPagesRead = updatedVolumes.sumOf { v -> v.chapters.sumOf { if (it.isRead) it.pages else it.pagesRead } }
+
+        _uiState.value = _uiState.value.copy(
+            volumes = updatedVolumes,
+            chaptersRead = newChaptersRead,
+            pagesRead = newPagesRead
+        )
+
+        viewModelScope.launch {
+            if (newReadState) {
+                seriesRepository.markChapterRead(chapter.id, targetSeriesId)
+            } else {
+                seriesRepository.markChapterUnread(chapter.id, targetSeriesId)
+            }
+        }
+    }
+
     fun toggleMarkRead() {
         val series = _uiState.value.series ?: return
+        val isCurrentlyCompleted = series.isCompleted || (_uiState.value.chaptersRead >= _uiState.value.totalChapters && _uiState.value.totalChapters > 0)
+        val targetReadState = !isCurrentlyCompleted
+
+        // Optimistic UI Update
+        val updatedVolumes = _uiState.value.volumes.map { vol ->
+            vol.copy(
+                chapters = vol.chapters.map { c -> c.copy(isRead = targetReadState) }
+            )
+        }
+        val newChaptersRead = if (targetReadState) _uiState.value.totalChapters else 0
+        val newPagesRead = if (targetReadState) _uiState.value.totalPages else 0
+
+        _uiState.value = _uiState.value.copy(
+            series = series.copy(isCompleted = targetReadState),
+            volumes = updatedVolumes,
+            chaptersRead = newChaptersRead,
+            pagesRead = newPagesRead
+        )
+
         viewModelScope.launch {
-            if (series.isCompleted) {
-                seriesRepository.markSeriesUnread(series.id)
-            } else {
+            if (targetReadState) {
                 seriesRepository.markSeriesRead(series.id)
+            } else {
+                seriesRepository.markSeriesUnread(series.id)
             }
-            loadSeriesDetail(series.id)
         }
     }
 }

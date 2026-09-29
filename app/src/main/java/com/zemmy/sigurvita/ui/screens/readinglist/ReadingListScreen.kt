@@ -36,7 +36,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -64,7 +63,7 @@ import com.zemmy.sigurvita.ui.components.MassDownloadDialog
 fun ReadingListScreen(
     onBackClick: () -> Unit,
     onSeriesClick: (Int) -> Unit,
-    onChapterClick: (chapterId: Int, seriesId: Int, volumeId: Int) -> Unit,
+    onChapterClick: (chapterId: Int, seriesId: Int, volumeId: Int, readingListId: Int) -> Unit,
     viewModel: ReadingListViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -231,9 +230,6 @@ fun ReadingListScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                OutlinedButton(onClick = { showMassDownloadDialog = true }) {
-                                    Text("Download...")
-                                }
                             }
                         }
                     }
@@ -248,7 +244,7 @@ fun ReadingListScreen(
                                 .fillMaxWidth()
                                 .clickable {
                                     if (item.chapterId != null && item.chapterId > 0) {
-                                        onChapterClick(item.chapterId, item.seriesId, item.volumeId ?: 0)
+                                        onChapterClick(item.chapterId, item.seriesId, item.volumeId ?: 0, item.readingListId)
                                     } else {
                                         onSeriesClick(item.seriesId)
                                     }

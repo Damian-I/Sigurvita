@@ -55,6 +55,7 @@ fun ReaderScreen(
     totalPages: Int,
     seriesId: Int = 0,
     volumeId: Int = 0,
+    readingListId: Int = 0,
     onBackClick: () -> Unit
 ) {
     val context = LocalContext.current
@@ -64,7 +65,7 @@ fun ReaderScreen(
     val state by viewModel.uiState.collectAsState()
 
     LaunchedEffect(chapterId) {
-        viewModel.loadChapter(chapterId, totalPages, seriesId, volumeId)
+        viewModel.loadChapter(chapterId, totalPages, seriesId, volumeId, readingListId)
     }
 
     DisposableEffect(state.settings.keepScreenOn) {

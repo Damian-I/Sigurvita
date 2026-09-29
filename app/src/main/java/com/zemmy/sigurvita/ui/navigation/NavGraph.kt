@@ -56,13 +56,14 @@ fun SigurvitaNavGraph(
                 onSeriesClick = { seriesId ->
                     navController.navigate(Screen.SeriesDetail.createRoute(seriesId))
                 },
-                onChapterClick = { chapterId, seriesId, volumeId ->
+                onChapterClick = { chapterId, seriesId, volumeId, readingListId ->
                     navController.navigate(
                         Screen.Reader.createRoute(
                             chapterId = chapterId,
                             totalPages = 0,
                             seriesId = seriesId,
-                            volumeId = volumeId
+                            volumeId = volumeId,
+                            readingListId = readingListId
                         )
                     )
                 }
@@ -96,19 +97,22 @@ fun SigurvitaNavGraph(
                 navArgument("chapterId") { type = NavType.IntType },
                 navArgument("totalPages") { type = NavType.IntType },
                 navArgument("seriesId") { type = NavType.IntType; defaultValue = 0 },
-                navArgument("volumeId") { type = NavType.IntType; defaultValue = 0 }
+                navArgument("volumeId") { type = NavType.IntType; defaultValue = 0 },
+                navArgument("readingListId") { type = NavType.IntType; defaultValue = 0 }
             )
         ) { backStackEntry ->
             val chapterId = backStackEntry.arguments?.getInt("chapterId") ?: 0
             val totalPages = backStackEntry.arguments?.getInt("totalPages") ?: 0
             val seriesId = backStackEntry.arguments?.getInt("seriesId") ?: 0
             val volumeId = backStackEntry.arguments?.getInt("volumeId") ?: 0
+            val readingListId = backStackEntry.arguments?.getInt("readingListId") ?: 0
 
             ReaderScreen(
                 chapterId = chapterId,
                 totalPages = totalPages,
                 seriesId = seriesId,
                 volumeId = volumeId,
+                readingListId = readingListId,
                 onBackClick = { navController.popBackStack() }
             )
         }

@@ -7,6 +7,7 @@ import com.zemmy.sigurvita.core.data.api.NetworkClient
 import com.zemmy.sigurvita.core.data.repository.DownloadRepository
 import com.zemmy.sigurvita.core.data.repository.LibraryRepository
 import com.zemmy.sigurvita.core.data.repository.ReaderRepository
+import com.zemmy.sigurvita.core.data.repository.ReadingListRepository
 import com.zemmy.sigurvita.core.data.repository.SeriesRepository
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
 import com.zemmy.sigurvita.core.model.ReaderPage
@@ -26,7 +27,8 @@ data class ReaderUiState(
     val settings: ReaderSettings = ReaderSettings(),
     val chapterId: Int = 0,
     val seriesId: Int = 0,
-    val volumeId: Int = 0
+    val volumeId: Int = 0,
+    val readingListId: Int = 0
 )
 
 class ReaderViewModel : ViewModel() {
@@ -36,13 +38,14 @@ class ReaderViewModel : ViewModel() {
     private val api = NetworkClient.createKavitaApi(preferencesRepository)
     private val readerRepository = ReaderRepository(api, app, preferencesRepository, app.database)
     private val seriesRepository = SeriesRepository(api, preferencesRepository)
+    private val readingListRepository = ReadingListRepository(api, app.database, preferencesRepository)
     private val libraryRepository = LibraryRepository(api, app.database, preferencesRepository)
     private val downloadRepository = DownloadRepository(app.database, app)
 
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
-    fun loadChapter(chapterId: Int, totalPages: Int, seriesId: Int, volumeId: Int) {
+    fun loadChapter(chapterId: Int, totalPages: Int, seriesId: Int, volumeId: Int, readingListId: Int = 0) {
         viewModelScope.launch {
             val userSettings = preferencesRepository.readerSettingsFlow.first()
 
@@ -69,7 +72,8 @@ class ReaderViewModel : ViewModel() {
                 settings = effectiveSettings,
                 chapterId = chapterId,
                 seriesId = seriesId,
-                volumeId = volumeId
+                volumeId = volumeId,
+                readingListId = readingListId
             )
 
             val pageList = readerRepository.getPages(chapterId, totalPages)
@@ -90,14 +94,16 @@ class ReaderViewModel : ViewModel() {
         if (index in 0 until _uiState.value.pages.size) {
             _uiState.value = _uiState.value.copy(currentPageIndex = index)
             viewModelScope.launch {
+                val totalPages = _uiState.value.pages.size
                 readerRepository.saveProgress(
                     seriesId = _uiState.value.seriesId,
                     volumeId = _uiState.value.volumeId,
                     chapterId = _uiState.value.chapterId,
-                    pageNum = index + 1
+                    pageNum = index + 1,
+                    totalPages = totalPages
                 )
 
-                if (index >= _uiState.value.pages.size - 1) {
+                if (index >= totalPages - 1 && totalPages > 0) {
                     val settings = _uiState.value.settings
                     if (settings.autoDeleteOption == AutoDeleteOption.IMMEDIATELY) {
                         downloadRepository.deleteLocalChapter(_uiState.value.chapterId)
@@ -111,6 +117,8 @@ class ReaderViewModel : ViewModel() {
         val current = _uiState.value.currentPageIndex
         if (current < _uiState.value.pages.size - 1) {
             onPageChanged(current + 1)
+        } else if (current >= _uiState.value.pages.size - 1 && _uiState.value.pages.isNotEmpty()) {
+            loadNextChapter()
         }
     }
 
@@ -118,6 +126,49 @@ class ReaderViewModel : ViewModel() {
         val current = _uiState.value.currentPageIndex
         if (current > 0) {
             onPageChanged(current - 1)
+        }
+    }
+
+    fun loadNextChapter() {
+        val state = _uiState.value
+        viewModelScope.launch {
+            if (state.readingListId > 0) {
+                val listRes = readingListRepository.getReadingListItems(state.readingListId)
+                if (listRes.isSuccess) {
+                    val items = listRes.getOrNull() ?: emptyList()
+                    val currentIndex = items.indexOfFirst { it.chapterId == state.chapterId }
+                    if (currentIndex in 0 until items.size - 1) {
+                        val nextItem = items[currentIndex + 1]
+                        if (nextItem.chapterId != null && nextItem.chapterId > 0) {
+                            loadChapter(
+                                chapterId = nextItem.chapterId,
+                                totalPages = nextItem.pages,
+                                seriesId = nextItem.seriesId,
+                                volumeId = nextItem.volumeId ?: 0,
+                                readingListId = state.readingListId
+                            )
+                            return@launch
+                        }
+                    }
+                }
+            } else if (state.seriesId > 0) {
+                val volumesRes = seriesRepository.getSeriesVolumes(state.seriesId)
+                if (volumesRes.isSuccess) {
+                    val allChapters = volumesRes.getOrDefault(emptyList()).flatMap { it.chapters }
+                    val currentIndex = allChapters.indexOfFirst { it.id == state.chapterId }
+                    if (currentIndex in 0 until allChapters.size - 1) {
+                        val nextChapter = allChapters[currentIndex + 1]
+                        loadChapter(
+                            chapterId = nextChapter.id,
+                            totalPages = nextChapter.pages,
+                            seriesId = state.seriesId,
+                            volumeId = nextChapter.volumeId,
+                            readingListId = 0
+                        )
+                        return@launch
+                    }
+                }
+            }
         }
     }
 
