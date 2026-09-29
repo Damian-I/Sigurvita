@@ -1,5 +1,6 @@
 package com.zemmy.sigurvita.ui.screens.settings
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,6 +9,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FolderOpen
@@ -34,6 +39,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.zemmy.sigurvita.core.model.AutoDeleteOption
+import com.zemmy.sigurvita.core.model.DownloadLocation
 import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReadingMode
 import com.zemmy.sigurvita.ui.components.FolderPickerDialog
@@ -75,6 +82,7 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
             Text(
@@ -181,6 +189,20 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            Text("Default Storage Folder", style = MaterialTheme.typography.bodyLarge)
+            Row(modifier = Modifier.padding(vertical = 8.dp)) {
+                DownloadLocation.entries.forEach { loc ->
+                    FilterChip(
+                        selected = (settings.downloadLocation == loc),
+                        onClick = { viewModel.updateDownloadLocation(loc) },
+                        label = { Text(loc.displayName) },
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -189,7 +211,7 @@ fun SettingsScreen(
                     value = settings.downloadPath,
                     onValueChange = { viewModel.updateDownloadPath(it) },
                     label = { Text("Custom Download Folder Path") },
-                    placeholder = { Text("Default: App Internal Storage") },
+                    placeholder = { Text("Default: Documents/Sigurvita") },
                     singleLine = true,
                     modifier = Modifier.weight(1f)
                 )
@@ -199,6 +221,27 @@ fun SettingsScreen(
                         Icons.Default.FolderOpen,
                         contentDescription = "Browse Folder",
                         tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text("Auto-Delete Local Downloads", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = "Automatically clean up local files after reading (never affects Kavita server files)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(AutoDeleteOption.entries) { option ->
+                    FilterChip(
+                        selected = (settings.autoDeleteOption == option),
+                        onClick = { viewModel.updateAutoDeleteOption(option) },
+                        label = { Text(option.displayName) }
                     )
                 }
             }

@@ -5,8 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.data.api.NetworkClient
 import com.zemmy.sigurvita.core.data.repository.DownloadRepository
+import com.zemmy.sigurvita.core.data.repository.LibraryRepository
 import com.zemmy.sigurvita.core.data.repository.SeriesRepository
 import com.zemmy.sigurvita.core.model.Chapter
+import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.core.model.Series
 import com.zemmy.sigurvita.core.model.Volume
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +19,8 @@ import kotlinx.coroutines.launch
 data class SeriesDetailUiState(
     val series: Series? = null,
     val volumes: List<Volume> = emptyList(),
+    val downloadTasks: Map<Int, DownloadTask> = emptyMap(),
+    val libraryName: String = "Comics",
     val totalChapters: Int = 0,
     val chaptersRead: Int = 0,
     val totalPages: Int = 0,
@@ -29,14 +33,23 @@ class SeriesDetailViewModel : ViewModel() {
 
     private val app = SigurvitaApp.instance
     private val preferencesRepository = app.userPreferencesRepository
-    private val seriesRepository = SeriesRepository(
-        NetworkClient.createKavitaApi(preferencesRepository),
-        preferencesRepository
-    )
+    private val api = NetworkClient.createKavitaApi(preferencesRepository)
+    private val seriesRepository = SeriesRepository(api, preferencesRepository)
+    private val libraryRepository = LibraryRepository(api, app.database, preferencesRepository)
     private val downloadRepository = DownloadRepository(app.database, app)
 
     private val _uiState = MutableStateFlow(SeriesDetailUiState())
     val uiState: StateFlow<SeriesDetailUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            downloadRepository.downloadsFlow.collect { tasks ->
+                _uiState.value = _uiState.value.copy(
+                    downloadTasks = tasks.associateBy { it.chapterId }
+                )
+            }
+        }
+    }
 
     fun loadSeriesDetail(seriesId: Int) {
         _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
@@ -47,6 +60,15 @@ class SeriesDetailViewModel : ViewModel() {
             if (seriesRes.isSuccess) {
                 val fetchedSeries = seriesRes.getOrNull()
                 val volumes = volumesRes.getOrDefault(emptyList())
+
+                val libraryRes = libraryRepository.getLibraries()
+                val library = libraryRes.getOrNull()?.find { it.id == fetchedSeries?.libraryId }
+                val resolvedLibraryName = when {
+                    library?.type == 0 || library?.name?.contains("manga", ignoreCase = true) == true -> "Manga"
+                    library?.type == 1 || library?.name?.contains("comic", ignoreCase = true) == true -> "Comics"
+                    library?.name?.isNotBlank() == true -> library.name
+                    else -> "Comics"
+                }
 
                 val computedTotalChapters = volumes.sumOf { it.chapters.size }
                 val computedChaptersRead = volumes.sumOf { v -> v.chapters.count { it.isRead } }
@@ -68,9 +90,10 @@ class SeriesDetailViewModel : ViewModel() {
                     pagesRead = calculatedPagesRead
                 )
 
-                _uiState.value = SeriesDetailUiState(
+                _uiState.value = _uiState.value.copy(
                     series = updatedSeries,
                     volumes = volumes,
+                    libraryName = resolvedLibraryName,
                     totalChapters = computedTotalChapters,
                     chaptersRead = computedChaptersRead,
                     totalPages = calculatedTotalPages,
@@ -93,9 +116,12 @@ class SeriesDetailViewModel : ViewModel() {
                 chapterId = chapter.id,
                 seriesId = series.id,
                 volumeId = chapter.volumeId,
-                title = "${series.name} - ${chapter.title}",
+                title = chapter.title.ifBlank { "Issue ${chapter.chapterNumber}" },
                 coverUrl = chapter.coverUrl ?: series.coverUrl,
-                totalPages = chapter.pages
+                totalPages = chapter.pages,
+                libraryName = _uiState.value.libraryName,
+                seriesName = series.name,
+                chapterNumber = chapter.chapterNumber
             )
         }
     }
@@ -117,11 +143,27 @@ class SeriesDetailViewModel : ViewModel() {
                     chapterId = chapter.id,
                     seriesId = series.id,
                     volumeId = chapter.volumeId,
-                    title = "${series.name} - ${chapter.title}",
+                    title = chapter.title.ifBlank { "Issue ${chapter.chapterNumber}" },
                     coverUrl = chapter.coverUrl ?: series.coverUrl,
-                    totalPages = chapter.pages
+                    totalPages = chapter.pages,
+                    libraryName = _uiState.value.libraryName,
+                    seriesName = series.name,
+                    chapterNumber = chapter.chapterNumber
                 )
             }
+        }
+    }
+
+    fun cancelDownload(chapterId: Int) {
+        viewModelScope.launch {
+            downloadRepository.cancelDownload(chapterId)
+        }
+    }
+
+    fun deleteLocalChapter(chapterId: Int) {
+        viewModelScope.launch {
+            downloadRepository.deleteLocalChapter(chapterId)
+            _uiState.value.series?.id?.let { loadSeriesDetail(it) }
         }
     }
 

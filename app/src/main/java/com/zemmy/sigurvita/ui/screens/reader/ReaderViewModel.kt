@@ -4,9 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.data.api.NetworkClient
+import com.zemmy.sigurvita.core.data.repository.DownloadRepository
 import com.zemmy.sigurvita.core.data.repository.LibraryRepository
 import com.zemmy.sigurvita.core.data.repository.ReaderRepository
 import com.zemmy.sigurvita.core.data.repository.SeriesRepository
+import com.zemmy.sigurvita.core.model.AutoDeleteOption
 import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
@@ -32,9 +34,10 @@ class ReaderViewModel : ViewModel() {
     private val app = SigurvitaApp.instance
     private val preferencesRepository = app.userPreferencesRepository
     private val api = NetworkClient.createKavitaApi(preferencesRepository)
-    private val readerRepository = ReaderRepository(api, app, preferencesRepository)
+    private val readerRepository = ReaderRepository(api, app, preferencesRepository, app.database)
     private val seriesRepository = SeriesRepository(api, preferencesRepository)
     private val libraryRepository = LibraryRepository(api, app.database, preferencesRepository)
+    private val downloadRepository = DownloadRepository(app.database, app)
 
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
@@ -93,6 +96,13 @@ class ReaderViewModel : ViewModel() {
                     chapterId = _uiState.value.chapterId,
                     pageNum = index + 1
                 )
+
+                if (index >= _uiState.value.pages.size - 1) {
+                    val settings = _uiState.value.settings
+                    if (settings.autoDeleteOption == AutoDeleteOption.IMMEDIATELY) {
+                        downloadRepository.deleteLocalChapter(_uiState.value.chapterId)
+                    }
+                }
             }
         }
     }

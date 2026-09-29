@@ -12,6 +12,19 @@ enum class FitMode {
     FIT_SCREEN
 }
 
+enum class DownloadLocation(val displayName: String, val folderName: String) {
+    DOCUMENTS("Documents", "Documents/Sigurvita"),
+    DOWNLOADS("Downloads", "Download/Sigurvita")
+}
+
+enum class AutoDeleteOption(val displayName: String) {
+    NEVER("Never (Keep Indefinitely)"),
+    IMMEDIATELY("Immediately After Issue Read"),
+    AFTER_1_ISSUE("After 1 More Issue Read"),
+    AFTER_2_ISSUES("After 2 More Issues Read"),
+    AFTER_5_ISSUES("After 5 More Issues Read")
+}
+
 data class ServerConfig(
     val serverUrl: String = "",
     val apiKey: String = "",
@@ -27,7 +40,9 @@ data class ReaderSettings(
     val volumeKeyInvert: Boolean = false,
     val keepScreenOn: Boolean = true,
     val backgroundColorHex: String = "#000000",
-    val downloadPath: String = ""
+    val downloadLocation: DownloadLocation = DownloadLocation.DOCUMENTS,
+    val downloadPath: String = "",
+    val autoDeleteOption: AutoDeleteOption = AutoDeleteOption.NEVER
 )
 
 data class Library(
@@ -112,18 +127,22 @@ data class DownloadTask(
     val chapterId: Int,
     val seriesId: Int,
     val volumeId: Int,
+    val libraryName: String = "Downloads",
+    val seriesName: String = "",
+    val chapterNumber: String = "",
     val title: String,
     val coverUrl: String?,
     val totalPages: Int,
     val downloadedPages: Int,
     val status: DownloadStatus,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val localPath: String? = null
 )
 
 enum class DownloadStatus {
     QUEUED,
     DOWNLOADING,
+    PAUSED,
     COMPLETED,
-    FAILED,
-    PAUSED
+    FAILED
 }

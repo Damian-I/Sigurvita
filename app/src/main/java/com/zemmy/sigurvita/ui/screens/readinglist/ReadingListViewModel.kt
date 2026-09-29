@@ -6,6 +6,7 @@ import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.data.api.NetworkClient
 import com.zemmy.sigurvita.core.data.repository.DownloadRepository
 import com.zemmy.sigurvita.core.data.repository.ReadingListRepository
+import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.model.ReadingListItem
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -112,6 +113,7 @@ enum class ReadingListSortOption(val displayName: String) {
 data class ReadingListUiState(
     val readingLists: List<ReadingList> = emptyList(),
     val selectedListItems: List<ReadingListItem> = emptyList(),
+    val downloadTasks: Map<Int, DownloadTask> = emptyMap(),
     val selectedListTitle: String? = null,
     val selectedEraName: String = "All",
     val searchQuery: String = "",
@@ -182,6 +184,13 @@ class ReadingListViewModel : ViewModel() {
     val uiState: StateFlow<ReadingListUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            downloadRepository.downloadsFlow.collect { tasks ->
+                _uiState.value = _uiState.value.copy(
+                    downloadTasks = tasks.associateBy { it.chapterId }
+                )
+            }
+        }
         loadReadingLists()
     }
 
@@ -254,6 +263,34 @@ class ReadingListViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(sortOption = option)
     }
 
+    fun downloadChapter(item: ReadingListItem) {
+        val chapterId = item.chapterId ?: return
+        viewModelScope.launch {
+            downloadRepository.enqueueDownload(
+                chapterId = chapterId,
+                seriesId = item.seriesId,
+                volumeId = item.volumeId ?: 0,
+                title = "${item.seriesName} - ${item.title}",
+                coverUrl = item.coverUrl,
+                totalPages = item.pages,
+                libraryName = "Reading Lists",
+                seriesName = item.seriesName
+            )
+        }
+    }
+
+    fun cancelDownload(chapterId: Int) {
+        viewModelScope.launch {
+            downloadRepository.cancelDownload(chapterId)
+        }
+    }
+
+    fun deleteLocalChapter(chapterId: Int) {
+        viewModelScope.launch {
+            downloadRepository.deleteLocalChapter(chapterId)
+        }
+    }
+
     fun downloadBulk(count: Int, unreadOnly: Boolean) {
         val allItems = _uiState.value.selectedListItems
         val eligibleItems = if (unreadOnly) {
@@ -272,7 +309,9 @@ class ReadingListViewModel : ViewModel() {
                     volumeId = item.volumeId ?: 0,
                     title = "${item.seriesName} - ${item.title}",
                     coverUrl = item.coverUrl,
-                    totalPages = item.pages
+                    totalPages = item.pages,
+                    libraryName = "Reading Lists",
+                    seriesName = item.seriesName
                 )
             }
         }

@@ -3,6 +3,8 @@ package com.zemmy.sigurvita.ui.screens.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
+import com.zemmy.sigurvita.core.model.AutoDeleteOption
+import com.zemmy.sigurvita.core.model.DownloadLocation
 import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
@@ -52,9 +54,21 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
+    fun updateDownloadLocation(location: DownloadLocation) {
+        viewModelScope.launch {
+            preferencesRepository.updateDownloadLocation(location)
+        }
+    }
+
     fun updateDownloadPath(path: String) {
         viewModelScope.launch {
             preferencesRepository.updateDownloadPath(path)
+        }
+    }
+
+    fun updateAutoDeleteOption(option: AutoDeleteOption) {
+        viewModelScope.launch {
+            preferencesRepository.updateAutoDeleteOption(option)
         }
     }
 

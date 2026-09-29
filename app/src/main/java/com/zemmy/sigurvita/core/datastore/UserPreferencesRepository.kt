@@ -1,6 +1,7 @@
 package com.zemmy.sigurvita.core.datastore
 
 import android.content.Context
+import android.os.Environment
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -9,6 +10,8 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.zemmy.sigurvita.core.model.AutoDeleteOption
+import com.zemmy.sigurvita.core.model.DownloadLocation
 import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
@@ -20,6 +23,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import java.io.File
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "sigurvita_settings")
 
@@ -38,7 +42,9 @@ class UserPreferencesRepository(private val context: Context) {
         val VOLUME_KEY_NAV = booleanPreferencesKey("volume_key_nav")
         val VOLUME_KEY_INVERT = booleanPreferencesKey("volume_key_invert")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+        val DOWNLOAD_LOCATION = stringPreferencesKey("download_location")
         val DOWNLOAD_PATH = stringPreferencesKey("download_path")
+        val AUTO_DELETE_OPTION = stringPreferencesKey("auto_delete_option")
     }
 
     @Volatile
@@ -79,13 +85,33 @@ class UserPreferencesRepository(private val context: Context) {
                 FitMode.FIT_WIDTH
             }
 
+            val autoDeleteStr = preferences[Keys.AUTO_DELETE_OPTION]
+            val autoDeleteOption = try {
+                if (autoDeleteStr != null) AutoDeleteOption.valueOf(autoDeleteStr) else AutoDeleteOption.NEVER
+            } catch (_: Exception) {
+                AutoDeleteOption.NEVER
+            }
+
+            val locationStr = preferences[Keys.DOWNLOAD_LOCATION]
+            val location = try {
+                if (locationStr != null) DownloadLocation.valueOf(locationStr) else DownloadLocation.DOCUMENTS
+            } catch (_: Exception) {
+                DownloadLocation.DOCUMENTS
+            }
+
+            val defaultPath = File(Environment.getExternalStorageDirectory(), location.folderName).absolutePath
+            val rawPath = preferences[Keys.DOWNLOAD_PATH] ?: ""
+            val downloadPath = rawPath.ifBlank { defaultPath }
+
             ReaderSettings(
                 readingMode = readingMode,
                 fitMode = fitMode,
                 volumeKeyNavigationEnabled = preferences[Keys.VOLUME_KEY_NAV] ?: true,
                 volumeKeyInvert = preferences[Keys.VOLUME_KEY_INVERT] ?: false,
                 keepScreenOn = preferences[Keys.KEEP_SCREEN_ON] ?: true,
-                downloadPath = preferences[Keys.DOWNLOAD_PATH] ?: ""
+                downloadLocation = location,
+                downloadPath = downloadPath,
+                autoDeleteOption = autoDeleteOption
             )
         }
 
@@ -161,9 +187,23 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun updateDownloadLocation(location: DownloadLocation) {
+        val targetPath = File(Environment.getExternalStorageDirectory(), location.folderName).absolutePath
+        context.dataStore.edit { preferences ->
+            preferences[Keys.DOWNLOAD_LOCATION] = location.name
+            preferences[Keys.DOWNLOAD_PATH] = targetPath
+        }
+    }
+
     suspend fun updateDownloadPath(path: String) {
         context.dataStore.edit { preferences ->
             preferences[Keys.DOWNLOAD_PATH] = path.trim()
+        }
+    }
+
+    suspend fun updateAutoDeleteOption(option: AutoDeleteOption) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.AUTO_DELETE_OPTION] = option.name
         }
     }
 }

@@ -17,22 +17,23 @@ object NetworkClient {
         isLenient = true
     }
 
-    fun createKavitaApi(userPreferencesRepository: UserPreferencesRepository): KavitaApi {
+    fun createOkHttpClient(userPreferencesRepository: UserPreferencesRepository): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
         }
 
-        val okHttpClient = OkHttpClient.Builder()
+        return OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(userPreferencesRepository))
             .addInterceptor(logging)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .build()
+    }
 
-        // Default placeholder URL (AuthInterceptor dynamically replaces scheme/host/port per request)
+    fun createKavitaApi(userPreferencesRepository: UserPreferencesRepository): KavitaApi {
         return Retrofit.Builder()
             .baseUrl("http://localhost/")
-            .client(okHttpClient)
+            .client(createOkHttpClient(userPreferencesRepository))
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
             .create(KavitaApi::class.java)

@@ -20,7 +20,7 @@ import com.zemmy.sigurvita.core.data.db.entity.DownloadTaskEntity
         CachedReadingListEntity::class,
         DownloadTaskEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class SigurvitaDatabase : RoomDatabase() {

@@ -3,6 +3,7 @@ package com.zemmy.sigurvita.core.data.repository
 import android.content.Context
 import androidx.work.Constraints
 import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -29,12 +30,15 @@ import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.model.ReadingListItem
 import com.zemmy.sigurvita.core.model.Series
 import com.zemmy.sigurvita.core.model.Volume
+import com.zemmy.sigurvita.ui.screens.readinglist.naturalCompare
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
+import java.util.zip.ZipFile
 
 class AuthRepository(
     private val api: KavitaApi,
@@ -483,17 +487,80 @@ class SeriesRepository(
 class ReaderRepository(
     private val api: KavitaApi,
     private val context: Context,
-    private val preferencesRepository: UserPreferencesRepository
+    private val preferencesRepository: UserPreferencesRepository,
+    private val database: SigurvitaDatabase
 ) {
     suspend fun getPages(chapterId: Int, totalPages: Int): List<ReaderPage> = withContext(Dispatchers.IO) {
         val config = preferencesRepository.serverConfigFlow.first()
-        val settings = preferencesRepository.readerSettingsFlow.first()
-        val chapterDir = if (settings.downloadPath.isNotBlank()) {
-            File(settings.downloadPath, "chapters/$chapterId")
-        } else {
-            File(context.filesDir, "downloads/chapters/$chapterId")
+        val downloadTask = database.downloadDao().getDownloadByChapterId(chapterId)
+        val localPath = downloadTask?.localPath ?: database.chapterDao().getChapterById(chapterId)?.localPath
+
+        // Case 1: Downloaded CBZ File
+        if (localPath != null && localPath.endsWith(".cbz", ignoreCase = true)) {
+            val cbzFile = File(localPath)
+            if (cbzFile.exists() && cbzFile.length() > 0L) {
+                try {
+                    val cacheDir = File(context.cacheDir, "cbz_extracted/$chapterId").apply { mkdirs() }
+                    val extractedFiles = mutableListOf<ReaderPage>()
+
+                    ZipFile(cbzFile).use { zip ->
+                        val entries = zip.entries().asSequence()
+                            .filter { !it.isDirectory && (it.name.endsWith(".jpg", true) || it.name.endsWith(".jpeg", true) || it.name.endsWith(".png", true) || it.name.endsWith(".webp", true)) }
+                            .sortedWith { e1, e2 -> naturalCompare(e1.name, e2.name) }
+                            .toList()
+
+                        entries.forEachIndexed { idx, entry ->
+                            val pageFile = File(cacheDir, "page_$idx.jpg")
+                            if (!pageFile.exists() || pageFile.length() <= 0L) {
+                                zip.getInputStream(entry).use { input ->
+                                    FileOutputStream(pageFile).use { output ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                            }
+                            if (pageFile.exists()) {
+                                extractedFiles.add(
+                                    ReaderPage(
+                                        index = idx,
+                                        pageNumber = idx + 1,
+                                        imageUrl = pageFile.absolutePath,
+                                        isLocal = true
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    if (extractedFiles.isNotEmpty()) {
+                        return@withContext extractedFiles
+                    }
+                } catch (_: Exception) {}
+            }
         }
 
+        // Case 2: Downloaded Image Pages Folder
+        if (localPath != null) {
+            val localFolder = File(localPath)
+            if (localFolder.exists() && localFolder.isDirectory) {
+                val imageFiles = localFolder.listFiles()
+                    ?.filter { it.isFile && (it.name.endsWith(".jpg", true) || it.name.endsWith(".jpeg", true) || it.name.endsWith(".png", true) || it.name.endsWith(".webp", true)) }
+                    ?.sortedWith { f1, f2 -> naturalCompare(f1.name, f2.name) }
+                    ?: emptyList()
+
+                if (imageFiles.isNotEmpty()) {
+                    return@withContext imageFiles.mapIndexed { idx, file ->
+                        ReaderPage(
+                            index = idx,
+                            pageNumber = idx + 1,
+                            imageUrl = file.absolutePath,
+                            isLocal = true
+                        )
+                    }
+                }
+            }
+        }
+
+        // Case 3: Online Streaming Fallback
         var pageCount = totalPages
         if (pageCount <= 0) {
             try {
@@ -506,22 +573,12 @@ class ReaderRepository(
         if (pageCount <= 0) pageCount = 50
 
         (0 until pageCount).map { pageIdx ->
-            val localFile = File(chapterDir, "page_$pageIdx.jpg")
-            if (localFile.exists()) {
-                ReaderPage(
-                    index = pageIdx,
-                    pageNumber = pageIdx + 1,
-                    imageUrl = localFile.absolutePath,
-                    isLocal = true
-                )
-            } else {
-                ReaderPage(
-                    index = pageIdx,
-                    pageNumber = pageIdx + 1,
-                    imageUrl = "${config.serverUrl}/api/Reader/image?chapterId=$chapterId&page=$pageIdx&apiKey=${config.apiKey}",
-                    isLocal = false
-                )
-            }
+            ReaderPage(
+                index = pageIdx,
+                pageNumber = pageIdx + 1,
+                imageUrl = "${config.serverUrl}/api/Reader/image?chapterId=$chapterId&page=$pageIdx&apiKey=${config.apiKey}",
+                isLocal = false
+            )
         }
     }
 
@@ -562,12 +619,16 @@ class DownloadRepository(
                 chapterId = entity.chapterId,
                 seriesId = entity.seriesId,
                 volumeId = entity.volumeId,
+                libraryName = entity.libraryName,
+                seriesName = entity.seriesName,
+                chapterNumber = entity.chapterNumber,
                 title = entity.title,
                 coverUrl = entity.coverUrl,
                 totalPages = entity.totalPages,
                 downloadedPages = entity.downloadedPages,
                 status = entity.status,
-                errorMessage = entity.errorMessage
+                errorMessage = entity.errorMessage,
+                localPath = entity.localPath
             )
         }
     }
@@ -578,12 +639,18 @@ class DownloadRepository(
         volumeId: Int,
         title: String,
         coverUrl: String?,
-        totalPages: Int
+        totalPages: Int,
+        libraryName: String = "Downloads",
+        seriesName: String = "",
+        chapterNumber: String = ""
     ) = withContext(Dispatchers.IO) {
         val task = DownloadTaskEntity(
             chapterId = chapterId,
             seriesId = seriesId,
             volumeId = volumeId,
+            libraryName = libraryName,
+            seriesName = seriesName,
+            chapterNumber = chapterNumber,
             title = title,
             coverUrl = coverUrl,
             totalPages = totalPages,
@@ -595,6 +662,10 @@ class DownloadRepository(
         val workData = Data.Builder()
             .putInt("chapterId", chapterId)
             .putInt("totalPages", totalPages)
+            .putString("libraryName", libraryName)
+            .putString("seriesName", seriesName)
+            .putString("chapterNumber", chapterNumber)
+            .putString("title", title)
             .build()
 
         val constraints = Constraints.Builder()
@@ -607,11 +678,75 @@ class DownloadRepository(
             .addTag("download_$chapterId")
             .build()
 
-        WorkManager.getInstance(context).enqueue(downloadWork)
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            "download_$chapterId",
+            ExistingWorkPolicy.REPLACE,
+            downloadWork
+        )
+    }
+
+    suspend fun pauseDownload(chapterId: Int) = withContext(Dispatchers.IO) {
+        WorkManager.getInstance(context).cancelAllWorkByTag("download_$chapterId")
+        database.downloadDao().updateStatus(chapterId, DownloadStatus.PAUSED)
+    }
+
+    suspend fun resumeDownload(chapterId: Int) = withContext(Dispatchers.IO) {
+        val task = database.downloadDao().getDownloadByChapterId(chapterId) ?: return@withContext
+        enqueueDownload(
+            chapterId = task.chapterId,
+            seriesId = task.seriesId,
+            volumeId = task.volumeId,
+            title = task.title,
+            coverUrl = task.coverUrl,
+            totalPages = task.totalPages,
+            libraryName = task.libraryName,
+            seriesName = task.seriesName,
+            chapterNumber = task.chapterNumber
+        )
+    }
+
+    private fun cleanupEmptyDirectories(file: File?) {
+        if (file == null) return
+        try {
+            val seriesDir = if (file.isDirectory) file else file.parentFile
+            if (seriesDir != null && seriesDir.exists() && seriesDir.listFiles()?.isEmpty() == true) {
+                seriesDir.delete()
+                val libraryDir = seriesDir.parentFile
+                if (libraryDir != null && libraryDir.exists() && libraryDir.listFiles()?.isEmpty() == true) {
+                    libraryDir.delete()
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     suspend fun cancelDownload(chapterId: Int) = withContext(Dispatchers.IO) {
         WorkManager.getInstance(context).cancelAllWorkByTag("download_$chapterId")
+        val task = database.downloadDao().getDownloadByChapterId(chapterId)
+        if (task?.localPath != null) {
+            val file = File(task.localPath)
+            if (file.exists()) {
+                file.deleteRecursively()
+            }
+            cleanupEmptyDirectories(file)
+        }
         database.downloadDao().deleteDownloadTask(chapterId)
+    }
+
+    suspend fun clearCompleted() = withContext(Dispatchers.IO) {
+        database.downloadDao().clearCompleted()
+    }
+
+    suspend fun deleteLocalChapter(chapterId: Int) = withContext(Dispatchers.IO) {
+        val task = database.downloadDao().getDownloadByChapterId(chapterId)
+        val localPath = task?.localPath ?: database.chapterDao().getChapterById(chapterId)?.localPath
+        if (localPath != null) {
+            val file = File(localPath)
+            if (file.exists()) {
+                file.deleteRecursively()
+            }
+            cleanupEmptyDirectories(file)
+        }
+        database.downloadDao().deleteDownloadTask(chapterId)
+        database.chapterDao().updateDownloadStatus(chapterId, false, null)
     }
 }

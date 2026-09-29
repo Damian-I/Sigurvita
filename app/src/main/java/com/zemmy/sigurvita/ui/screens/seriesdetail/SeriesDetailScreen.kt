@@ -2,6 +2,7 @@ package com.zemmy.sigurvita.ui.screens.seriesdetail
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,14 +10,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.zemmy.sigurvita.core.model.DownloadStatus
 import com.zemmy.sigurvita.ui.components.CoverImage
 import com.zemmy.sigurvita.ui.components.ErrorState
 import com.zemmy.sigurvita.ui.components.LoadingState
@@ -187,6 +194,9 @@ fun SeriesDetailScreen(
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
                     volume.chapters.forEach { chapter ->
+                        val downloadTask = state.downloadTasks[chapter.id]
+                        val isDownloaded = chapter.isDownloaded || (downloadTask?.status == DownloadStatus.COMPLETED)
+
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -233,12 +243,56 @@ fun SeriesDetailScreen(
                                         }
                                     }
                                 }
-                                IconButton(onClick = { viewModel.downloadChapter(chapter) }) {
-                                    Icon(
-                                        Icons.Default.Download,
-                                        contentDescription = "Download Chapter",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
+
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                ) {
+                                    when {
+                                        downloadTask != null && (downloadTask.status == DownloadStatus.DOWNLOADING || downloadTask.status == DownloadStatus.QUEUED) -> {
+                                            val progress = if (downloadTask.totalPages > 0) downloadTask.downloadedPages.toFloat() / downloadTask.totalPages else 0f
+                                            CircularProgressIndicator(
+                                                progress = { progress },
+                                                modifier = Modifier.size(38.dp),
+                                                strokeWidth = 3.dp
+                                            )
+                                            IconButton(onClick = { viewModel.cancelDownload(chapter.id) }) {
+                                                Icon(
+                                                    Icons.Default.Close,
+                                                    contentDescription = "Cancel Download",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                        downloadTask != null && downloadTask.status == DownloadStatus.FAILED -> {
+                                            IconButton(onClick = { viewModel.downloadChapter(chapter) }) {
+                                                Icon(
+                                                    Icons.Default.ErrorOutline,
+                                                    contentDescription = "Download Failed - Tap to Retry",
+                                                    tint = MaterialTheme.colorScheme.error
+                                                )
+                                            }
+                                        }
+                                        isDownloaded -> {
+                                            IconButton(onClick = { viewModel.deleteLocalChapter(chapter.id) }) {
+                                                Icon(
+                                                    Icons.Default.CheckCircle,
+                                                    contentDescription = "Downloaded",
+                                                    tint = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                        else -> {
+                                            IconButton(onClick = { viewModel.downloadChapter(chapter) }) {
+                                                Icon(
+                                                    Icons.Default.Download,
+                                                    contentDescription = "Download Chapter",
+                                                    tint = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

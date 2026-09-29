@@ -47,8 +47,12 @@ fun FolderPickerDialog(
 ) {
     val context = LocalContext.current
     val defaultRoot = remember {
-        val storage = Environment.getExternalStorageDirectory()
-        if (storage != null && storage.exists()) storage else context.filesDir
+        val downloadFolder = File(Environment.getExternalStorageDirectory(), Environment.DIRECTORY_DOWNLOADS)
+        if (downloadFolder.exists() && downloadFolder.canWrite()) {
+            downloadFolder
+        } else {
+            context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+        }
     }
 
     var currentDir by remember {
