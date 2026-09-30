@@ -24,6 +24,7 @@ import com.zemmy.sigurvita.core.data.db.entity.DownloadTaskEntity
 import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import com.zemmy.sigurvita.core.download.DownloadWorker
 import com.zemmy.sigurvita.core.model.Chapter
+import com.zemmy.sigurvita.core.model.DownloadFormat
 import com.zemmy.sigurvita.core.model.DownloadStatus
 import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.core.model.Library
@@ -343,6 +344,12 @@ class ReadingListRepository(
                     isRead = dto.isRead || (pages > 0 && pagesRead >= pages)
                 }
 
+                val coverUrl = if (dto.chapterId != null && dto.chapterId > 0) {
+                    "${config.serverUrl}/api/image/chapter-cover?chapterId=${dto.chapterId}&apiKey=${config.apiKey}"
+                } else {
+                    "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}"
+                }
+
                 ReadingListItem(
                     id = dto.id,
                     readingListId = dto.readingListId,
@@ -351,7 +358,7 @@ class ReadingListRepository(
                     volumeId = dto.volumeId,
                     chapterId = dto.chapterId,
                     title = dto.title,
-                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}",
+                    coverUrl = coverUrl,
                     pages = pages,
                     pagesRead = pagesRead,
                     isRead = isRead
@@ -415,7 +422,7 @@ class SeriesRepository(
             }
 
             Result.success(series)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             val config = preferencesRepository.serverConfigFlow.first()
             Result.success(
                 Series(
@@ -653,7 +660,14 @@ class ReaderRepository(
         }
     }
 
-
+    suspend fun markChapterRead(chapterId: Int, seriesId: Int = 0) = withContext(Dispatchers.IO) {
+        if (preferencesRepository.readerSettingsFlow.first().isIncognitoMode) {
+            return@withContext
+        }
+        try {
+            api.markMultipleRead(MarkMultipleDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
+        } catch (_: Exception) {}
+    }
 }
 
 class DownloadRepository(
@@ -689,7 +703,8 @@ class DownloadRepository(
         totalPages: Int,
         libraryName: String = "Downloads",
         seriesName: String = "",
-        chapterNumber: String = ""
+        chapterNumber: String = "",
+        downloadFormat: DownloadFormat = DownloadFormat.CBZ
     ) = withContext(Dispatchers.IO) {
         val task = DownloadTaskEntity(
             chapterId = chapterId,
@@ -713,6 +728,7 @@ class DownloadRepository(
             .putString("seriesName", seriesName)
             .putString("chapterNumber", chapterNumber)
             .putString("title", title)
+            .putString("downloadFormat", downloadFormat.name)
             .build()
 
         val constraints = Constraints.Builder()
@@ -755,12 +771,15 @@ class DownloadRepository(
     private fun cleanupEmptyDirectories(file: File?) {
         if (file == null) return
         try {
-            val seriesDir = if (file.isDirectory) file else file.parentFile
-            if (seriesDir != null && seriesDir.exists() && seriesDir.listFiles()?.isEmpty() == true) {
-                seriesDir.delete()
-                val libraryDir = seriesDir.parentFile
-                if (libraryDir != null && libraryDir.exists() && libraryDir.listFiles()?.isEmpty() == true) {
-                    libraryDir.delete()
+            var currentDir: File? = if (file.isDirectory) file.parentFile else file.parentFile
+            while (currentDir != null && currentDir.exists()) {
+                val remainingFiles = currentDir.listFiles()?.filter { !it.name.startsWith(".") }
+                if (remainingFiles.isNullOrEmpty()) {
+                    val parent = currentDir.parentFile
+                    currentDir.deleteRecursively()
+                    currentDir = parent
+                } else {
+                    break
                 }
             }
         } catch (_: Exception) {}

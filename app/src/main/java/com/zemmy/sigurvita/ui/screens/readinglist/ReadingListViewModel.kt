@@ -6,6 +6,7 @@ import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.data.api.NetworkClient
 import com.zemmy.sigurvita.core.data.repository.DownloadRepository
 import com.zemmy.sigurvita.core.data.repository.ReadingListRepository
+import com.zemmy.sigurvita.core.model.DownloadFormat
 import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.model.ReadingListItem
@@ -291,7 +292,7 @@ class ReadingListViewModel : ViewModel() {
         }
     }
 
-    fun downloadBulk(count: Int, unreadOnly: Boolean) {
+    fun downloadBulk(count: Int, unreadOnly: Boolean, format: DownloadFormat = DownloadFormat.CBZ) {
         val allItems = _uiState.value.selectedListItems
         val eligibleItems = if (unreadOnly) {
             allItems.filter { !it.isRead && it.chapterId != null && it.chapterId > 0 }
@@ -311,7 +312,8 @@ class ReadingListViewModel : ViewModel() {
                     coverUrl = item.coverUrl,
                     totalPages = item.pages,
                     libraryName = "Reading Lists",
-                    seriesName = item.seriesName
+                    seriesName = item.seriesName,
+                    downloadFormat = format
                 )
             }
         }

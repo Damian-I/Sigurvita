@@ -8,6 +8,7 @@ import com.zemmy.sigurvita.core.data.repository.DownloadRepository
 import com.zemmy.sigurvita.core.data.repository.LibraryRepository
 import com.zemmy.sigurvita.core.data.repository.SeriesRepository
 import com.zemmy.sigurvita.core.model.Chapter
+import com.zemmy.sigurvita.core.model.DownloadFormat
 import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.core.model.Series
 import com.zemmy.sigurvita.core.model.Volume
@@ -143,7 +144,7 @@ class SeriesDetailViewModel : ViewModel() {
         }
     }
 
-    fun downloadBulk(count: Int, unreadOnly: Boolean) {
+    fun downloadBulk(count: Int, unreadOnly: Boolean, format: DownloadFormat = DownloadFormat.CBZ) {
         val series = _uiState.value.series ?: return
         val allChapters = _uiState.value.volumes.flatMap { it.chapters }
         val eligibleChapters = if (unreadOnly) {
@@ -165,7 +166,8 @@ class SeriesDetailViewModel : ViewModel() {
                     totalPages = chapter.pages,
                     libraryName = _uiState.value.libraryName,
                     seriesName = series.name,
-                    chapterNumber = chapter.chapterNumber
+                    chapterNumber = chapter.chapterNumber,
+                    downloadFormat = format
                 )
             }
         }
