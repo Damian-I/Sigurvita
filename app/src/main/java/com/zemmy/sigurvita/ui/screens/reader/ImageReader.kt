@@ -1,6 +1,6 @@
 package com.zemmy.sigurvita.ui.screens.reader
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,7 +36,10 @@ fun ImageReader(
     currentPageIndex: Int,
     readingMode: ReadingMode,
     fitMode: FitMode = FitMode.FIT_WIDTH,
+    touchEdgeNavigationEnabled: Boolean = true,
     onPageChanged: (Int) -> Unit,
+    onNextPage: () -> Unit,
+    onPreviousPage: () -> Unit,
     onTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -54,14 +57,16 @@ fun ImageReader(
 
             LazyColumn(
                 state = listState,
-                modifier = modifier
-                    .fillMaxSize()
-                    .clickable { onTap() }
+                modifier = modifier.fillMaxSize()
             ) {
                 itemsIndexed(pages) { _, page ->
                     ZoomableImage(
                         page = page,
                         fitMode = fitMode,
+                        touchEdgeNavigationEnabled = touchEdgeNavigationEnabled,
+                        readingMode = readingMode,
+                        onNextPage = onNextPage,
+                        onPreviousPage = onPreviousPage,
                         onTap = onTap,
                         modifier = Modifier.fillMaxSize()
                     )
@@ -94,6 +99,10 @@ fun ImageReader(
                 ZoomableImage(
                     page = pages[pageIdx],
                     fitMode = fitMode,
+                    touchEdgeNavigationEnabled = touchEdgeNavigationEnabled,
+                    readingMode = readingMode,
+                    onNextPage = onNextPage,
+                    onPreviousPage = onPreviousPage,
                     onTap = onTap,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -106,6 +115,10 @@ fun ImageReader(
 private fun ZoomableImage(
     page: ReaderPage,
     fitMode: FitMode,
+    touchEdgeNavigationEnabled: Boolean,
+    readingMode: ReadingMode,
+    onNextPage: () -> Unit,
+    onPreviousPage: () -> Unit,
     onTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -135,7 +148,38 @@ private fun ZoomableImage(
                     }
                 }
             }
-            .clickable { onTap() },
+            .pointerInput(touchEdgeNavigationEnabled, readingMode, scale) {
+                detectTapGestures(
+                    onTap = { offset ->
+                        val width = size.width.toFloat()
+                        if (touchEdgeNavigationEnabled && scale <= 1.05f && width > 0f) {
+                            val leftThreshold = width * 0.3f
+                            val rightThreshold = width * 0.7f
+                            when {
+                                offset.x < leftThreshold -> {
+                                    if (readingMode == ReadingMode.RTL) {
+                                        onNextPage()
+                                    } else {
+                                        onPreviousPage()
+                                    }
+                                }
+                                offset.x > rightThreshold -> {
+                                    if (readingMode == ReadingMode.RTL) {
+                                        onPreviousPage()
+                                    } else {
+                                        onNextPage()
+                                    }
+                                }
+                                else -> {
+                                    onTap()
+                                }
+                            }
+                        } else {
+                            onTap()
+                        }
+                    }
+                )
+            },
         contentAlignment = Alignment.Center
     ) {
         AsyncImage(

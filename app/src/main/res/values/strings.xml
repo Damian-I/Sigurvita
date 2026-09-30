@@ -77,6 +77,8 @@
     <string name="volume_key_nav_subtitle">Use hardware volume keys to flip pages</string>
     <string name="invert_volume_keys">Invert Volume Keys</string>
     <string name="invert_volume_keys_subtitle">Invert volume up/down direction</string>
+    <string name="touch_edge_nav">Edge Touch Page Navigation</string>
+    <string name="touch_edge_nav_subtitle">Tap left or right edges of the screen to navigate pages</string>
     <string name="keep_screen_on">Keep Screen On</string>
     <string name="keep_screen_on_subtitle">Prevent display timeout while reading</string>
     <string name="default_storage_folder">Default Storage Folder</string>

@@ -114,7 +114,10 @@ fun ReaderScreen(
                 currentPageIndex = state.currentPageIndex,
                 readingMode = state.settings.readingMode,
                 fitMode = state.settings.fitMode,
+                touchEdgeNavigationEnabled = state.settings.touchEdgeNavigationEnabled,
                 onPageChanged = { viewModel.onPageChanged(it) },
+                onNextPage = { viewModel.nextPage() },
+                onPreviousPage = { viewModel.previousPage() },
                 onTap = { viewModel.toggleControls() }
             )
 

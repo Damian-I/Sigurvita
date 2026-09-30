@@ -42,6 +42,7 @@ class UserPreferencesRepository(private val context: Context) {
         val FIT_MODE = stringPreferencesKey("fit_mode")
         val VOLUME_KEY_NAV = booleanPreferencesKey("volume_key_nav")
         val VOLUME_KEY_INVERT = booleanPreferencesKey("volume_key_invert")
+        val TOUCH_EDGE_NAV = booleanPreferencesKey("touch_edge_nav")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val DOWNLOAD_LOCATION = stringPreferencesKey("download_location")
         val DOWNLOAD_FORMAT = stringPreferencesKey("download_format")
@@ -121,6 +122,7 @@ class UserPreferencesRepository(private val context: Context) {
                 fitMode = fitMode,
                 volumeKeyNavigationEnabled = preferences[Keys.VOLUME_KEY_NAV] ?: true,
                 volumeKeyInvert = preferences[Keys.VOLUME_KEY_INVERT] ?: false,
+                touchEdgeNavigationEnabled = preferences[Keys.TOUCH_EDGE_NAV] ?: true,
                 keepScreenOn = preferences[Keys.KEEP_SCREEN_ON] ?: true,
                 downloadLocation = location,
                 downloadFormat = downloadFormat,
@@ -193,6 +195,12 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun updateVolumeKeyInvert(invert: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[Keys.VOLUME_KEY_INVERT] = invert
+        }
+    }
+
+    suspend fun updateTouchEdgeNavigation(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.TOUCH_EDGE_NAV] = enabled
         }
     }
 

@@ -42,6 +42,7 @@ data class ReaderSettings(
     val fitMode: FitMode = FitMode.FIT_WIDTH,
     val volumeKeyNavigationEnabled: Boolean = true,
     val volumeKeyInvert: Boolean = false,
+    val touchEdgeNavigationEnabled: Boolean = true,
     val keepScreenOn: Boolean = true,
     val backgroundColorHex: String = "#000000",
     val downloadLocation: DownloadLocation = DownloadLocation.DOCUMENTS,

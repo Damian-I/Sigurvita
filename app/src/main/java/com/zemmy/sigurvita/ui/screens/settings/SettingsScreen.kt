@@ -169,6 +169,26 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.touch_edge_nav), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        stringResource(R.string.touch_edge_nav_subtitle),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = settings.touchEdgeNavigationEnabled,
+                    onCheckedChange = { viewModel.updateTouchEdgeNav(it) }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.keep_screen_on), style = MaterialTheme.typography.bodyLarge)
                     Text(
                         stringResource(R.string.keep_screen_on_subtitle),

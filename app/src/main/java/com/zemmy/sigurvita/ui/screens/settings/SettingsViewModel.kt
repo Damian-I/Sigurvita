@@ -49,6 +49,12 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
+    fun updateTouchEdgeNav(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updateTouchEdgeNavigation(enabled)
+        }
+    }
+
     fun updateKeepScreenOn(keep: Boolean) {
         viewModelScope.launch {
             preferencesRepository.updateKeepScreenOn(keep)
