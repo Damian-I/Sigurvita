@@ -15,6 +15,7 @@ import okhttp3.Request
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -185,7 +186,7 @@ class DownloadWorker(
                     return Result.retry()
                 }
 
-                val formattedName = "$title p${String.format("%03d", pageIdx)}.jpg"
+                val formattedName = "$title p${String.format(Locale.ROOT, "%03d", pageIdx)}.jpg"
                 var pageFile = File(pageTargetDir, formattedName)
 
                 val imageUrl = "$baseUrl/api/reader/image?chapterId=$chapterId&page=$pageIdx&apiKey=${config.apiKey}"

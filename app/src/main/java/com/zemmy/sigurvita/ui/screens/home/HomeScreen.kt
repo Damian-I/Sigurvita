@@ -15,8 +15,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -66,7 +66,7 @@ fun HomeScreen(
                         )
                     }
                     IconButton(onClick = onReadingListsClick) {
-                        Icon(Icons.Default.FormatListBulleted, contentDescription = "Reading Lists")
+                        Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = "Reading Lists")
                     }
                     IconButton(onClick = onDownloadsClick) {
                         Icon(Icons.Default.Download, contentDescription = "Downloads")

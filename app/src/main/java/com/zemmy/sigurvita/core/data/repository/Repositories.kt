@@ -415,7 +415,7 @@ class SeriesRepository(
             }
 
             Result.success(series)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             val config = preferencesRepository.serverConfigFlow.first()
             Result.success(
                 Series(
@@ -653,14 +653,7 @@ class ReaderRepository(
         }
     }
 
-    suspend fun markChapterRead(chapterId: Int, seriesId: Int = 0) = withContext(Dispatchers.IO) {
-        if (preferencesRepository.readerSettingsFlow.first().isIncognitoMode) {
-            return@withContext
-        }
-        try {
-            api.markMultipleRead(MarkMultipleDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
-        } catch (_: Exception) {}
-    }
+
 }
 
 class DownloadRepository(
