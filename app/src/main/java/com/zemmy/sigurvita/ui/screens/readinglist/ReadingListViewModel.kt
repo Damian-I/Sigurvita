@@ -86,6 +86,7 @@ enum class ReadingListSortOption(val displayName: String) {
 
 data class ReadingListUiState(
     val readingLists: List<ReadingList> = emptyList(),
+    val selectedListId: Int? = null,
     val selectedListItems: List<ReadingListItem> = emptyList(),
     val downloadTasks: Map<Int, DownloadTask> = emptyMap(),
     val selectedListTitle: String? = null,
@@ -124,7 +125,7 @@ data class ReadingListUiState(
                 ReadingListSortOption.TITLE_NATURAL_ASC ->
                     filtered.sortedWith { l1, l2 -> naturalCompare(l1.title, l2.title) }
                 ReadingListSortOption.TITLE_NATURAL_DESC ->
-                    filtered.sortedWith { l1, l2 -> naturalCompare(l2.title, l1.title) }
+                    filtered.sortedWith { l2, l1 -> naturalCompare(l2.title, l1.title) }
                 ReadingListSortOption.ITEM_COUNT_DESC ->
                     filtered.sortedByDescending { it.itemCount }
                 ReadingListSortOption.ITEM_COUNT_ASC ->
@@ -165,6 +166,7 @@ class ReadingListViewModel : ViewModel() {
 
     fun loadReadingLists() {
         _uiState.value = _uiState.value.copy(
+            selectedListId = null,
             selectedListItems = emptyList(),
             selectedListTitle = null,
             searchQuery = "",
@@ -190,6 +192,7 @@ class ReadingListViewModel : ViewModel() {
     fun loadListDetail(listId: Int, title: String) {
         _uiState.value = _uiState.value.copy(
             isLoading = true,
+            selectedListId = listId,
             selectedListTitle = title,
             searchQuery = "",
             errorMessage = null

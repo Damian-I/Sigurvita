@@ -80,19 +80,23 @@ class ReaderViewModel : ViewModel() {
     }
 
     // Flush any pending debounced progress immediately (called on chapter exit).
-    fun flushProgress() {
+    suspend fun flushProgressSync() {
         val state = _uiState.value
         if (state.pages.isNotEmpty() && state.chapterId > 0) {
-            viewModelScope.launch {
-                readerRepository.saveProgress(
-                    seriesId = state.seriesId,
-                    volumeId = state.volumeId,
-                    chapterId = state.chapterId,
-                    pageNum = state.currentPageIndex + 1,
-                    totalPages = state.pages.size,
-                    resolvedLibraryId = cachedLibraryId
-                )
-            }
+            readerRepository.saveProgress(
+                seriesId = state.seriesId,
+                volumeId = state.volumeId,
+                chapterId = state.chapterId,
+                pageNum = state.currentPageIndex + 1,
+                totalPages = state.pages.size,
+                resolvedLibraryId = cachedLibraryId
+            )
+        }
+    }
+
+    fun flushProgress() {
+        viewModelScope.launch {
+            flushProgressSync()
         }
     }
 
@@ -137,9 +141,9 @@ class ReaderViewModel : ViewModel() {
             val pageList = readerRepository.getPages(chapterId, totalPages)
             val savedPageNum = readerRepository.getProgress(chapterId)
 
-            val isCompletedOrLastPage = savedPageNum >= pageList.size && pageList.isNotEmpty()
+            val hasSavedProgress = savedPageNum > 1 && pageList.isNotEmpty()
 
-            if (isCompletedOrLastPage) {
+            if (hasSavedProgress) {
                 _uiState.value = _uiState.value.copy(
                     pages = pageList,
                     currentPageIndex = 0,
@@ -148,13 +152,9 @@ class ReaderViewModel : ViewModel() {
                     promptPageNum = savedPageNum
                 )
             } else {
-                val initialIndex = if (savedPageNum in 1..pageList.size) {
-                    savedPageNum - 1
-                } else 0
-
                 _uiState.value = _uiState.value.copy(
                     pages = pageList,
-                    currentPageIndex = initialIndex,
+                    currentPageIndex = 0,
                     isLoading = false,
                     showResumePrompt = false,
                     promptPageNum = 0

@@ -36,7 +36,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +54,10 @@ import com.zemmy.sigurvita.ui.components.ErrorState
 import com.zemmy.sigurvita.ui.components.LoadingState
 import com.zemmy.sigurvita.ui.components.MassDownloadDialog
 import kotlin.math.abs
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 private fun formatVolumeHeader(name: String, number: Float): String {
     if (name.contains("100000") || abs(number) >= 10000f) {
@@ -89,8 +92,17 @@ fun SeriesDetailScreen(
     val state by viewModel.uiState.collectAsState()
     var showMassDownloadDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(seriesId) {
-        viewModel.loadSeriesDetail(seriesId)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, seriesId) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.loadSeriesDetail(seriesId)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     if (showMassDownloadDialog) {

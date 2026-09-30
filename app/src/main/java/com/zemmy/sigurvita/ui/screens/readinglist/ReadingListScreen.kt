@@ -60,6 +60,11 @@ import com.zemmy.sigurvita.ui.components.ErrorState
 import com.zemmy.sigurvita.ui.components.LoadingState
 import com.zemmy.sigurvita.ui.components.MassDownloadDialog
 
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReadingListScreen(
@@ -71,6 +76,25 @@ fun ReadingListScreen(
     val state by viewModel.uiState.collectAsState()
     var showMassDownloadDialog by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val currentListId = state.selectedListId
+                val currentTitle = state.selectedListTitle
+                if (currentListId != null && currentListId > 0 && currentTitle != null) {
+                    viewModel.loadListDetail(currentListId, currentTitle)
+                } else {
+                    viewModel.loadReadingLists()
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     if (showMassDownloadDialog) {
         val unreadCount = state.totalIssues - state.issuesRead

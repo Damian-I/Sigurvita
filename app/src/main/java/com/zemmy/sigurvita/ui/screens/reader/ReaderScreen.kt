@@ -47,6 +47,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zemmy.sigurvita.ui.components.LoadingState
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+
 private fun Context.findActivity(): ComponentActivity? {
     var ctx = this
     while (ctx is ContextWrapper) {
@@ -69,8 +73,20 @@ fun ReaderScreen(
     val context = LocalContext.current
     val activity = context.findActivity()
     val viewModel: ReaderViewModel = if (activity != null) viewModel(activity) else viewModel()
+    val scope = rememberCoroutineScope()
 
     val state by viewModel.uiState.collectAsState()
+
+    val handleBack: () -> Unit = {
+        scope.launch {
+            viewModel.flushProgressSync()
+            onBackClick()
+        }
+    }
+
+    BackHandler {
+        handleBack()
+    }
 
     LaunchedEffect(chapterId) {
         viewModel.loadChapter(chapterId, totalPages, seriesId, volumeId, readingListId)
@@ -97,15 +113,21 @@ fun ReaderScreen(
             .background(Color.Black)
     ) {
         if (state.showResumePrompt) {
+            val isFinished = state.promptPageNum >= state.pages.size
+            val promptText = if (isFinished) {
+                "You previously finished this issue (Page ${state.promptPageNum} of ${state.pages.size}). Would you like to start from the beginning or resume from the last page?"
+            } else {
+                "You previously read up to Page ${state.promptPageNum} of ${state.pages.size}. Would you like to start from the beginning or resume from Page ${state.promptPageNum}?"
+            }
+            val confirmBtnText = if (isFinished) "Resume Last Page" else "Resume Page ${state.promptPageNum}"
+
             AlertDialog(
                 onDismissRequest = { viewModel.dismissResumePrompt(startFromBeginning = true) },
                 title = { Text("Resume Position") },
-                text = {
-                    Text("You previously finished this issue (Page ${state.promptPageNum} of ${state.pages.size}). Would you like to start from the beginning or resume from the last page?")
-                },
+                text = { Text(promptText) },
                 confirmButton = {
                     TextButton(onClick = { viewModel.dismissResumePrompt(startFromBeginning = false) }) {
-                        Text("Resume Last Page")
+                        Text(confirmBtnText)
                     }
                 },
                 dismissButton = {
@@ -141,7 +163,7 @@ fun ReaderScreen(
                 TopAppBar(
                     title = { Text(stringResource(R.string.page_indicator, state.currentPageIndex + 1, state.pages.size)) },
                     navigationIcon = {
-                        IconButton(onClick = onBackClick) {
+                        IconButton(onClick = handleBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                         }
                     },

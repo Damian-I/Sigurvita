@@ -193,7 +193,7 @@ class SeriesDetailViewModel : ViewModel() {
         val updatedVolumes = _uiState.value.volumes.map { vol ->
             vol.copy(
                 chapters = vol.chapters.map { c ->
-                    if (c.id == chapter.id) c.copy(isRead = newReadState) else c
+                    if (c.id == chapter.id) c.copy(isRead = newReadState, pagesRead = if (newReadState) c.pages else 0) else c
                 }
             )
         }
@@ -223,7 +223,7 @@ class SeriesDetailViewModel : ViewModel() {
         // Optimistic UI Update
         val updatedVolumes = _uiState.value.volumes.map { vol ->
             vol.copy(
-                chapters = vol.chapters.map { c -> c.copy(isRead = targetReadState) }
+                chapters = vol.chapters.map { c -> c.copy(isRead = targetReadState, pagesRead = if (targetReadState) c.pages else 0) }
             )
         }
         val newChaptersRead = if (targetReadState) _uiState.value.totalChapters else 0
