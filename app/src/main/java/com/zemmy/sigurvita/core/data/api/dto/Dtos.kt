@@ -127,5 +127,18 @@ data class ReaderProgressDto(
     val chapterId: Int = 0,
     val pageNum: Int = 0,
     val seriesId: Int = 0,
-    val libraryId: Int = 0
+    val libraryId: Int = 0,
+    val bookScrollId: String? = null,
+    val lastModifiedUtc: String? = null
+)
+
+@Serializable
+data class MarkSeriesDto(
+    val seriesId: Int = 0
+)
+
+@Serializable
+data class MarkMultipleDto(
+    val seriesId: Int = 0,
+    val chapterIds: List<Int> = emptyList()
 )

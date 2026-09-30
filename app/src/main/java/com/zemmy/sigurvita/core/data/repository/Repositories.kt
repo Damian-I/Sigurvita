@@ -11,6 +11,8 @@ import com.zemmy.sigurvita.core.data.api.KavitaApi
 import com.zemmy.sigurvita.core.data.api.dto.FilterStatementDto
 import com.zemmy.sigurvita.core.data.api.dto.FilterV2Dto
 import com.zemmy.sigurvita.core.data.api.dto.LibraryDto
+import com.zemmy.sigurvita.core.data.api.dto.MarkMultipleDto
+import com.zemmy.sigurvita.core.data.api.dto.MarkSeriesDto
 import com.zemmy.sigurvita.core.data.api.dto.ReaderProgressDto
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListDto
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListItemDto
@@ -38,6 +40,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.time.Instant
 import java.util.zip.ZipFile
 
 class AuthRepository(
@@ -465,7 +468,7 @@ class SeriesRepository(
 
     suspend fun markChapterRead(chapterId: Int, seriesId: Int = 0): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
-            val res = api.markChapterRead(seriesId = seriesId, chapterId = chapterId)
+            val res = api.markMultipleRead(MarkMultipleDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
             if (res.isSuccessful) Result.success(true)
             else Result.failure(Exception("Failed to mark chapter read"))
         } catch (e: Exception) {
@@ -475,7 +478,7 @@ class SeriesRepository(
 
     suspend fun markChapterUnread(chapterId: Int, seriesId: Int = 0): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
-            val res = api.markChapterUnread(seriesId = seriesId, chapterId = chapterId)
+            val res = api.markMultipleUnread(MarkMultipleDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
             if (res.isSuccessful) Result.success(true)
             else Result.failure(Exception("Failed to mark chapter unread"))
         } catch (e: Exception) {
@@ -485,7 +488,7 @@ class SeriesRepository(
 
     suspend fun markSeriesRead(seriesId: Int): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
-            val res = api.markSeriesRead(seriesId)
+            val res = api.markSeriesRead(MarkSeriesDto(seriesId = seriesId))
             if (res.isSuccessful) Result.success(true)
             else Result.failure(Exception("Failed to mark as read"))
         } catch (e: Exception) {
@@ -495,7 +498,7 @@ class SeriesRepository(
 
     suspend fun markSeriesUnread(seriesId: Int): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
-            val res = api.markSeriesUnread(seriesId)
+            val res = api.markSeriesUnread(MarkSeriesDto(seriesId = seriesId))
             if (res.isSuccessful) Result.success(true)
             else Result.failure(Exception("Failed to mark as unread"))
         } catch (e: Exception) {
@@ -615,17 +618,19 @@ class ReaderRepository(
 
     suspend fun saveProgress(seriesId: Int, volumeId: Int, chapterId: Int, pageNum: Int, totalPages: Int = 0) = withContext(Dispatchers.IO) {
         val isFinished = totalPages > 0 && pageNum >= totalPages
+        val nowIso = Instant.now().toString()
         try {
             api.setReaderProgress(
                 ReaderProgressDto(
-                    seriesId = seriesId,
                     volumeId = volumeId,
                     chapterId = chapterId,
-                    pageNum = pageNum
+                    pageNum = pageNum,
+                    seriesId = seriesId,
+                    lastModifiedUtc = nowIso
                 )
             )
             if (isFinished) {
-                api.markChapterRead(seriesId = seriesId, chapterId = chapterId)
+                api.markMultipleRead(MarkMultipleDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
             }
         } catch (_: Exception) {
             // Local fallback
@@ -634,7 +639,7 @@ class ReaderRepository(
 
     suspend fun markChapterRead(chapterId: Int, seriesId: Int = 0) = withContext(Dispatchers.IO) {
         try {
-            api.markChapterRead(seriesId = seriesId, chapterId = chapterId)
+            api.markMultipleRead(MarkMultipleDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
         } catch (_: Exception) {}
     }
 }

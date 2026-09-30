@@ -3,6 +3,8 @@ package com.zemmy.sigurvita.core.data.api
 import com.zemmy.sigurvita.core.data.api.dto.ChapterDto
 import com.zemmy.sigurvita.core.data.api.dto.FilterV2Dto
 import com.zemmy.sigurvita.core.data.api.dto.LibraryDto
+import com.zemmy.sigurvita.core.data.api.dto.MarkMultipleDto
+import com.zemmy.sigurvita.core.data.api.dto.MarkSeriesDto
 import com.zemmy.sigurvita.core.data.api.dto.ReaderProgressDto
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListDto
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListItemDto
@@ -121,25 +123,23 @@ interface KavitaApi {
         @Body body: ReaderProgressDto
     ): Response<Unit>
 
-    @POST("api/Reader/mark-chapter-read")
-    suspend fun markChapterRead(
-        @Query("seriesId") seriesId: Int = 0,
-        @Query("chapterId") chapterId: Int = 0
+    @POST("api/reader/mark-multiple-read")
+    suspend fun markMultipleRead(
+        @Body body: MarkMultipleDto
     ): Response<Unit>
 
-    @POST("api/Reader/mark-chapter-unread")
-    suspend fun markChapterUnread(
-        @Query("seriesId") seriesId: Int = 0,
-        @Query("chapterId") chapterId: Int = 0
+    @POST("api/reader/mark-multiple-unread")
+    suspend fun markMultipleUnread(
+        @Body body: MarkMultipleDto
     ): Response<Unit>
 
-    @POST("api/Reader/mark-read")
+    @POST("api/reader/mark-read")
     suspend fun markSeriesRead(
-        @Query("seriesId") seriesId: Int
+        @Body body: MarkSeriesDto
     ): Response<Unit>
 
-    @POST("api/Reader/mark-unread")
+    @POST("api/reader/mark-unread")
     suspend fun markSeriesUnread(
-        @Query("seriesId") seriesId: Int
+        @Body body: MarkSeriesDto
     ): Response<Unit>
 }
