@@ -290,6 +290,15 @@ fun ReadingListScreen(
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Row(verticalAlignment = Alignment.CenterVertically) {
+                                        val showProgress = item.pages > 0 && item.pagesRead > 0 && item.pagesRead < item.pages && !item.isRead
+                                        if (showProgress) {
+                                            Text(
+                                                text = "${item.pagesRead} / ${item.pages} pages",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                        }
                                         if (item.isRead) {
                                             Text(
                                                 text = "• Read",

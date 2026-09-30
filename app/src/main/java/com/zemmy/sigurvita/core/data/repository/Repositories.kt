@@ -1,6 +1,7 @@
 package com.zemmy.sigurvita.core.data.repository
 
 import android.content.Context
+import android.util.Log
 import androidx.work.Constraints
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
@@ -636,37 +637,75 @@ class ReaderRepository(
     }
 
     suspend fun saveProgress(seriesId: Int, volumeId: Int, chapterId: Int, pageNum: Int, totalPages: Int = 0) = withContext(Dispatchers.IO) {
-        if (preferencesRepository.readerSettingsFlow.first().isIncognitoMode) {
+        val prefs = preferencesRepository.readerSettingsFlow.first()
+        if (prefs.isIncognitoMode) {
             return@withContext
         }
+
+        var resolvedSeriesId = seriesId
+        var resolvedVolumeId = volumeId
+        var resolvedLibraryId = 0
+
+        if (resolvedSeriesId <= 0 || resolvedVolumeId <= 0) {
+            try {
+                val cRes = api.getChapterById(chapterId)
+                if (cRes.isSuccessful && cRes.body() != null) {
+                    val cDto = cRes.body()!!
+                    if (resolvedSeriesId <= 0) resolvedSeriesId = cDto.seriesId
+                    if (resolvedVolumeId <= 0) resolvedVolumeId = cDto.volumeId
+                }
+            } catch (_: Exception) {}
+        }
+
+        if (resolvedSeriesId > 0) {
+            try {
+                val sRes = api.getSeriesDetail(resolvedSeriesId)
+                if (sRes.isSuccessful && sRes.body() != null) {
+                    resolvedLibraryId = sRes.body()!!.libraryId
+                }
+            } catch (_: Exception) {
+                try {
+                    val sRes2 = api.getSeriesById(resolvedSeriesId)
+                    if (sRes2.isSuccessful && sRes2.body() != null) {
+                        resolvedLibraryId = sRes2.body()!!.libraryId
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        if (resolvedLibraryId <= 0) {
+            try {
+                val libs = api.getLibraries()
+                if (libs.isSuccessful && !libs.body().isNullOrEmpty()) {
+                    resolvedLibraryId = libs.body()!!.first().id
+                }
+            } catch (_: Exception) {}
+        }
+        if (resolvedLibraryId <= 0) resolvedLibraryId = 1
 
         val isFinished = totalPages > 0 && pageNum >= totalPages
         val nowIso = Instant.now().toString()
         try {
-            api.setReaderProgress(
-                ReaderProgressDto(
-                    volumeId = volumeId,
-                    chapterId = chapterId,
-                    pageNum = pageNum,
-                    seriesId = seriesId,
-                    lastModifiedUtc = nowIso
-                )
+            val progressDto = ReaderProgressDto(
+                volumeId = resolvedVolumeId,
+                chapterId = chapterId,
+                pageNum = pageNum,
+                seriesId = resolvedSeriesId,
+                libraryId = resolvedLibraryId,
+                bookScrollId = null,
+                lastModifiedUtc = nowIso
             )
-            if (isFinished) {
-                api.markMultipleRead(MarkMultipleDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
+            val response = api.setReaderProgress(progressDto)
+            if (!response.isSuccessful) {
+                Log.e("ReaderRepository", "Failed to sync progress: HTTP ${response.code()}")
             }
-        } catch (_: Exception) {
-            // Local fallback
-        }
-    }
 
-    suspend fun markChapterRead(chapterId: Int, seriesId: Int = 0) = withContext(Dispatchers.IO) {
-        if (preferencesRepository.readerSettingsFlow.first().isIncognitoMode) {
-            return@withContext
+            if (isFinished) {
+                api.markMultipleRead(MarkMultipleDto(seriesId = resolvedSeriesId, chapterIds = listOf(chapterId)))
+            }
+        } catch (e: Exception) {
+            Log.e("ReaderRepository", "Exception syncing progress", e)
         }
-        try {
-            api.markMultipleRead(MarkMultipleDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
-        } catch (_: Exception) {}
     }
 }
 

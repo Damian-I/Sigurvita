@@ -283,8 +283,9 @@ fun SeriesDetailScreen(
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Row(verticalAlignment = Alignment.CenterVertically) {
+                                        val showProgress = chapter.pagesRead > 0 && chapter.pages > 0 && chapter.pagesRead < chapter.pages && !chapter.isRead
                                         Text(
-                                            text = "${chapter.pages} pages",
+                                            text = if (showProgress) "${chapter.pagesRead} / ${chapter.pages} pages" else "${chapter.pages} pages",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
