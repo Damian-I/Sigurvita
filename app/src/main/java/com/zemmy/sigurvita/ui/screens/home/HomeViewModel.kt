@@ -3,10 +3,9 @@ package com.zemmy.sigurvita.ui.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
-import com.zemmy.sigurvita.core.data.api.NetworkClient
-import com.zemmy.sigurvita.core.data.repository.LibraryRepository
 import com.zemmy.sigurvita.core.model.Library
 import com.zemmy.sigurvita.core.model.Series
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,11 +26,7 @@ class HomeViewModel : ViewModel() {
 
     private val app = SigurvitaApp.instance
     private val preferencesRepository = app.userPreferencesRepository
-    private val libraryRepository = LibraryRepository(
-        NetworkClient.createKavitaApi(preferencesRepository),
-        app.database,
-        preferencesRepository
-    )
+    private val libraryRepository = app.libraryRepository
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -50,10 +45,16 @@ class HomeViewModel : ViewModel() {
     fun loadData() {
         _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
         viewModelScope.launch {
-            val librariesRes = libraryRepository.getLibraries()
-            val onDeckRes = libraryRepository.getOnDeckSeries()
-            val recentlyUpdatedRes = libraryRepository.getRecentlyUpdatedSeries()
-            val initialSeriesRes = libraryRepository.getSeriesForLibrary(0)
+            // Run all independent API calls concurrently
+            val librariesDeferred = async { libraryRepository.getLibraries() }
+            val onDeckDeferred = async { libraryRepository.getOnDeckSeries() }
+            val recentlyUpdatedDeferred = async { libraryRepository.getRecentlyUpdatedSeries() }
+            val initialSeriesDeferred = async { libraryRepository.getSeriesForLibrary(0) }
+
+            val librariesRes = librariesDeferred.await()
+            val onDeckRes = onDeckDeferred.await()
+            val recentlyUpdatedRes = recentlyUpdatedDeferred.await()
+            val initialSeriesRes = initialSeriesDeferred.await()
 
             if (librariesRes.isSuccess || onDeckRes.isSuccess || initialSeriesRes.isSuccess) {
                 _uiState.value = _uiState.value.copy(

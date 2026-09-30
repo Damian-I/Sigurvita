@@ -5,7 +5,15 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.zemmy.sigurvita.core.data.api.KavitaApi
+import com.zemmy.sigurvita.core.data.api.NetworkClient
 import com.zemmy.sigurvita.core.data.db.SigurvitaDatabase
+import com.zemmy.sigurvita.core.data.repository.AuthRepository
+import com.zemmy.sigurvita.core.data.repository.DownloadRepository
+import com.zemmy.sigurvita.core.data.repository.LibraryRepository
+import com.zemmy.sigurvita.core.data.repository.ReaderRepository
+import com.zemmy.sigurvita.core.data.repository.ReadingListRepository
+import com.zemmy.sigurvita.core.data.repository.SeriesRepository
 import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 
 class SigurvitaApp : Application(), ImageLoaderFactory {
@@ -15,6 +23,36 @@ class SigurvitaApp : Application(), ImageLoaderFactory {
 
     lateinit var userPreferencesRepository: UserPreferencesRepository
         private set
+
+    // Singleton API client — shared across all ViewModels
+    val kavitaApi: KavitaApi by lazy {
+        NetworkClient.getKavitaApi(userPreferencesRepository)
+    }
+
+    // Singleton repositories — eliminates redundant OkHttpClient/connection pool creation
+    val authRepository: AuthRepository by lazy {
+        AuthRepository(kavitaApi, userPreferencesRepository)
+    }
+
+    val libraryRepository: LibraryRepository by lazy {
+        LibraryRepository(kavitaApi, database, userPreferencesRepository)
+    }
+
+    val seriesRepository: SeriesRepository by lazy {
+        SeriesRepository(kavitaApi, userPreferencesRepository)
+    }
+
+    val readingListRepository: ReadingListRepository by lazy {
+        ReadingListRepository(kavitaApi, database, userPreferencesRepository)
+    }
+
+    val readerRepository: ReaderRepository by lazy {
+        ReaderRepository(kavitaApi, this, userPreferencesRepository, database)
+    }
+
+    val downloadRepository: DownloadRepository by lazy {
+        DownloadRepository(database, this, userPreferencesRepository)
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -27,13 +65,13 @@ class SigurvitaApp : Application(), ImageLoaderFactory {
         return ImageLoader.Builder(this)
             .memoryCache {
                 MemoryCache.Builder(this)
-                    .maxSizePercent(0.25)
+                    .maxSizePercent(0.30) // Increased from 0.25 for smoother page rendering
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
-                    .maxSizeBytes(100 * 1024 * 1024) // 100MB
+                    .maxSizeBytes(500L * 1024 * 1024)
                     .build()
             }
             .crossfade(true)

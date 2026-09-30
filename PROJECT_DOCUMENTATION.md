@@ -49,8 +49,10 @@ com.zemmy.sigurvita/
 │   │   └── UserPreferencesRepository.kt # Manages server config, auth state, preferences
 │   ├── download/
 │   │   └── DownloadWorker.kt     # WorkManager worker for downloading chapters offline
-│   └── model/
-│       └── Models.kt             # Domain models
+│   ├── model/
+│   │   └── Models.kt             # Domain models
+│   └── util/
+│       └── NaturalSort.kt        # Utility for human-friendly alphanumeric sorting
 └── ui/
     ├── components/
     │   ├── Components.kt         # Reusable UI widgets (Loading, Error states, Cards)
@@ -94,8 +96,9 @@ com.zemmy.sigurvita/
 - **Repositories (`Repositories.kt`)**: Implements single-source-of-truth or offline-first patterns by coordinating between `KavitaApi` and Room DAOs.
 
 ### 4.4 Reader Experience (`ui.screens.reader`)
-- `ReaderScreen` and `ImageReader` provide a high-performance reading interface for pages.
+- `ReaderScreen` and `ImageReader` provide a high-performance reading interface for pages, utilizing **image prefetching** (caching the next 3 pages into memory) and zoom state keying for seamless swiping.
 - `ReaderViewModel` manages page state, zoom, progression, and progress reporting back to the Kavita server.
+- **Debounced Progress Synchronization**: Progress updates (`saveProgress`) are debounced to fire at most once every 3 seconds to eliminate excessive network requests during rapid page flipping. Progress is always flushed when exiting the reader or changing chapters.
 - **Resume Position Prompt**: When opening a previously completed issue (or moving to a completed next chapter), the reader presents a prompt dialog asking the user whether to start from the beginning or resume from the last page.
 - **Auto-Delete Local Downloads**: Integrates configurable automatic cleanup ("Immediately", "After 1 Issue", "After 2 Issues", "After 5 Issues") upon finishing a chapter, tracking completed history in `UserPreferencesRepository` and removing downloaded files, extracted CBZ caches, and empty parent directories up to the root download directory.
 - Hardware volume keys (`KEYCODE_VOLUME_UP` / `KEYCODE_VOLUME_DOWN` in `MainActivity`) are intercepted to enable physical page flipping.
@@ -104,12 +107,18 @@ com.zemmy.sigurvita/
 
 ### 4.5 Offline Downloads (`core.download.DownloadWorker`)
 - Background work managed via `WorkManager`.
-- Downloads chapter images and metadata so users can read offline without an active network connection.
+- **Native CBZ Downloading**: Actively prioritizes downloading the original `.cbz` archive directly from Kavita (`/api/Download/chapter`) utilizing the `AuthInterceptor` to rewrite URLs.
+- **Graceful Fallback**: If the native archive download fails, it gracefully falls back to a page-by-page download mapping individual `.jpg` files into a dedicated folder.
+- Allows users to read completely offline without an active network connection.
 
 ### 4.6 Series & Reading List Workflows (`ui.screens.seriesdetail` & `ui.screens.readinglist`)
+- **Concurrent Data Loading**: ViewModels (`HomeViewModel`, `SeriesDetailViewModel`) orchestrate independent network requests concurrently using Kotlin Coroutines `async`/`await` for drastically reduced loading times.
 - **"Next to Read" Indicators**: Highlights the next unread issue in both Series detail views and Reading Lists with primary card borders and a `"▶ Next to Read"` indicator tag.
 - **Quick "Resume" Buttons**: Provides prominent "Resume" buttons in Series Detail and Reading List headers to immediately launch the user's next unread issue.
 - **Conditional In-Progress Page Indicators**: Displays real-time page progress (`pagesRead / totalPages`) under chapter and reading list item titles strictly for in-progress items (`0 < pagesRead < totalPages` and not marked read). Fully finished or unread items display standard page counts.
+
+### 4.7 Dependency Injection / Singletons (`SigurvitaApp.kt`)
+- To prevent heavy memory overhead and thread starvation, all primary repositories (`ReaderRepository`, `SeriesRepository`, `UserPreferencesRepository`, etc.) and the `OkHttpClient`/`KavitaApi` networking stack are instantiated lazily as singletons attached to `SigurvitaApp.instance`. ViewModels retrieve these shared instances rather than recreating them.
 
 ---
 

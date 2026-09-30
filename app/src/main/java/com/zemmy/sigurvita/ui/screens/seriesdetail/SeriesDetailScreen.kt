@@ -99,8 +99,8 @@ fun SeriesDetailScreen(
             totalAvailableIssues = state.totalChapters,
             unreadIssuesCount = if (unreadCount > 0) unreadCount else state.totalChapters,
             onDismiss = { showMassDownloadDialog = false },
-            onConfirmDownload = { count, unreadOnly, format ->
-                viewModel.downloadBulk(count, unreadOnly, format)
+            onConfirmDownload = { count, unreadOnly ->
+                viewModel.downloadBulk(count, unreadOnly)
             }
         )
     }

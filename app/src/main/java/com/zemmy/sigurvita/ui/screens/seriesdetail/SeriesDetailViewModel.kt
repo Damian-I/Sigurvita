@@ -3,15 +3,12 @@ package com.zemmy.sigurvita.ui.screens.seriesdetail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
-import com.zemmy.sigurvita.core.data.api.NetworkClient
-import com.zemmy.sigurvita.core.data.repository.DownloadRepository
-import com.zemmy.sigurvita.core.data.repository.LibraryRepository
-import com.zemmy.sigurvita.core.data.repository.SeriesRepository
 import com.zemmy.sigurvita.core.model.Chapter
-import com.zemmy.sigurvita.core.model.DownloadFormat
+
 import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.core.model.Series
 import com.zemmy.sigurvita.core.model.Volume
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,10 +32,9 @@ class SeriesDetailViewModel : ViewModel() {
 
     private val app = SigurvitaApp.instance
     private val preferencesRepository = app.userPreferencesRepository
-    private val api = NetworkClient.createKavitaApi(preferencesRepository)
-    private val seriesRepository = SeriesRepository(api, preferencesRepository)
-    private val libraryRepository = LibraryRepository(api, app.database, preferencesRepository)
-    private val downloadRepository = DownloadRepository(app.database, app)
+    private val seriesRepository = app.seriesRepository
+    private val libraryRepository = app.libraryRepository
+    private val downloadRepository = app.downloadRepository
 
     private val _uiState = MutableStateFlow(SeriesDetailUiState())
     val uiState: StateFlow<SeriesDetailUiState> = _uiState.asStateFlow()
@@ -63,8 +59,12 @@ class SeriesDetailViewModel : ViewModel() {
     fun loadSeriesDetail(seriesId: Int) {
         _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
         viewModelScope.launch {
-            val seriesRes = seriesRepository.getSeriesDetail(seriesId)
-            val volumesRes = seriesRepository.getSeriesVolumes(seriesId)
+            // Run series detail and volumes fetch concurrently
+            val seriesDeferred = async { seriesRepository.getSeriesDetail(seriesId) }
+            val volumesDeferred = async { seriesRepository.getSeriesVolumes(seriesId) }
+
+            val seriesRes = seriesDeferred.await()
+            val volumesRes = volumesDeferred.await()
 
             if (seriesRes.isSuccess) {
                 val fetchedSeries = seriesRes.getOrNull()
@@ -144,7 +144,7 @@ class SeriesDetailViewModel : ViewModel() {
         }
     }
 
-    fun downloadBulk(count: Int, unreadOnly: Boolean, format: DownloadFormat = DownloadFormat.CBZ) {
+    fun downloadBulk(count: Int, unreadOnly: Boolean) {
         val series = _uiState.value.series ?: return
         val allChapters = _uiState.value.volumes.flatMap { it.chapters }
         val eligibleChapters = if (unreadOnly) {
@@ -166,8 +166,7 @@ class SeriesDetailViewModel : ViewModel() {
                     totalPages = chapter.pages,
                     libraryName = _uiState.value.libraryName,
                     seriesName = series.name,
-                    chapterNumber = chapter.chapterNumber,
-                    downloadFormat = format
+                    chapterNumber = chapter.chapterNumber
                 )
             }
         }

@@ -3,48 +3,21 @@ package com.zemmy.sigurvita.ui.screens.readinglist
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
-import com.zemmy.sigurvita.core.data.api.NetworkClient
-import com.zemmy.sigurvita.core.data.repository.DownloadRepository
-import com.zemmy.sigurvita.core.data.repository.ReadingListRepository
-import com.zemmy.sigurvita.core.model.DownloadFormat
+
 import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.model.ReadingListItem
+import com.zemmy.sigurvita.core.util.naturalCompare
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-fun naturalCompare(s1: String, s2: String): Int {
-    val regex = Regex("""(\d+\.?\d*|\D+)""")
-    val chunks1 = regex.findAll(s1).map { it.value }.toList()
-    val chunks2 = regex.findAll(s2).map { it.value }.toList()
-
-    val size = minOf(chunks1.size, chunks2.size)
-    for (i in 0 until size) {
-        val c1 = chunks1[i]
-        val c2 = chunks2[i]
-
-        val num1 = c1.toDoubleOrNull()
-        val num2 = c2.toDoubleOrNull()
-
-        val cmp = if (num1 != null && num2 != null) {
-            num1.compareTo(num2)
-        } else {
-            c1.lowercase().compareTo(c2.lowercase())
-        }
-
-        if (cmp != 0) return cmp
-    }
-
-    return chunks1.size.compareTo(chunks2.size)
-}
-
 fun cleanReadingListTitle(title: String): String {
     var result = title.trim()
 
     // 1. Strip bracket prefix like [Marvel] or [DC]
-    result = result.replace(Regex("""^\[[^\]]+\]\s*"""), "")
+    result = result.replace(Regex("""^\[[^]]+]\s*"""), "")
 
     // 2. Strip year range like 2012-2015 or 1961-1970
     result = result.replace(Regex("""\b\d{4}-\d{4}\b\s*"""), "")
@@ -95,7 +68,7 @@ fun extractEraInfo(title: String): EraCategory {
     }
 
     // Bracket prefix
-    val bracketRegex = Regex("""^\[([^]]+)\]""")
+    val bracketRegex = Regex("""^\[([^]]+)]""")
     val bracketMatch = bracketRegex.find(cleanTitle)?.groupValues?.get(1)
     if (bracketMatch != null && !bracketMatch.equals("Marvel", ignoreCase = true)) {
         return EraCategory(name = bracketMatch, years = null)
@@ -173,13 +146,8 @@ data class ReadingListUiState(
 class ReadingListViewModel : ViewModel() {
 
     private val app = SigurvitaApp.instance
-    private val preferencesRepository = app.userPreferencesRepository
-    private val repository = ReadingListRepository(
-        NetworkClient.createKavitaApi(preferencesRepository),
-        app.database,
-        preferencesRepository
-    )
-    private val downloadRepository = DownloadRepository(app.database, app)
+    private val repository = app.readingListRepository
+    private val downloadRepository = app.downloadRepository
 
     private val _uiState = MutableStateFlow(ReadingListUiState())
     val uiState: StateFlow<ReadingListUiState> = _uiState.asStateFlow()
@@ -292,7 +260,7 @@ class ReadingListViewModel : ViewModel() {
         }
     }
 
-    fun downloadBulk(count: Int, unreadOnly: Boolean, format: DownloadFormat = DownloadFormat.CBZ) {
+    fun downloadBulk(count: Int, unreadOnly: Boolean) {
         val allItems = _uiState.value.selectedListItems
         val eligibleItems = if (unreadOnly) {
             allItems.filter { !it.isRead && it.chapterId != null && it.chapterId > 0 }
@@ -312,8 +280,7 @@ class ReadingListViewModel : ViewModel() {
                     coverUrl = item.coverUrl,
                     totalPages = item.pages,
                     libraryName = "Reading Lists",
-                    seriesName = item.seriesName,
-                    downloadFormat = format
+                    seriesName = item.seriesName
                 )
             }
         }

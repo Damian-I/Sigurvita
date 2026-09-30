@@ -3,8 +3,6 @@ package com.zemmy.sigurvita.ui.screens.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
-import com.zemmy.sigurvita.core.data.api.NetworkClient
-import com.zemmy.sigurvita.core.data.repository.AuthRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,10 +21,7 @@ class AuthViewModel : ViewModel() {
 
     private val app = SigurvitaApp.instance
     private val preferencesRepository = app.userPreferencesRepository
-    private val authRepository = AuthRepository(
-        NetworkClient.createKavitaApi(preferencesRepository),
-        preferencesRepository
-    )
+    private val authRepository = app.authRepository
 
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()

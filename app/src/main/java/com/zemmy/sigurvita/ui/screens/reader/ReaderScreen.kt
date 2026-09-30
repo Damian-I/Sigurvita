@@ -85,6 +85,12 @@ fun ReaderScreen(
         }
     }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.flushProgress()
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()

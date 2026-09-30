@@ -78,8 +78,8 @@ fun ReadingListScreen(
             totalAvailableIssues = state.totalIssues,
             unreadIssuesCount = if (unreadCount > 0) unreadCount else state.totalIssues,
             onDismiss = { showMassDownloadDialog = false },
-            onConfirmDownload = { count, unreadOnly, format ->
-                viewModel.downloadBulk(count, unreadOnly, format)
+            onConfirmDownload = { count, unreadOnly ->
+                viewModel.downloadBulk(count, unreadOnly)
             }
         )
     }

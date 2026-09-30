@@ -29,7 +29,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.zemmy.sigurvita.R
-import com.zemmy.sigurvita.core.model.DownloadFormat
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -37,10 +36,9 @@ fun MassDownloadDialog(
     totalAvailableIssues: Int,
     unreadIssuesCount: Int,
     onDismiss: () -> Unit,
-    onConfirmDownload: (count: Int, unreadOnly: Boolean, format: DownloadFormat) -> Unit
+    onConfirmDownload: (count: Int, unreadOnly: Boolean) -> Unit
 ) {
     var unreadOnly by remember { mutableStateOf(false) }
-    var selectedFormat by remember { mutableStateOf(DownloadFormat.CBZ) }
     val maxAvailable = if (unreadOnly) unreadIssuesCount else totalAvailableIssues
 
     val rawPresetCounts = listOf(
@@ -88,27 +86,6 @@ fun MassDownloadDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Text(
-                    text = "Download File Format",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    DownloadFormat.entries.forEach { fmt ->
-                        FilterChip(
-                            selected = (selectedFormat == fmt),
-                            onClick = { selectedFormat = fmt },
-                            label = { Text(if (fmt == DownloadFormat.CBZ) "CBZ Archive" else "Images") }
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
                     text = stringResource(R.string.select_quantity_to_download),
@@ -135,7 +112,7 @@ fun MassDownloadDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    onConfirmDownload(selectedCount, unreadOnly, selectedFormat)
+                    onConfirmDownload(selectedCount, unreadOnly)
                     onDismiss()
                 },
                 enabled = selectedCount > 0

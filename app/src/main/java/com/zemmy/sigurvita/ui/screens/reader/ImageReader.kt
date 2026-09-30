@@ -25,6 +25,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.zemmy.sigurvita.R
 import coil.compose.AsyncImage
+import coil.imageLoader
+import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderPage
@@ -44,6 +46,23 @@ fun ImageReader(
     modifier: Modifier = Modifier
 ) {
     if (pages.isEmpty()) return
+
+    val context = LocalContext.current
+
+    // Prefetch adjacent pages into Coil memory cache
+    LaunchedEffect(currentPageIndex) {
+        val imageLoader = context.imageLoader
+        for (offset in 1..3) {
+            val prefetchIdx = currentPageIndex + offset
+            if (prefetchIdx in pages.indices) {
+                val prefetchRequest = ImageRequest.Builder(context)
+                    .data(pages[prefetchIdx].imageUrl)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .build()
+                imageLoader.enqueue(prefetchRequest)
+            }
+        }
+    }
 
     when (readingMode) {
         ReadingMode.WEBTOON -> {
@@ -123,9 +142,9 @@ private fun ZoomableImage(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offsetX by remember { mutableFloatStateOf(0f) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
+    var scale by remember(page.pageNumber) { mutableFloatStateOf(1f) }
+    var offsetX by remember(page.pageNumber) { mutableFloatStateOf(0f) }
+    var offsetY by remember(page.pageNumber) { mutableFloatStateOf(0f) }
 
     val contentScale = when (fitMode) {
         FitMode.FIT_WIDTH -> ContentScale.FillWidth
@@ -186,6 +205,8 @@ private fun ZoomableImage(
             model = ImageRequest.Builder(context)
                 .data(page.imageUrl)
                 .crossfade(true)
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
                 .build(),
             contentDescription = stringResource(R.string.page_desc, page.pageNumber),
             contentScale = contentScale,

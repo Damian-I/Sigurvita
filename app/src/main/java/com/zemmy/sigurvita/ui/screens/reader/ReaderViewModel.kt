@@ -3,21 +3,20 @@ package com.zemmy.sigurvita.ui.screens.reader
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
-import com.zemmy.sigurvita.core.data.api.NetworkClient
-import com.zemmy.sigurvita.core.data.repository.DownloadRepository
-import com.zemmy.sigurvita.core.data.repository.LibraryRepository
-import com.zemmy.sigurvita.core.data.repository.ReaderRepository
-import com.zemmy.sigurvita.core.data.repository.ReadingListRepository
-import com.zemmy.sigurvita.core.data.repository.SeriesRepository
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
 import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.seconds
 
 data class ReaderUiState(
     val pages: List<ReaderPage> = emptyList(),
@@ -37,17 +36,72 @@ class ReaderViewModel : ViewModel() {
 
     private val app = SigurvitaApp.instance
     private val preferencesRepository = app.userPreferencesRepository
-    private val api = NetworkClient.createKavitaApi(preferencesRepository)
-    private val readerRepository = ReaderRepository(api, app, preferencesRepository, app.database)
-    private val seriesRepository = SeriesRepository(api, preferencesRepository)
-    private val readingListRepository = ReadingListRepository(api, app.database, preferencesRepository)
-    private val libraryRepository = LibraryRepository(api, app.database, preferencesRepository)
-    private val downloadRepository = DownloadRepository(app.database, app)
+    private val readerRepository = app.readerRepository
+    private val seriesRepository = app.seriesRepository
+    private val readingListRepository = app.readingListRepository
+    private val libraryRepository = app.libraryRepository
+    private val downloadRepository = app.downloadRepository
 
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
+    private val progressSaveFlow = MutableSharedFlow<ProgressEvent>(extraBufferCapacity = 1)
+    private var cachedLibraryId: Int = 0
+    private var progressJob: Job? = null
+
+    private data class ProgressEvent(
+        val seriesId: Int,
+        val volumeId: Int,
+        val chapterId: Int,
+        val pageNum: Int,
+        val totalPages: Int
+    )
+
+    init {
+        startProgressDebounce()
+    }
+
+    @OptIn(FlowPreview::class)
+    private fun startProgressDebounce() {
+        progressJob = viewModelScope.launch {
+            progressSaveFlow
+                .debounce(3.seconds)
+                .collect { event ->
+                    readerRepository.saveProgress(
+                        seriesId = event.seriesId,
+                        volumeId = event.volumeId,
+                        chapterId = event.chapterId,
+                        pageNum = event.pageNum,
+                        totalPages = event.totalPages,
+                        resolvedLibraryId = cachedLibraryId
+                    )
+                }
+        }
+    }
+
+    // Flush any pending debounced progress immediately (called on chapter exit).
+    fun flushProgress() {
+        val state = _uiState.value
+        if (state.pages.isNotEmpty() && state.chapterId > 0) {
+            viewModelScope.launch {
+                readerRepository.saveProgress(
+                    seriesId = state.seriesId,
+                    volumeId = state.volumeId,
+                    chapterId = state.chapterId,
+                    pageNum = state.currentPageIndex + 1,
+                    totalPages = state.pages.size,
+                    resolvedLibraryId = cachedLibraryId
+                )
+            }
+        }
+    }
+
     fun loadChapter(chapterId: Int, totalPages: Int, seriesId: Int, volumeId: Int, readingListId: Int = 0) {
+        // Flush progress for the previous chapter before loading a new one
+        flushProgress()
+        // Reset cached library ID for new chapter context
+        cachedLibraryId = 0
+
         viewModelScope.launch {
             val userSettings = preferencesRepository.readerSettingsFlow.first()
 
@@ -60,6 +114,7 @@ class ReaderViewModel : ViewModel() {
                         val libraryRes = libraryRepository.getLibraries()
                         val library = libraryRes.getOrNull()?.find { it.id == series?.libraryId }
                         if (library != null) {
+                            cachedLibraryId = library.id
                             val isManga = library.type == 0 || library.name.lowercase().contains("manga")
                             effectiveReadingMode = if (isManga) ReadingMode.RTL else ReadingMode.LTR
                         }
@@ -123,17 +178,30 @@ class ReaderViewModel : ViewModel() {
     fun onPageChanged(index: Int) {
         if (index in 0 until _uiState.value.pages.size) {
             _uiState.value = _uiState.value.copy(currentPageIndex = index)
-            viewModelScope.launch {
-                val totalPages = _uiState.value.pages.size
-                readerRepository.saveProgress(
+            progressSaveFlow.tryEmit(
+                ProgressEvent(
                     seriesId = _uiState.value.seriesId,
                     volumeId = _uiState.value.volumeId,
                     chapterId = _uiState.value.chapterId,
                     pageNum = index + 1,
-                    totalPages = totalPages
+                    totalPages = _uiState.value.pages.size
                 )
+            )
 
+            // Auto-delete logic still runs immediately on last page
+            viewModelScope.launch {
+                val totalPages = _uiState.value.pages.size
                 if (index >= totalPages - 1 && totalPages > 0) {
+                    // Flush progress immediately for the last page
+                    readerRepository.saveProgress(
+                        seriesId = _uiState.value.seriesId,
+                        volumeId = _uiState.value.volumeId,
+                        chapterId = _uiState.value.chapterId,
+                        pageNum = index + 1,
+                        totalPages = totalPages,
+                        resolvedLibraryId = cachedLibraryId
+                    )
+
                     val settings = _uiState.value.settings
                     val currentChapterId = _uiState.value.chapterId
                     when (settings.autoDeleteOption) {
@@ -242,5 +310,10 @@ class ReaderViewModel : ViewModel() {
             previousPage()
         }
         return true
+    }
+
+    override fun onCleared() {
+        flushProgress()
+        super.onCleared()
     }
 }

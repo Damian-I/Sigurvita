@@ -42,7 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
-import com.zemmy.sigurvita.core.model.DownloadFormat
+
 import com.zemmy.sigurvita.core.model.DownloadLocation
 import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReadingMode
@@ -224,19 +224,6 @@ fun SettingsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(stringResource(R.string.download_file_format), style = MaterialTheme.typography.bodyLarge)
-            Row(modifier = Modifier.padding(vertical = 8.dp)) {
-                DownloadFormat.entries.forEach { fmt ->
-                    FilterChip(
-                        selected = (settings.downloadFormat == fmt),
-                        onClick = { viewModel.updateDownloadFormat(fmt) },
-                        label = { Text(fmt.displayName) },
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                }
-            }
 
             Spacer(modifier = Modifier.height(8.dp))
 

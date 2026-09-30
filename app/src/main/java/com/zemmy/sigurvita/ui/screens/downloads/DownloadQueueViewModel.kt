@@ -3,7 +3,6 @@ package com.zemmy.sigurvita.ui.screens.downloads
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
-import com.zemmy.sigurvita.core.data.repository.DownloadRepository
 import com.zemmy.sigurvita.core.model.DownloadStatus
 import com.zemmy.sigurvita.core.model.DownloadTask
 import kotlinx.coroutines.flow.SharingStarted
@@ -14,7 +13,7 @@ import kotlinx.coroutines.launch
 class DownloadQueueViewModel : ViewModel() {
 
     private val app = SigurvitaApp.instance
-    private val repository = DownloadRepository(app.database, app)
+    private val repository = app.downloadRepository
 
     val downloads: StateFlow<List<DownloadTask>> = repository.downloadsFlow.stateIn(
         scope = viewModelScope,

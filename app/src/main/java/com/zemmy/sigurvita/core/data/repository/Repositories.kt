@@ -25,7 +25,7 @@ import com.zemmy.sigurvita.core.data.db.entity.DownloadTaskEntity
 import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import com.zemmy.sigurvita.core.download.DownloadWorker
 import com.zemmy.sigurvita.core.model.Chapter
-import com.zemmy.sigurvita.core.model.DownloadFormat
+
 import com.zemmy.sigurvita.core.model.DownloadStatus
 import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.core.model.Library
@@ -34,7 +34,7 @@ import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.model.ReadingListItem
 import com.zemmy.sigurvita.core.model.Series
 import com.zemmy.sigurvita.core.model.Volume
-import com.zemmy.sigurvita.ui.screens.readinglist.naturalCompare
+import com.zemmy.sigurvita.core.util.naturalCompare
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -636,7 +636,17 @@ class ReaderRepository(
         }
     }
 
-    suspend fun saveProgress(seriesId: Int, volumeId: Int, chapterId: Int, pageNum: Int, totalPages: Int = 0) = withContext(Dispatchers.IO) {
+    /**
+     * @param resolvedLibraryId If > 0, skips expensive API lookups to resolve it
+     */
+    suspend fun saveProgress(
+        seriesId: Int,
+        volumeId: Int,
+        chapterId: Int,
+        pageNum: Int,
+        totalPages: Int = 0,
+        resolvedLibraryId: Int = 0
+    ) = withContext(Dispatchers.IO) {
         val prefs = preferencesRepository.readerSettingsFlow.first()
         if (prefs.isIncognitoMode) {
             return@withContext
@@ -644,7 +654,7 @@ class ReaderRepository(
 
         var resolvedSeriesId = seriesId
         var resolvedVolumeId = volumeId
-        var resolvedLibraryId = 0
+        var libraryId = resolvedLibraryId
 
         if (resolvedSeriesId <= 0 || resolvedVolumeId <= 0) {
             try {
@@ -657,31 +667,32 @@ class ReaderRepository(
             } catch (_: Exception) {}
         }
 
-        if (resolvedSeriesId > 0) {
+        // Only resolve libraryId from network if caller didn't provide it
+        if (libraryId <= 0 && resolvedSeriesId > 0) {
             try {
                 val sRes = api.getSeriesDetail(resolvedSeriesId)
                 if (sRes.isSuccessful && sRes.body() != null) {
-                    resolvedLibraryId = sRes.body()!!.libraryId
+                    libraryId = sRes.body()!!.libraryId
                 }
             } catch (_: Exception) {
                 try {
                     val sRes2 = api.getSeriesById(resolvedSeriesId)
                     if (sRes2.isSuccessful && sRes2.body() != null) {
-                        resolvedLibraryId = sRes2.body()!!.libraryId
+                        libraryId = sRes2.body()!!.libraryId
                     }
                 } catch (_: Exception) {}
             }
         }
 
-        if (resolvedLibraryId <= 0) {
+        if (libraryId <= 0) {
             try {
                 val libs = api.getLibraries()
                 if (libs.isSuccessful && !libs.body().isNullOrEmpty()) {
-                    resolvedLibraryId = libs.body()!!.first().id
+                    libraryId = libs.body()!!.first().id
                 }
             } catch (_: Exception) {}
         }
-        if (resolvedLibraryId <= 0) resolvedLibraryId = 1
+        if (libraryId <= 0) libraryId = 1
 
         val isFinished = totalPages > 0 && pageNum >= totalPages
         val nowIso = Instant.now().toString()
@@ -691,7 +702,7 @@ class ReaderRepository(
                 chapterId = chapterId,
                 pageNum = pageNum,
                 seriesId = resolvedSeriesId,
-                libraryId = resolvedLibraryId,
+                libraryId = libraryId,
                 bookScrollId = null,
                 lastModifiedUtc = nowIso
             )
@@ -712,7 +723,7 @@ class ReaderRepository(
 class DownloadRepository(
     private val database: SigurvitaDatabase,
     private val context: Context,
-    private val preferencesRepository: UserPreferencesRepository = UserPreferencesRepository(context)
+    private val preferencesRepository: UserPreferencesRepository = com.zemmy.sigurvita.SigurvitaApp.instance.userPreferencesRepository
 ) {
     val downloadsFlow: Flow<List<DownloadTask>> = database.downloadDao().getAllDownloads().map { entities ->
         entities.map { entity ->
@@ -743,8 +754,7 @@ class DownloadRepository(
         totalPages: Int,
         libraryName: String = "Downloads",
         seriesName: String = "",
-        chapterNumber: String = "",
-        downloadFormat: DownloadFormat = DownloadFormat.CBZ
+        chapterNumber: String = ""
     ) = withContext(Dispatchers.IO) {
         val task = DownloadTaskEntity(
             chapterId = chapterId,
@@ -768,7 +778,6 @@ class DownloadRepository(
             .putString("seriesName", seriesName)
             .putString("chapterNumber", chapterNumber)
             .putString("title", title)
-            .putString("downloadFormat", downloadFormat.name)
             .build()
 
         val constraints = Constraints.Builder()

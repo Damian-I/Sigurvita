@@ -11,7 +11,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
-import com.zemmy.sigurvita.core.model.DownloadFormat
+
 import com.zemmy.sigurvita.core.model.DownloadLocation
 import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderSettings
@@ -45,7 +45,7 @@ class UserPreferencesRepository(private val context: Context) {
         val TOUCH_EDGE_NAV = booleanPreferencesKey("touch_edge_nav")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val DOWNLOAD_LOCATION = stringPreferencesKey("download_location")
-        val DOWNLOAD_FORMAT = stringPreferencesKey("download_format")
+
         val DOWNLOAD_PATH = stringPreferencesKey("download_path")
         val AUTO_DELETE_OPTION = stringPreferencesKey("auto_delete_option")
         val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")
@@ -104,12 +104,6 @@ class UserPreferencesRepository(private val context: Context) {
                 DownloadLocation.DOCUMENTS
             }
 
-            val formatStr = preferences[Keys.DOWNLOAD_FORMAT]
-            val downloadFormat = try {
-                if (formatStr != null) DownloadFormat.valueOf(formatStr) else DownloadFormat.CBZ
-            } catch (_: Exception) {
-                DownloadFormat.CBZ
-            }
 
             val defaultPath = File(Environment.getExternalStorageDirectory(), location.folderName).absolutePath
             val rawPath = preferences[Keys.DOWNLOAD_PATH] ?: ""
@@ -125,7 +119,7 @@ class UserPreferencesRepository(private val context: Context) {
                 touchEdgeNavigationEnabled = preferences[Keys.TOUCH_EDGE_NAV] ?: true,
                 keepScreenOn = preferences[Keys.KEEP_SCREEN_ON] ?: true,
                 downloadLocation = location,
-                downloadFormat = downloadFormat,
+
                 downloadPath = downloadPath,
                 autoDeleteOption = autoDeleteOption,
                 isIncognitoMode = incognito
@@ -218,11 +212,6 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
-    suspend fun updateDownloadFormat(format: DownloadFormat) {
-        context.dataStore.edit { preferences ->
-            preferences[Keys.DOWNLOAD_FORMAT] = format.name
-        }
-    }
 
     suspend fun updateDownloadPath(path: String) {
         context.dataStore.edit { preferences ->
