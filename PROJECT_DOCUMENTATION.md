@@ -88,7 +88,8 @@ com.zemmy.sigurvita/
 - `MainActivity` observes server configuration state to determine whether to start at `Screen.Auth` or `Screen.Home`.
 
 ### 4.3 Data Layer & Repositories (`core.data`)
-- **API (`KavitaApi`)**: Exposes endpoints for authentication, library listing, series details, chapter lists, chapter pages, and downloads.
+- **API (`KavitaApi`)**: Exposes Retrofit endpoints for authentication, library listing, series details, chapter lists, chapter pages, and downloads matching the official Kavita API specification.
+  - **Official Kavita API Reference**: [Kavita API Documentation](https://www.kavitareader.com/docs/api/#/)
 - **Database (`SigurvitaDatabase`, `Daos`, `Entities`)**: Provides local offline caching for series, chapters, pages, and download queue items.
 - **Repositories (`Repositories.kt`)**: Implements single-source-of-truth or offline-first patterns by coordinating between `KavitaApi` and Room DAOs.
 
@@ -122,3 +123,6 @@ When modifying or extending Sigurvita, adhere to the following guidelines:
    - Write idiomatic Kotlin.
    - Utilize coroutines and Flows (`StateFlow`, `SharedFlow`) for asynchronous operations.
    - Maintain Material 3 consistency across all UI components.
+
+5. **Kavita API Reference**:
+   - When updating or adding REST endpoints, DTOs, or authentication parameters, always cross-reference the official [Kavita API Documentation](https://www.kavitareader.com/docs/api/#/).

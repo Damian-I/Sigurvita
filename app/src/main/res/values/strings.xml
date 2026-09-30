@@ -1,3 +1,90 @@
 <resources>
     <string name="app_name">Sigurvita</string>
+    <string name="retry">Retry</string>
+    <string name="cancel">Cancel</string>
+    <string name="create">Create</string>
+    <string name="back">Back</string>
+    <string name="settings">Settings</string>
+    <string name="downloads">Downloads</string>
+    <string name="reading_lists">Reading Lists</string>
+    <string name="search">Search</string>
+    <string name="clear">Clear</string>
+    <string name="sort">Sort</string>
+
+    <!-- Folder Picker -->
+    <string name="select_download_folder">Select Download Folder</string>
+    <string name="select_this_folder">Select This Folder</string>
+    <string name="create_new_folder">Create New Folder</string>
+    <string name="folder_name">Folder Name</string>
+    <string name="create_folder_desc">Create Folder</string>
+    <string name="up_desc">Up</string>
+    <string name="folder_desc">Folder</string>
+    <string name="parent_dir_up">.. (Up one level)</string>
+
+    <!-- Mass Download -->
+    <string name="mass_download_issues">Mass Download Issues</string>
+    <string name="unread_only">Unread Only</string>
+    <string name="unread_issues_count">%d unread issues</string>
+    <string name="all_issues_count">All %d issues</string>
+    <string name="select_quantity_to_download">Select Quantity to Download</string>
+    <string name="all_count">All (%d)</string>
+    <string name="download_count">Download (%d)</string>
+
+    <!-- Auth -->
+    <string name="self_hosted_kavita_client">Self-hosted Kavita Client</string>
+    <string name="kavita_server_url">Kavita Server URL</string>
+    <string name="kavita_url_placeholder">https://kavita.example.com</string>
+    <string name="api_key_token">API Key / OPDS Token</string>
+    <string name="connecting">Connecting…</string>
+    <string name="connect_to_server">Connect to Server</string>
+
+    <!-- Download Queue -->
+    <string name="offline_downloads">Offline Downloads</string>
+    <string name="pause_all">Pause All</string>
+    <string name="resume_all">Resume All</string>
+    <string name="clear_completed">Clear Completed</string>
+    <string name="pause_task">Pause Task</string>
+    <string name="resume_task">Resume Task</string>
+    <string name="cancel_delete_task">Cancel / Delete Task</string>
+    <string name="no_download_tasks">No offline download tasks</string>
+    <string name="status_format">Status: %1$s (%2$d/%3$d pages)</string>
+    <string name="error_format">Error: %s</string>
+
+    <!-- Home -->
+    <string name="toggle_incognito">Toggle Incognito Mode</string>
+    <string name="all_libraries">All Libraries</string>
+    <string name="incognito_active_message">Incognito Mode Active: Reading progress is private and won\'t sync to Kavita.</string>
+    <string name="on_deck_title">On Deck (Continue Reading)</string>
+    <string name="recently_updated_title">Recently Updated</string>
+    <string name="libraries_title">Libraries</string>
+
+    <!-- Reader -->
+    <string name="page_indicator">Page %1$d of %2$d</string>
+    <string name="page_desc">Page %d</string>
+
+    <!-- Reading List & Series Detail / Downloads -->
+    <string name="mass_download">Mass Download</string>
+    <string name="cancel_download">Cancel Download</string>
+    <string name="download_failed_retry">Download Failed - Tap to Retry</string>
+    <string name="downloaded">Downloaded</string>
+    <string name="download_chapter">Download Chapter</string>
+
+    <!-- Settings -->
+    <string name="reader_configuration">Reader Configuration</string>
+    <string name="reading_mode">Reading Mode</string>
+    <string name="fit_mode">Fit Mode</string>
+    <string name="volume_key_nav">Volume Key Page Navigation</string>
+    <string name="volume_key_nav_subtitle">Use hardware volume keys to flip pages</string>
+    <string name="invert_volume_keys">Invert Volume Keys</string>
+    <string name="invert_volume_keys_subtitle">Invert volume up/down direction</string>
+    <string name="keep_screen_on">Keep Screen On</string>
+    <string name="keep_screen_on_subtitle">Prevent display timeout while reading</string>
+    <string name="default_storage_folder">Default Storage Folder</string>
+    <string name="download_file_format">Download File Format</string>
+    <string name="custom_download_folder_path">Custom Download Folder Path</string>
+    <string name="default_documents_sigurvita">Default: Documents/Sigurvita</string>
+    <string name="auto_delete_local_downloads">Auto-Delete Local Downloads</string>
+    <string name="auto_delete_subtitle">Automatically clean up local files after reading (never affects Kavita server files)</string>
+    <string name="disconnect_logout">Disconnect Server &amp; Logout</string>
+    <string name="browse_folder">Browse Folder</string>
 </resources>

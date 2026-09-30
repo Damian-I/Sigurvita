@@ -33,6 +33,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import com.zemmy.sigurvita.R
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,11 +81,11 @@ fun FolderPickerDialog(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Select Download Folder",
+                    text = stringResource(R.string.select_download_folder),
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                 )
                 IconButton(onClick = { showNewFolderDialog = true }) {
-                    Icon(Icons.Default.CreateNewFolder, contentDescription = "Create Folder")
+                    Icon(Icons.Default.CreateNewFolder, contentDescription = stringResource(R.string.create_folder_desc))
                 }
             }
         },
@@ -121,12 +123,12 @@ fun FolderPickerDialog(
                                 ) {
                                     Icon(
                                         Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = "Up",
+                                        contentDescription = stringResource(R.string.up_desc),
                                         tint = MaterialTheme.colorScheme.primary
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Text(
-                                        text = ".. (Up one level)",
+                                        text = stringResource(R.string.parent_dir_up),
                                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
                                     )
                                 }
@@ -149,7 +151,7 @@ fun FolderPickerDialog(
                             ) {
                                 Icon(
                                     Icons.Default.Folder,
-                                    contentDescription = "Folder",
+                                    contentDescription = stringResource(R.string.folder_desc),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
@@ -167,12 +169,12 @@ fun FolderPickerDialog(
         },
         confirmButton = {
             Button(onClick = { onFolderSelected(currentDir.absolutePath) }) {
-                Text("Select This Folder")
+                Text(stringResource(R.string.select_this_folder))
             }
         },
         dismissButton = {
             OutlinedButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -180,12 +182,12 @@ fun FolderPickerDialog(
     if (showNewFolderDialog) {
         AlertDialog(
             onDismissRequest = { showNewFolderDialog = false },
-            title = { Text("Create New Folder") },
+            title = { Text(stringResource(R.string.create_new_folder)) },
             text = {
                 OutlinedTextField(
                     value = newFolderName,
                     onValueChange = { newFolderName = it },
-                    label = { Text("Folder Name") },
+                    label = { Text(stringResource(R.string.folder_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -207,7 +209,7 @@ fun FolderPickerDialog(
                     },
                     enabled = newFolderName.isNotBlank()
                 ) {
-                    Text("Create")
+                    Text(stringResource(R.string.create))
                 }
             },
             dismissButton = {
@@ -215,7 +217,7 @@ fun FolderPickerDialog(
                     newFolderName = ""
                     showNewFolderDialog = false
                 }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )

@@ -22,6 +22,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.zemmy.sigurvita.R
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.zemmy.sigurvita.core.model.FitMode
@@ -141,7 +143,7 @@ private fun ZoomableImage(
                 .data(page.imageUrl)
                 .crossfade(true)
                 .build(),
-            contentDescription = "Page ${page.pageNumber}",
+            contentDescription = stringResource(R.string.page_desc, page.pageNumber),
             contentScale = contentScale,
             modifier = Modifier
                 .fillMaxSize()

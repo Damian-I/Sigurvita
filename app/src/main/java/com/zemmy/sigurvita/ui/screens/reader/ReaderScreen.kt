@@ -28,6 +28,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.res.stringResource
+import com.zemmy.sigurvita.R
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -102,10 +104,10 @@ fun ReaderScreen(
                 modifier = Modifier.align(Alignment.TopCenter)
             ) {
                 TopAppBar(
-                    title = { Text("Page ${state.currentPageIndex + 1} of ${state.pages.size}") },
+                    title = { Text(stringResource(R.string.page_indicator, state.currentPageIndex + 1, state.pages.size)) },
                     navigationIcon = {
                         IconButton(onClick = onBackClick) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(

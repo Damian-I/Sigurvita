@@ -33,6 +33,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.res.stringResource
+import com.zemmy.sigurvita.R
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,10 +72,10 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text(stringResource(R.string.settings)) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 }
             )
@@ -87,14 +89,14 @@ fun SettingsScreen(
                 .padding(16.dp)
         ) {
             Text(
-                text = "Reader Configuration",
+                text = stringResource(R.string.reader_configuration),
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.primary
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Text("Reading Mode", style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.reading_mode), style = MaterialTheme.typography.bodyLarge)
             Row(modifier = Modifier.padding(vertical = 8.dp)) {
                 ReadingMode.entries.forEach { mode ->
                     FilterChip(
@@ -108,7 +110,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Text("Fit Mode", style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.fit_mode), style = MaterialTheme.typography.bodyLarge)
             Row(modifier = Modifier.padding(vertical = 8.dp)) {
                 FitMode.entries.forEach { mode ->
                     FilterChip(
@@ -127,9 +129,9 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Volume Key Page Navigation", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.volume_key_nav), style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Use hardware volume keys to flip pages",
+                        stringResource(R.string.volume_key_nav_subtitle),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -147,9 +149,9 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Invert Volume Keys", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.invert_volume_keys), style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Invert volume up/down direction",
+                        stringResource(R.string.invert_volume_keys_subtitle),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -167,9 +169,9 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Keep Screen On", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.keep_screen_on), style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Prevent display timeout while reading",
+                        stringResource(R.string.keep_screen_on_subtitle),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -183,14 +185,14 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "Offline Downloads",
+                text = stringResource(R.string.offline_downloads),
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.primary
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text("Default Storage Folder", style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.default_storage_folder), style = MaterialTheme.typography.bodyLarge)
             Row(modifier = Modifier.padding(vertical = 8.dp)) {
                 DownloadLocation.entries.forEach { loc ->
                     FilterChip(
@@ -204,7 +206,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text("Download File Format", style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.download_file_format), style = MaterialTheme.typography.bodyLarge)
             Row(modifier = Modifier.padding(vertical = 8.dp)) {
                 DownloadFormat.entries.forEach { fmt ->
                     FilterChip(
@@ -225,8 +227,8 @@ fun SettingsScreen(
                 OutlinedTextField(
                     value = settings.downloadPath,
                     onValueChange = { viewModel.updateDownloadPath(it) },
-                    label = { Text("Custom Download Folder Path") },
-                    placeholder = { Text("Default: Documents/Sigurvita") },
+                    label = { Text(stringResource(R.string.custom_download_folder_path)) },
+                    placeholder = { Text(stringResource(R.string.default_documents_sigurvita)) },
                     singleLine = true,
                     modifier = Modifier.weight(1f)
                 )
@@ -234,7 +236,7 @@ fun SettingsScreen(
                 IconButton(onClick = { showFolderPicker = true }) {
                     Icon(
                         Icons.Default.FolderOpen,
-                        contentDescription = "Browse Folder",
+                        contentDescription = stringResource(R.string.browse_folder),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -242,9 +244,9 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text("Auto-Delete Local Downloads", style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.auto_delete_local_downloads), style = MaterialTheme.typography.bodyLarge)
             Text(
-                text = "Automatically clean up local files after reading (never affects Kavita server files)",
+                text = stringResource(R.string.auto_delete_subtitle),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -271,7 +273,7 @@ fun SettingsScreen(
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Disconnect Server & Logout")
+                Text(stringResource(R.string.disconnect_logout))
             }
         }
     }

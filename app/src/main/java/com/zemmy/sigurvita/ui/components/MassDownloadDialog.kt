@@ -21,8 +21,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.zemmy.sigurvita.R
 
 @Composable
 fun MassDownloadDialog(
@@ -47,7 +49,7 @@ fun MassDownloadDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "Mass Download Issues",
+                text = stringResource(R.string.mass_download_issues),
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
             )
         },
@@ -60,11 +62,11 @@ fun MassDownloadDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Unread Only",
+                            text = stringResource(R.string.unread_only),
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
                         )
                         Text(
-                            text = if (unreadOnly) "$unreadIssuesCount unread issues" else "All $totalAvailableIssues issues",
+                            text = if (unreadOnly) stringResource(R.string.unread_issues_count, unreadIssuesCount) else stringResource(R.string.all_issues_count, totalAvailableIssues),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -78,7 +80,7 @@ fun MassDownloadDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = "Select Quantity to Download",
+                    text = stringResource(R.string.select_quantity_to_download),
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
                 )
 
@@ -94,7 +96,7 @@ fun MassDownloadDialog(
                                 FilterChip(
                                     selected = (selectedCount == count),
                                     onClick = { selectedCount = count },
-                                    label = { Text(if (count == maxAvailable) "All ($count)" else "$count") }
+                                    label = { Text(if (count == maxAvailable) stringResource(R.string.all_count, count) else count.toString()) }
                                 )
                             }
                         }
@@ -110,12 +112,12 @@ fun MassDownloadDialog(
                 },
                 enabled = selectedCount > 0
             ) {
-                Text("Download ($selectedCount)")
+                Text(stringResource(R.string.download_count, selectedCount))
             }
         },
         dismissButton = {
             OutlinedButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )

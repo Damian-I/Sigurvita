@@ -33,6 +33,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.res.stringResource
+import com.zemmy.sigurvita.R
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -56,23 +58,23 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Sigurvita", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.app_name), fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(onClick = { viewModel.toggleIncognitoMode() }) {
                         Icon(
                             imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = "Toggle Incognito Mode",
+                            contentDescription = stringResource(R.string.toggle_incognito),
                             tint = if (state.isIncognitoMode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
                         )
                     }
                     IconButton(onClick = onReadingListsClick) {
-                        Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = "Reading Lists")
+                        Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = stringResource(R.string.reading_lists))
                     }
                     IconButton(onClick = onDownloadsClick) {
-                        Icon(Icons.Default.Download, contentDescription = "Downloads")
+                        Icon(Icons.Default.Download, contentDescription = stringResource(R.string.downloads))
                     }
                     IconButton(onClick = onSettingsClick) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings))
                     }
                 }
             )
@@ -111,7 +113,7 @@ fun HomeScreen(
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = "Incognito Mode Active: Reading progress is private and won't sync to Kavita.",
+                                text = stringResource(R.string.incognito_active_message),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer
                             )
@@ -120,7 +122,7 @@ fun HomeScreen(
                 }
 
                 if (state.onDeckSeries.isNotEmpty()) {
-                    SectionHeader(title = "On Deck (Continue Reading)")
+                    SectionHeader(title = stringResource(R.string.on_deck_title))
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -137,7 +139,7 @@ fun HomeScreen(
                 }
 
                 if (state.recentlyUpdatedSeries.isNotEmpty()) {
-                    SectionHeader(title = "Recently Updated")
+                    SectionHeader(title = stringResource(R.string.recently_updated_title))
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -153,7 +155,7 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(20.dp))
                 }
 
-                SectionHeader(title = "Libraries")
+                SectionHeader(title = stringResource(R.string.libraries_title))
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -162,7 +164,7 @@ fun HomeScreen(
                         FilterChip(
                             selected = (state.selectedLibraryId == 0),
                             onClick = { viewModel.selectLibrary(0) },
-                            label = { Text("All Libraries") }
+                            label = { Text(stringResource(R.string.all_libraries)) }
                         )
                     }
                     items(state.libraries, key = { it.id }) { library ->

@@ -19,10 +19,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.zemmy.sigurvita.R
 
 @Composable
 fun AuthScreen(
@@ -47,12 +49,12 @@ fun AuthScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = "Sigurvita",
+                text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.primary
             )
             Text(
-                text = "Self-hosted Kavita Client",
+                text = stringResource(R.string.self_hosted_kavita_client),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -62,8 +64,8 @@ fun AuthScreen(
             OutlinedTextField(
                 value = state.serverUrl,
                 onValueChange = { viewModel.onServerUrlChanged(it) },
-                label = { Text("Kavita Server URL") },
-                placeholder = { Text("https://kavita.example.com") },
+                label = { Text(stringResource(R.string.kavita_server_url)) },
+                placeholder = { Text(stringResource(R.string.kavita_url_placeholder)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -73,7 +75,7 @@ fun AuthScreen(
             OutlinedTextField(
                 value = state.apiKey,
                 onValueChange = { viewModel.onApiKeyChanged(it) },
-                label = { Text("API Key / OPDS Token") },
+                label = { Text(stringResource(R.string.api_key_token)) },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth()
@@ -102,9 +104,9 @@ fun AuthScreen(
                         color = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.padding(end = 8.dp)
                     )
-                    Text("Connecting...")
+                    Text(stringResource(R.string.connecting))
                 } else {
-                    Text("Connect to Server")
+                    Text(stringResource(R.string.connect_to_server))
                 }
             }
         }

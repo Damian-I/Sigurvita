@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zemmy.sigurvita.core.model.DownloadStatus
 import com.zemmy.sigurvita.ui.components.CoverImage
+import androidx.compose.ui.res.stringResource
+import com.zemmy.sigurvita.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,25 +53,25 @@ fun DownloadQueueScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Offline Downloads") },
+                title = { Text(stringResource(R.string.offline_downloads)) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
                     if (downloads.any { it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.QUEUED }) {
                         IconButton(onClick = { viewModel.pauseAll() }) {
-                            Icon(Icons.Default.Pause, contentDescription = "Pause All")
+                            Icon(Icons.Default.Pause, contentDescription = stringResource(R.string.pause_all))
                         }
                     } else if (downloads.any { it.status == DownloadStatus.PAUSED || it.status == DownloadStatus.FAILED }) {
                         IconButton(onClick = { viewModel.resumeAll() }) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = "Resume All")
+                            Icon(Icons.Default.PlayArrow, contentDescription = stringResource(R.string.resume_all))
                         }
                     }
                     if (downloads.any { it.status == DownloadStatus.COMPLETED }) {
                         IconButton(onClick = { viewModel.clearCompleted() }) {
-                            Icon(Icons.Default.DeleteSweep, contentDescription = "Clear Completed")
+                            Icon(Icons.Default.DeleteSweep, contentDescription = stringResource(R.string.clear_completed))
                         }
                     }
                 }
@@ -85,7 +87,7 @@ fun DownloadQueueScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "No offline download tasks",
+                    text = stringResource(R.string.no_download_tasks),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -134,7 +136,7 @@ fun DownloadQueueScreen(
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Status: ${task.status.name} (${task.downloadedPages}/${task.totalPages} pages)",
+                                    text = stringResource(R.string.status_format, task.status.name, task.downloadedPages, task.totalPages),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = when (task.status) {
                                         DownloadStatus.COMPLETED -> MaterialTheme.colorScheme.primary
@@ -146,7 +148,7 @@ fun DownloadQueueScreen(
                                 if (!task.errorMessage.isNullOrBlank()) {
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "Error: ${task.errorMessage}",
+                                        text = stringResource(R.string.error_format, task.errorMessage ?: ""),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.error,
                                         maxLines = 2,
@@ -164,15 +166,15 @@ fun DownloadQueueScreen(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 if (task.status == DownloadStatus.DOWNLOADING || task.status == DownloadStatus.QUEUED) {
                                     IconButton(onClick = { viewModel.pauseDownload(task.chapterId) }) {
-                                        Icon(Icons.Default.Pause, contentDescription = "Pause Task")
+                                        Icon(Icons.Default.Pause, contentDescription = stringResource(R.string.pause_task))
                                     }
                                 } else if (task.status == DownloadStatus.PAUSED || task.status == DownloadStatus.FAILED) {
                                     IconButton(onClick = { viewModel.resumeDownload(task.chapterId) }) {
-                                        Icon(Icons.Default.PlayArrow, contentDescription = "Resume Task")
+                                        Icon(Icons.Default.PlayArrow, contentDescription = stringResource(R.string.resume_task))
                                     }
                                 }
                                 IconButton(onClick = { viewModel.cancelDownload(task.chapterId) }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Cancel / Delete Task")
+                                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.cancel_delete_task))
                                 }
                             }
                         }
