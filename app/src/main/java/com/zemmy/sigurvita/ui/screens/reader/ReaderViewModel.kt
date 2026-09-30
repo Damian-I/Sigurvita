@@ -28,7 +28,9 @@ data class ReaderUiState(
     val chapterId: Int = 0,
     val seriesId: Int = 0,
     val volumeId: Int = 0,
-    val readingListId: Int = 0
+    val readingListId: Int = 0,
+    val showResumePrompt: Boolean = false,
+    val promptPageNum: Int = 0
 )
 
 class ReaderViewModel : ViewModel() {
@@ -73,20 +75,48 @@ class ReaderViewModel : ViewModel() {
                 chapterId = chapterId,
                 seriesId = seriesId,
                 volumeId = volumeId,
-                readingListId = readingListId
+                readingListId = readingListId,
+                showResumePrompt = false
             )
 
             val pageList = readerRepository.getPages(chapterId, totalPages)
             val savedPageNum = readerRepository.getProgress(chapterId)
-            val initialIndex = if (savedPageNum in 1..pageList.size) {
-                savedPageNum - 1
-            } else 0
 
-            _uiState.value = _uiState.value.copy(
-                pages = pageList,
-                currentPageIndex = initialIndex,
-                isLoading = false
-            )
+            val isCompletedOrLastPage = savedPageNum >= pageList.size && pageList.isNotEmpty()
+
+            if (isCompletedOrLastPage) {
+                _uiState.value = _uiState.value.copy(
+                    pages = pageList,
+                    currentPageIndex = 0,
+                    isLoading = false,
+                    showResumePrompt = true,
+                    promptPageNum = savedPageNum
+                )
+            } else {
+                val initialIndex = if (savedPageNum in 1..pageList.size) {
+                    savedPageNum - 1
+                } else 0
+
+                _uiState.value = _uiState.value.copy(
+                    pages = pageList,
+                    currentPageIndex = initialIndex,
+                    isLoading = false,
+                    showResumePrompt = false,
+                    promptPageNum = 0
+                )
+            }
+        }
+    }
+
+    fun dismissResumePrompt(startFromBeginning: Boolean) {
+        val state = _uiState.value
+        val promptPage = state.promptPageNum
+        _uiState.value = state.copy(showResumePrompt = false)
+        if (startFromBeginning) {
+            onPageChanged(0)
+        } else {
+            val resumeIndex = if (promptPage in 1..state.pages.size) promptPage - 1 else 0
+            onPageChanged(resumeIndex)
         }
     }
 
@@ -105,8 +135,32 @@ class ReaderViewModel : ViewModel() {
 
                 if (index >= totalPages - 1 && totalPages > 0) {
                     val settings = _uiState.value.settings
-                    if (settings.autoDeleteOption == AutoDeleteOption.IMMEDIATELY) {
-                        downloadRepository.deleteLocalChapter(_uiState.value.chapterId)
+                    val currentChapterId = _uiState.value.chapterId
+                    when (settings.autoDeleteOption) {
+                        AutoDeleteOption.IMMEDIATELY -> {
+                            downloadRepository.deleteLocalChapter(currentChapterId)
+                        }
+                        AutoDeleteOption.AFTER_1_ISSUE,
+                        AutoDeleteOption.AFTER_2_ISSUES,
+                        AutoDeleteOption.AFTER_5_ISSUES -> {
+                            preferencesRepository.addCompletedChapter(currentChapterId)
+                            val history = preferencesRepository.completedChapterHistoryFlow.first()
+                            val keepOffset = when (settings.autoDeleteOption) {
+                                AutoDeleteOption.AFTER_1_ISSUE -> 1
+                                AutoDeleteOption.AFTER_2_ISSUES -> 2
+                                AutoDeleteOption.AFTER_5_ISSUES -> 5
+                                else -> 1
+                            }
+                            val cutoffIndex = history.size - 1 - keepOffset
+                            if (cutoffIndex >= 0) {
+                                val toDelete = history.subList(0, cutoffIndex + 1)
+                                toDelete.forEach { chapterIdToDelete ->
+                                    downloadRepository.deleteLocalChapter(chapterIdToDelete)
+                                }
+                                preferencesRepository.removeCompletedChapters(toDelete)
+                            }
+                        }
+                        AutoDeleteOption.NEVER -> {}
                     }
                 }
             }

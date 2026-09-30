@@ -18,12 +18,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -84,6 +86,26 @@ fun ReaderScreen(
             .fillMaxSize()
             .background(Color.Black)
     ) {
+        if (state.showResumePrompt) {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissResumePrompt(startFromBeginning = true) },
+                title = { Text("Resume Position") },
+                text = {
+                    Text("You previously finished this issue (Page ${state.promptPageNum} of ${state.pages.size}). Would you like to start from the beginning or resume from the last page?")
+                },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.dismissResumePrompt(startFromBeginning = false) }) {
+                        Text("Resume Last Page")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissResumePrompt(startFromBeginning = true) }) {
+                        Text("Start from Beginning")
+                    }
+                }
+            )
+        }
+
         if (state.isLoading) {
             LoadingState()
         } else {

@@ -20,8 +20,10 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -137,6 +140,8 @@ fun SeriesDetailScreen(
         } else if (state.series != null) {
             val series = state.series!!
             val isSeriesCompleted = series.isCompleted || (state.chaptersRead >= state.totalChapters && state.totalChapters > 0)
+            val allChapters = state.volumes.flatMap { it.chapters }
+            val nextToReadChapterId = allChapters.firstOrNull { !it.isRead }?.id
 
             LazyColumn(
                 modifier = Modifier
@@ -200,8 +205,25 @@ fun SeriesDetailScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedButton(onClick = { viewModel.toggleMarkRead() }) {
-                                Text(if (isSeriesCompleted) "Mark Unread" else "Mark Read")
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Button(
+                                    onClick = {
+                                        val nextChapter = allChapters.firstOrNull { !it.isRead } ?: allChapters.firstOrNull()
+                                        if (nextChapter != null) {
+                                            onChapterClick(nextChapter.id, nextChapter.pages, nextChapter.volumeId)
+                                        }
+                                    }
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Resume")
+                                }
+                                OutlinedButton(onClick = { viewModel.toggleMarkRead() }) {
+                                    Text(if (isSeriesCompleted) "Mark Unread" else "Mark Read")
+                                }
                             }
                             if (series.summary?.isNotBlank() == true) {
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -227,6 +249,7 @@ fun SeriesDetailScreen(
                     volume.chapters.forEach { chapter ->
                         val downloadTask = state.downloadTasks[chapter.id]
                         val isDownloaded = chapter.isDownloaded || (downloadTask?.status == DownloadStatus.COMPLETED)
+                        val isNextUp = (chapter.id == nextToReadChapterId)
 
                         Card(
                             modifier = Modifier
@@ -235,7 +258,8 @@ fun SeriesDetailScreen(
                                 .clickable {
                                     onChapterClick(chapter.id, chapter.pages, volume.id)
                                 },
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            border = if (isNextUp) CardDefaults.outlinedCardBorder().copy(brush = SolidColor(MaterialTheme.colorScheme.primary)) else null,
+                            elevation = CardDefaults.cardElevation(defaultElevation = if (isNextUp) 4.dp else 2.dp)
                         ) {
                             Row(
                                 modifier = Modifier
@@ -270,6 +294,14 @@ fun SeriesDetailScreen(
                                                 text = "• Read",
                                                 style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                                                 color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.clickable { viewModel.toggleChapterRead(chapter) }
+                                            )
+                                        } else if (isNextUp) {
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "▶ Next to Read",
+                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.tertiary,
                                                 modifier = Modifier.clickable { viewModel.toggleChapterRead(chapter) }
                                             )
                                         } else {

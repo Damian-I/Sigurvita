@@ -96,11 +96,17 @@ com.zemmy.sigurvita/
 ### 4.4 Reader Experience (`ui.screens.reader`)
 - `ReaderScreen` and `ImageReader` provide a high-performance reading interface for pages.
 - `ReaderViewModel` manages page state, zoom, progression, and progress reporting back to the Kavita server.
+- **Resume Position Prompt**: When opening a previously completed issue (or moving to a completed next chapter), the reader presents a prompt dialog asking the user whether to start from the beginning or resume from the last page.
+- **Auto-Delete Local Downloads**: Integrates configurable automatic cleanup ("Immediately", "After 1 Issue", "After 2 Issues", "After 5 Issues") upon finishing a chapter, tracking completed history in `UserPreferencesRepository` and removing downloaded files, extracted CBZ caches, and empty parent directories up to the root download directory.
 - Hardware volume keys (`KEYCODE_VOLUME_UP` / `KEYCODE_VOLUME_DOWN` in `MainActivity`) are intercepted to enable physical page flipping.
 
 ### 4.5 Offline Downloads (`core.download.DownloadWorker`)
 - Background work managed via `WorkManager`.
 - Downloads chapter images and metadata so users can read offline without an active network connection.
+
+### 4.6 Series & Reading List Workflows (`ui.screens.seriesdetail` & `ui.screens.readinglist`)
+- **"Next to Read" Indicators**: Highlights the next unread issue in both Series detail views and Reading Lists with primary card borders and a `"▶ Next to Read"` indicator tag.
+- **Quick "Resume" Buttons**: Provides prominent "Resume" buttons in Series Detail and Reading List headers to immediately launch the user's next unread issue.
 
 ---
 
@@ -108,21 +114,24 @@ com.zemmy.sigurvita/
 
 When modifying or extending Sigurvita, adhere to the following guidelines:
 
-1. **Architecture Consistency**:
+1. **Documentation Maintenance**:
+   - Always update `PROJECT_DOCUMENTATION.md` whenever structural changes, new feature workflows, or data/architecture changes are introduced to maintain a single source of truth.
+
+2. **Architecture Consistency**:
    - Keep UI logic inside Jetpack Compose screens (`ui.screens.*`) and state management inside respective ViewModels.
    - Use Repository pattern (`core.data.repository`) for data fetching; never call `KavitaApi` directly from UI or ViewModels.
 
-2. **Navigation**:
+3. **Navigation**:
    - Add new screens to [Screen.kt](file:///home/zemmy/AndroidStudioProjects/Sigurvita/app/src/main/java/com/zemmy/sigurvita/ui/navigation/Screen.kt) with route strings and argument helpers.
    - Register new composable destinations in [NavGraph.kt](file:///home/zemmy/AndroidStudioProjects/Sigurvita/app/src/main/java/com/zemmy/sigurvita/ui/navigation/NavGraph.kt).
 
-3. **Database Changes**:
+4. **Database Changes**:
    - When modifying Room entities (`Entities.kt`) or DAOs (`Daos.kt`), increment database version in [SigurvitaDatabase.kt](file:///home/zemmy/AndroidStudioProjects/Sigurvita/app/src/main/java/com/zemmy/sigurvita/core/data/db/SigurvitaDatabase.kt) and provide proper migration strategies if needed.
 
-4. **Code Quality**:
+5. **Code Quality**:
    - Write idiomatic Kotlin.
    - Utilize coroutines and Flows (`StateFlow`, `SharedFlow`) for asynchronous operations.
    - Maintain Material 3 consistency across all UI components.
 
-5. **Kavita API Reference**:
+6. **Kavita API Reference**:
    - When updating or adding REST endpoints, DTOs, or authentication parameters, always cross-reference the official [Kavita API Documentation](https://www.kavitareader.com/docs/api/#/).

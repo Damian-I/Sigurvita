@@ -672,7 +672,8 @@ class ReaderRepository(
 
 class DownloadRepository(
     private val database: SigurvitaDatabase,
-    private val context: Context
+    private val context: Context,
+    private val preferencesRepository: UserPreferencesRepository = UserPreferencesRepository(context)
 ) {
     val downloadsFlow: Flow<List<DownloadTask>> = database.downloadDao().getAllDownloads().map { entities ->
         entities.map { entity ->
@@ -768,11 +769,17 @@ class DownloadRepository(
         )
     }
 
-    private fun cleanupEmptyDirectories(file: File?) {
+    private suspend fun cleanupEmptyDirectories(file: File?) {
         if (file == null) return
         try {
             var currentDir: File? = if (file.isDirectory) file.parentFile else file.parentFile
+            val settings = preferencesRepository.readerSettingsFlow.first()
+            val rootPath = settings.downloadPath
+
             while (currentDir != null && currentDir.exists()) {
+                if (currentDir.absolutePath == rootPath || currentDir.parentFile == null) {
+                    break
+                }
                 val remainingFiles = currentDir.listFiles()?.filter { !it.name.startsWith(".") }
                 if (remainingFiles.isNullOrEmpty()) {
                     val parent = currentDir.parentFile
@@ -812,6 +819,13 @@ class DownloadRepository(
             }
             cleanupEmptyDirectories(file)
         }
+        try {
+            val cbzCacheDir = File(context.cacheDir, "cbz_extracted/$chapterId")
+            if (cbzCacheDir.exists()) {
+                cbzCacheDir.deleteRecursively()
+            }
+        } catch (_: Exception) {}
+
         database.downloadDao().deleteDownloadTask(chapterId)
         database.chapterDao().updateDownloadStatus(chapterId, false, null)
     }

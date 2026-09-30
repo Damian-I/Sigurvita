@@ -48,6 +48,7 @@ class UserPreferencesRepository(private val context: Context) {
         val DOWNLOAD_PATH = stringPreferencesKey("download_path")
         val AUTO_DELETE_OPTION = stringPreferencesKey("auto_delete_option")
         val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")
+        val COMPLETED_CHAPTER_HISTORY = stringPreferencesKey("completed_chapter_history")
     }
 
     @Volatile
@@ -230,6 +231,39 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun updateIncognitoMode(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[Keys.INCOGNITO_MODE] = enabled
+        }
+    }
+
+    val completedChapterHistoryFlow: Flow<List<Int>> = context.dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { preferences ->
+            val raw = preferences[Keys.COMPLETED_CHAPTER_HISTORY] ?: ""
+            if (raw.isBlank()) emptyList()
+            else raw.split(",").mapNotNull { it.trim().toIntOrNull() }
+        }
+
+    suspend fun addCompletedChapter(chapterId: Int) {
+        context.dataStore.edit { preferences ->
+            val current = preferences[Keys.COMPLETED_CHAPTER_HISTORY] ?: ""
+            val list = if (current.isBlank()) mutableListOf()
+            else current.split(",").mapNotNull { it.trim().toIntOrNull() }.toMutableList()
+
+            list.remove(chapterId)
+            list.add(chapterId)
+
+            preferences[Keys.COMPLETED_CHAPTER_HISTORY] = list.joinToString(",")
+        }
+    }
+
+    suspend fun removeCompletedChapters(chapterIds: List<Int>) {
+        if (chapterIds.isEmpty()) return
+        context.dataStore.edit { preferences ->
+            val current = preferences[Keys.COMPLETED_CHAPTER_HISTORY] ?: ""
+            if (current.isNotBlank()) {
+                val list = current.split(",").mapNotNull { it.trim().toIntOrNull() }.toMutableList()
+                list.removeAll(chapterIds)
+                preferences[Keys.COMPLETED_CHAPTER_HISTORY] = list.joinToString(",")
+            }
         }
     }
 }
