@@ -18,6 +18,7 @@ data class HomeUiState(
     val selectedLibrarySeries: List<Series> = emptyList(),
     val onDeckSeries: List<Series> = emptyList(),
     val recentlyUpdatedSeries: List<Series> = emptyList(),
+    val isIncognitoMode: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
 )
@@ -36,6 +37,13 @@ class HomeViewModel : ViewModel() {
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            preferencesRepository.readerSettingsFlow.collect { settings ->
+                _uiState.value = _uiState.value.copy(
+                    isIncognitoMode = settings.isIncognitoMode
+                )
+            }
+        }
         loadData()
     }
 
@@ -48,7 +56,7 @@ class HomeViewModel : ViewModel() {
             val initialSeriesRes = libraryRepository.getSeriesForLibrary(0)
 
             if (librariesRes.isSuccess || onDeckRes.isSuccess || initialSeriesRes.isSuccess) {
-                _uiState.value = HomeUiState(
+                _uiState.value = _uiState.value.copy(
                     libraries = librariesRes.getOrDefault(emptyList()),
                     selectedLibraryId = 0,
                     selectedLibrarySeries = initialSeriesRes.getOrDefault(emptyList()),
@@ -75,6 +83,13 @@ class HomeViewModel : ViewModel() {
                 selectedLibrarySeries = seriesRes.getOrDefault(emptyList()),
                 isLoading = false
             )
+        }
+    }
+
+    fun toggleIncognitoMode() {
+        val newMode = !_uiState.value.isIncognitoMode
+        viewModelScope.launch {
+            preferencesRepository.updateIncognitoMode(newMode)
         }
     }
 }

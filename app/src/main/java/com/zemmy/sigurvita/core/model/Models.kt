@@ -17,6 +17,10 @@ enum class DownloadLocation(val displayName: String, val folderName: String) {
     DOWNLOADS("Downloads", "Download/Sigurvita")
 }
 
+enum class DownloadFormat(val displayName: String) {
+    CBZ("CBZ Archive (.cbz)"),
+    IMAGES("Extracted Images Folder")
+}
 enum class AutoDeleteOption(val displayName: String) {
     NEVER("Never (Keep Indefinitely)"),
     IMMEDIATELY("Immediately After Issue Read"),
@@ -41,8 +45,10 @@ data class ReaderSettings(
     val keepScreenOn: Boolean = true,
     val backgroundColorHex: String = "#000000",
     val downloadLocation: DownloadLocation = DownloadLocation.DOCUMENTS,
+    val downloadFormat: DownloadFormat = DownloadFormat.CBZ,
     val downloadPath: String = "",
-    val autoDeleteOption: AutoDeleteOption = AutoDeleteOption.NEVER
+    val autoDeleteOption: AutoDeleteOption = AutoDeleteOption.NEVER,
+    val isIncognitoMode: Boolean = false
 )
 
 data class Library(

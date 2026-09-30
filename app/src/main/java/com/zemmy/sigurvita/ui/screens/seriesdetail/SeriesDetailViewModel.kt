@@ -25,6 +25,7 @@ data class SeriesDetailUiState(
     val chaptersRead: Int = 0,
     val totalPages: Int = 0,
     val pagesRead: Int = 0,
+    val isIncognitoMode: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
 )
@@ -46,6 +47,13 @@ class SeriesDetailViewModel : ViewModel() {
             downloadRepository.downloadsFlow.collect { tasks ->
                 _uiState.value = _uiState.value.copy(
                     downloadTasks = tasks.associateBy { it.chapterId }
+                )
+            }
+        }
+        viewModelScope.launch {
+            preferencesRepository.readerSettingsFlow.collect { settings ->
+                _uiState.value = _uiState.value.copy(
+                    isIncognitoMode = settings.isIncognitoMode
                 )
             }
         }
@@ -233,6 +241,13 @@ class SeriesDetailViewModel : ViewModel() {
             } else {
                 seriesRepository.markSeriesUnread(series.id)
             }
+        }
+    }
+
+    fun toggleIncognitoMode() {
+        val newMode = !_uiState.value.isIncognitoMode
+        viewModelScope.launch {
+            preferencesRepository.updateIncognitoMode(newMode)
         }
     }
 }

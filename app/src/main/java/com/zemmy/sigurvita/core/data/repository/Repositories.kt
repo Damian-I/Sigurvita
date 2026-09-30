@@ -467,6 +467,9 @@ class SeriesRepository(
     }
 
     suspend fun markChapterRead(chapterId: Int, seriesId: Int = 0): Result<Boolean> = withContext(Dispatchers.IO) {
+        if (preferencesRepository.readerSettingsFlow.first().isIncognitoMode) {
+            return@withContext Result.success(true)
+        }
         try {
             val res = api.markMultipleRead(MarkMultipleDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
             if (res.isSuccessful) Result.success(true)
@@ -477,6 +480,9 @@ class SeriesRepository(
     }
 
     suspend fun markChapterUnread(chapterId: Int, seriesId: Int = 0): Result<Boolean> = withContext(Dispatchers.IO) {
+        if (preferencesRepository.readerSettingsFlow.first().isIncognitoMode) {
+            return@withContext Result.success(true)
+        }
         try {
             val res = api.markMultipleUnread(MarkMultipleDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
             if (res.isSuccessful) Result.success(true)
@@ -487,6 +493,9 @@ class SeriesRepository(
     }
 
     suspend fun markSeriesRead(seriesId: Int): Result<Boolean> = withContext(Dispatchers.IO) {
+        if (preferencesRepository.readerSettingsFlow.first().isIncognitoMode) {
+            return@withContext Result.success(true)
+        }
         try {
             val res = api.markSeriesRead(MarkSeriesDto(seriesId = seriesId))
             if (res.isSuccessful) Result.success(true)
@@ -497,6 +506,9 @@ class SeriesRepository(
     }
 
     suspend fun markSeriesUnread(seriesId: Int): Result<Boolean> = withContext(Dispatchers.IO) {
+        if (preferencesRepository.readerSettingsFlow.first().isIncognitoMode) {
+            return@withContext Result.success(true)
+        }
         try {
             val res = api.markSeriesUnread(MarkSeriesDto(seriesId = seriesId))
             if (res.isSuccessful) Result.success(true)
@@ -617,6 +629,10 @@ class ReaderRepository(
     }
 
     suspend fun saveProgress(seriesId: Int, volumeId: Int, chapterId: Int, pageNum: Int, totalPages: Int = 0) = withContext(Dispatchers.IO) {
+        if (preferencesRepository.readerSettingsFlow.first().isIncognitoMode) {
+            return@withContext
+        }
+
         val isFinished = totalPages > 0 && pageNum >= totalPages
         val nowIso = Instant.now().toString()
         try {
@@ -638,6 +654,9 @@ class ReaderRepository(
     }
 
     suspend fun markChapterRead(chapterId: Int, seriesId: Int = 0) = withContext(Dispatchers.IO) {
+        if (preferencesRepository.readerSettingsFlow.first().isIncognitoMode) {
+            return@withContext
+        }
         try {
             api.markMultipleRead(MarkMultipleDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
         } catch (_: Exception) {}

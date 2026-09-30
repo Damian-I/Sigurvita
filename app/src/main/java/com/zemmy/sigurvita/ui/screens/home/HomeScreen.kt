@@ -18,6 +18,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -54,6 +58,13 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text("Sigurvita", fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = { viewModel.toggleIncognitoMode() }) {
+                        Icon(
+                            imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = "Toggle Incognito Mode",
+                            tint = if (state.isIncognitoMode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                     IconButton(onClick = onReadingListsClick) {
                         Icon(Icons.Default.FormatListBulleted, contentDescription = "Reading Lists")
                     }
@@ -82,6 +93,32 @@ fun HomeScreen(
                     .padding(innerPadding)
                     .verticalScroll(rememberScrollState())
             ) {
+                if (state.isIncognitoMode) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.VisibilityOff,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "Incognito Mode Active: Reading progress is private and won't sync to Kavita.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        }
+                    }
+                }
+
                 if (state.onDeckSeries.isNotEmpty()) {
                     SectionHeader(title = "On Deck (Continue Reading)")
                     LazyRow(

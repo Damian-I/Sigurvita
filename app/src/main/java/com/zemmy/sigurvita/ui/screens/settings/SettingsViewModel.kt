@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
+import com.zemmy.sigurvita.core.model.DownloadFormat
 import com.zemmy.sigurvita.core.model.DownloadLocation
 import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderSettings
@@ -57,6 +58,12 @@ class SettingsViewModel : ViewModel() {
     fun updateDownloadLocation(location: DownloadLocation) {
         viewModelScope.launch {
             preferencesRepository.updateDownloadLocation(location)
+        }
+    }
+
+    fun updateDownloadFormat(format: DownloadFormat) {
+        viewModelScope.launch {
+            preferencesRepository.updateDownloadFormat(format)
         }
     }
 

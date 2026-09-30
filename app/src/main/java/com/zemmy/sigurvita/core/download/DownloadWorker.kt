@@ -7,13 +7,17 @@ import androidx.work.WorkerParameters
 import com.zemmy.sigurvita.core.data.api.NetworkClient
 import com.zemmy.sigurvita.core.data.db.SigurvitaDatabase
 import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
+import com.zemmy.sigurvita.core.model.DownloadFormat
 import com.zemmy.sigurvita.core.model.DownloadStatus
 import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 private fun sanitizeFileName(name: String): String {
     return name.replace(Regex("""[\\/:*?"<>|]"""), "_").trim()
@@ -44,6 +48,8 @@ class DownloadWorker(
         }
 
         val config = userPreferencesRepository.serverConfigFlow.first()
+        val settings = userPreferencesRepository.readerSettingsFlow.first()
+
         if (config.serverUrl.isBlank() || (config.apiKey.isBlank() && config.jwtToken.isBlank())) {
             val task = database.downloadDao().getDownloadByChapterId(chapterId)
             if (task != null) {
@@ -68,11 +74,11 @@ class DownloadWorker(
 
         database.downloadDao().updateProgress(chapterId, 0, DownloadStatus.DOWNLOADING)
 
-        val libraryName = sanitizeFileName(rawLibraryName.ifBlank { "Downloads" })
+        val libraryName = sanitizeFileName(rawLibraryName.ifBlank { "Comics" })
         val seriesName = sanitizeFileName(rawSeriesName.ifBlank { "Series" })
         val title = sanitizeFileName(rawTitle)
 
-        val customPath = userPreferencesRepository.readerSettingsFlow.first().downloadPath
+        val customPath = settings.downloadPath
         val safeAppDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             ?: File(context.filesDir, "downloads")
 
@@ -103,61 +109,63 @@ class DownloadWorker(
             targetFolder.mkdirs()
         }
 
-        var cbzFile = File(targetFolder, "$title.cbz")
         val baseUrl = config.serverUrl.trim().removeSuffix("/")
 
-        // Attempt 1: Download CBZ Archive directly from Kavita
-        try {
-            val downloadUrl = "$baseUrl/api/Download/chapter?chapterId=$chapterId"
-            val requestBuilder = Request.Builder().url(downloadUrl)
-            if (config.apiKey.isNotBlank()) {
-                requestBuilder.addHeader("x-api-key", config.apiKey)
-            }
-            if (config.jwtToken.isNotBlank()) {
-                requestBuilder.addHeader("Authorization", "Bearer ${config.jwtToken}")
-            }
-
-            val response = plainHttpClient.newCall(requestBuilder.build()).execute()
-            val responseBody = response.body
-
-            if (response.isSuccessful && responseBody != null) {
-                try {
-                    responseBody.byteStream().use { input ->
-                        FileOutputStream(cbzFile).use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                } catch (_: Exception) {
-                    // Fallback to safe internal/app dir
-                    val safeTargetFolder = File(safeAppDir, "$libraryName/$seriesName").apply { mkdirs() }
-                    cbzFile = File(safeTargetFolder, "$title.cbz")
-                    responseBody.byteStream().use { input ->
-                        FileOutputStream(cbzFile).use { output ->
-                            input.copyTo(output)
-                        }
-                    }
+        // Attempt 1: Download CBZ Archive directly from Kavita (if user wants CBZ format)
+        if (settings.downloadFormat == DownloadFormat.CBZ) {
+            var cbzFile = File(targetFolder, "$title.cbz")
+            try {
+                val downloadUrl = "$baseUrl/api/Download/chapter?chapterId=$chapterId"
+                val requestBuilder = Request.Builder().url(downloadUrl)
+                if (config.apiKey.isNotBlank()) {
+                    requestBuilder.addHeader("x-api-key", config.apiKey)
+                }
+                if (config.jwtToken.isNotBlank()) {
+                    requestBuilder.addHeader("Authorization", "Bearer ${config.jwtToken}")
                 }
 
-                if (cbzFile.exists() && cbzFile.length() > 0L) {
-                    database.downloadDao().updateDownloadResult(
-                        chapterId = chapterId,
-                        localPath = cbzFile.absolutePath,
-                        downloadedPages = totalPages,
-                        status = DownloadStatus.COMPLETED
-                    )
-                    database.chapterDao().updateDownloadStatus(
-                        chapterId = chapterId,
-                        isDownloaded = true,
-                        localPath = cbzFile.absolutePath
-                    )
-                    return Result.success()
+                val response = plainHttpClient.newCall(requestBuilder.build()).execute()
+                val responseBody = response.body
+
+                if (response.isSuccessful && responseBody != null) {
+                    try {
+                        responseBody.byteStream().use { input ->
+                            FileOutputStream(cbzFile).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // Fallback to safe internal/app dir
+                        val safeTargetFolder = File(safeAppDir, "$libraryName/$seriesName").apply { mkdirs() }
+                        cbzFile = File(safeTargetFolder, "$title.cbz")
+                        responseBody.byteStream().use { input ->
+                            FileOutputStream(cbzFile).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    }
+
+                    if (cbzFile.exists() && cbzFile.length() > 0L) {
+                        database.downloadDao().updateDownloadResult(
+                            chapterId = chapterId,
+                            localPath = cbzFile.absolutePath,
+                            downloadedPages = totalPages,
+                            status = DownloadStatus.COMPLETED
+                        )
+                        database.chapterDao().updateDownloadStatus(
+                            chapterId = chapterId,
+                            isDownloaded = true,
+                            localPath = cbzFile.absolutePath
+                        )
+                        return Result.success()
+                    }
                 }
+            } catch (_: Exception) {
+                // Fallback to page-by-page downloading
             }
-        } catch (_: Exception) {
-            // Fallback to page-by-page downloading
         }
 
-        // Attempt 2: Download individual page images as fallback
+        // Attempt 2: Download individual page images with sequential naming & ComicInfo.xml
         var pageTargetDir = File(targetFolder, title)
         try {
             if (!pageTargetDir.exists()) {
@@ -177,7 +185,9 @@ class DownloadWorker(
                     return Result.retry()
                 }
 
-                var pageFile = File(pageTargetDir, "page_$pageIdx.jpg")
+                val formattedName = "$title p${String.format("%03d", pageIdx)}.jpg"
+                var pageFile = File(pageTargetDir, formattedName)
+
                 val imageUrl = "$baseUrl/api/reader/image?chapterId=$chapterId&page=$pageIdx&apiKey=${config.apiKey}"
                 val requestBuilder = Request.Builder().url(imageUrl)
 
@@ -208,9 +218,8 @@ class DownloadWorker(
                             }
                         }
                     } catch (_: Exception) {
-                        // Switch to safe app dir on EPERM
                         pageTargetDir = File(File(safeAppDir, "$libraryName/$seriesName"), title).apply { mkdirs() }
-                        pageFile = File(pageTargetDir, "page_$pageIdx.jpg")
+                        pageFile = File(pageTargetDir, formattedName)
                         responseBody.byteStream().use { input ->
                             FileOutputStream(pageFile).use { output ->
                                 input.copyTo(output)
@@ -234,16 +243,38 @@ class DownloadWorker(
                 database.downloadDao().updateProgress(chapterId, pageIdx + 1, DownloadStatus.DOWNLOADING)
             }
 
+            // Generate ComicInfo.xml inside pageTargetDir
+            generateComicInfoXml(
+                folder = pageTargetDir,
+                title = rawTitle,
+                series = rawSeriesName,
+                pageCount = totalPages
+            )
+
+            // If user prefers CBZ format, pack images into a CBZ archive
+            val finalPath = if (settings.downloadFormat == DownloadFormat.CBZ) {
+                val packedCbz = File(targetFolder, "$title.cbz")
+                packFolderToCbz(pageTargetDir, packedCbz)
+                if (packedCbz.exists() && packedCbz.length() > 0L) {
+                    pageTargetDir.deleteRecursively()
+                    packedCbz.absolutePath
+                } else {
+                    pageTargetDir.absolutePath
+                }
+            } else {
+                pageTargetDir.absolutePath
+            }
+
             database.downloadDao().updateDownloadResult(
                 chapterId = chapterId,
-                localPath = pageTargetDir.absolutePath,
+                localPath = finalPath,
                 downloadedPages = totalPages,
                 status = DownloadStatus.COMPLETED
             )
             database.chapterDao().updateDownloadStatus(
                 chapterId = chapterId,
                 isDownloaded = true,
-                localPath = pageTargetDir.absolutePath
+                localPath = finalPath
             )
 
             Result.success()
@@ -260,5 +291,45 @@ class DownloadWorker(
             }
             Result.failure()
         }
+    }
+
+    private fun generateComicInfoXml(folder: File, title: String, series: String, pageCount: Int) {
+        try {
+            val xmlFile = File(folder, "ComicInfo.xml")
+            val xmlContent = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <ComicInfo xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                  <Title>${escapeXml(title)}</Title>
+                  <Series>${escapeXml(series)}</Series>
+                  <PageCount>$pageCount</PageCount>
+                </ComicInfo>
+            """.trimIndent()
+            xmlFile.writeText(xmlContent, Charsets.UTF_8)
+        } catch (_: Exception) {}
+    }
+
+    private fun escapeXml(str: String): String {
+        return str.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
+    }
+
+    private fun packFolderToCbz(sourceFolder: File, targetCbz: File) {
+        try {
+            val files = sourceFolder.listFiles() ?: return
+            ZipOutputStream(FileOutputStream(targetCbz)).use { zipOut ->
+                files.forEach { file ->
+                    if (file.isFile) {
+                        FileInputStream(file).use { fis ->
+                            zipOut.putNextEntry(ZipEntry(file.name))
+                            fis.copyTo(zipOut)
+                            zipOut.closeEntry()
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
     }
 }
