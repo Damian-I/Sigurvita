@@ -17,10 +17,27 @@ data class HomeUiState(
     val selectedLibrarySeries: List<Series> = emptyList(),
     val onDeckSeries: List<Series> = emptyList(),
     val recentlyUpdatedSeries: List<Series> = emptyList(),
+    val searchQuery: String = "",
+    val isSearchActive: Boolean = false,
     val isIncognitoMode: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
-)
+) {
+    val filteredSelectedLibrarySeries: List<Series>
+        get() = if (searchQuery.isBlank()) selectedLibrarySeries else selectedLibrarySeries.filter {
+            it.name.contains(searchQuery, ignoreCase = true) || (it.localizedName?.contains(searchQuery, ignoreCase = true) == true)
+        }
+
+    val filteredOnDeckSeries: List<Series>
+        get() = if (searchQuery.isBlank()) onDeckSeries else onDeckSeries.filter {
+            it.name.contains(searchQuery, ignoreCase = true) || (it.localizedName?.contains(searchQuery, ignoreCase = true) == true)
+        }
+
+    val filteredRecentlyUpdatedSeries: List<Series>
+        get() = if (searchQuery.isBlank()) recentlyUpdatedSeries else recentlyUpdatedSeries.filter {
+            it.name.contains(searchQuery, ignoreCase = true) || (it.localizedName?.contains(searchQuery, ignoreCase = true) == true)
+        }
+}
 
 class HomeViewModel : ViewModel() {
 
@@ -85,6 +102,18 @@ class HomeViewModel : ViewModel() {
                 isLoading = false
             )
         }
+    }
+
+    fun updateSearchQuery(query: String) {
+        _uiState.value = _uiState.value.copy(searchQuery = query)
+    }
+
+    fun toggleSearchActive() {
+        val newSearchState = !_uiState.value.isSearchActive
+        _uiState.value = _uiState.value.copy(
+            isSearchActive = newSearchState,
+            searchQuery = if (!newSearchState) "" else _uiState.value.searchQuery
+        )
     }
 
     fun toggleIncognitoMode() {

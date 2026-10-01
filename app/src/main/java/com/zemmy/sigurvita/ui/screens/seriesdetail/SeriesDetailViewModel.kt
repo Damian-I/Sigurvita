@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.model.Chapter
-
 import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.core.model.Series
 import com.zemmy.sigurvita.core.model.Volume
@@ -23,10 +22,27 @@ data class SeriesDetailUiState(
     val chaptersRead: Int = 0,
     val totalPages: Int = 0,
     val pagesRead: Int = 0,
+    val searchQuery: String = "",
+    val isSearchActive: Boolean = false,
+    val isGridView: Boolean = false,
     val isIncognitoMode: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
-)
+) {
+    val filteredVolumes: List<Volume>
+        get() {
+            if (searchQuery.isBlank()) return volumes
+            return volumes.mapNotNull { volume ->
+                val matchingChapters = volume.chapters.filter { c ->
+                    c.title.contains(searchQuery, ignoreCase = true) ||
+                    c.chapterNumber.contains(searchQuery, ignoreCase = true)
+                }
+                if (matchingChapters.isNotEmpty()) {
+                    volume.copy(chapters = matchingChapters)
+                } else null
+            }
+        }
+}
 
 class SeriesDetailViewModel : ViewModel() {
 
@@ -59,18 +75,18 @@ class SeriesDetailViewModel : ViewModel() {
     fun loadSeriesDetail(seriesId: Int) {
         _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
         viewModelScope.launch {
-            // Run series detail and volumes fetch concurrently
             val seriesDeferred = async { seriesRepository.getSeriesDetail(seriesId) }
             val volumesDeferred = async { seriesRepository.getSeriesVolumes(seriesId) }
+            val librariesDeferred = async { libraryRepository.getLibraries() }
 
             val seriesRes = seriesDeferred.await()
             val volumesRes = volumesDeferred.await()
+            val libraryRes = librariesDeferred.await()
 
             if (seriesRes.isSuccess) {
                 val fetchedSeries = seriesRes.getOrNull()
                 var volumes = volumesRes.getOrDefault(emptyList())
 
-                val libraryRes = libraryRepository.getLibraries()
                 val library = libraryRes.getOrNull()?.find { it.id == fetchedSeries?.libraryId }
                 val resolvedLibraryName = when {
                     library?.type == 0 || library?.name?.contains("manga", ignoreCase = true) == true -> "Manga"
@@ -125,6 +141,22 @@ class SeriesDetailViewModel : ViewModel() {
                 )
             }
         }
+    }
+
+    fun updateSearchQuery(query: String) {
+        _uiState.value = _uiState.value.copy(searchQuery = query)
+    }
+
+    fun toggleSearchActive() {
+        val newSearchState = !_uiState.value.isSearchActive
+        _uiState.value = _uiState.value.copy(
+            isSearchActive = newSearchState,
+            searchQuery = if (!newSearchState) "" else _uiState.value.searchQuery
+        )
+    }
+
+    fun toggleGridView() {
+        _uiState.value = _uiState.value.copy(isGridView = !_uiState.value.isGridView)
     }
 
     fun downloadChapter(chapter: Chapter) {

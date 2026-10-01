@@ -16,7 +16,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -27,6 +29,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -78,6 +81,9 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.app_name), fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = { viewModel.toggleSearchActive() }) {
+                        Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
+                    }
                     IconButton(onClick = { viewModel.toggleIncognitoMode() }) {
                         Icon(
                             imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
@@ -113,6 +119,25 @@ fun HomeScreen(
                     .padding(innerPadding)
                     .verticalScroll(rememberScrollState())
             ) {
+                if (state.isSearchActive) {
+                    OutlinedTextField(
+                        value = state.searchQuery,
+                        onValueChange = { viewModel.updateSearchQuery(it) },
+                        placeholder = { Text("Search libraries or series...") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (state.searchQuery.isNotBlank()) {
+                                IconButton(onClick = { viewModel.updateSearchQuery("") }) {
+                                    Icon(Icons.Default.Clear, contentDescription = null)
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
                 if (state.isIncognitoMode) {
                     Card(
                         modifier = Modifier
@@ -139,13 +164,13 @@ fun HomeScreen(
                     }
                 }
 
-                if (state.onDeckSeries.isNotEmpty()) {
+                if (state.filteredOnDeckSeries.isNotEmpty()) {
                     SectionHeader(title = stringResource(R.string.on_deck_title))
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(state.onDeckSeries, key = { it.id }) { series ->
+                        items(state.filteredOnDeckSeries, key = { it.id }) { series ->
                             SeriesCard(
                                 series = series,
                                 onClick = { onSeriesClick(series.id) },
@@ -156,13 +181,13 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(20.dp))
                 }
 
-                if (state.recentlyUpdatedSeries.isNotEmpty()) {
+                if (state.filteredRecentlyUpdatedSeries.isNotEmpty()) {
                     SectionHeader(title = stringResource(R.string.recently_updated_title))
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(state.recentlyUpdatedSeries, key = { it.id }) { series ->
+                        items(state.filteredRecentlyUpdatedSeries, key = { it.id }) { series ->
                             SeriesCard(
                                 series = series,
                                 onClick = { onSeriesClick(series.id) },
@@ -196,8 +221,8 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                if (state.selectedLibrarySeries.isNotEmpty()) {
-                    val rows = state.selectedLibrarySeries.chunked(3)
+                if (state.filteredSelectedLibrarySeries.isNotEmpty()) {
+                    val rows = state.filteredSelectedLibrarySeries.chunked(3)
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()

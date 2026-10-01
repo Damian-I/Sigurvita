@@ -115,6 +115,8 @@ com.zemmy.sigurvita/
 
 ### 4.6 Series & Reading List Workflows (`ui.screens.seriesdetail` & `ui.screens.readinglist`)
 - **Concurrent Data Loading**: ViewModels (`HomeViewModel`, `SeriesDetailViewModel`) orchestrate independent network requests concurrently using Kotlin Coroutines `async`/`await` for drastically reduced loading times.
+- **Pinned Series Header & Grid/List Toggle**: Series details feature a fixed top section (cover image, title, issues/pages read, Resume button, Mark Read button, summary, search bar, and incognito banner) that remains pinned at the top while the chapter list or 3-column grid scrolls independently underneath.
+- **In-App & Series Search**: Provides search bars across Home (`HomeScreen`), Series Details (`SeriesDetailScreen`), and Reading Lists (`ReadingListScreen`) to filter series or chapters instantly by title or issue number.
 - **"Next to Read" Indicators**: Highlights the next unread issue in both Series detail views and Reading Lists with primary card borders and a `"▶ Next to Read"` indicator tag.
 - **Quick "Resume" Buttons**: Provides prominent "Resume" buttons in Series Detail and Reading List headers to immediately launch the user's next unread issue.
 - **Conditional In-Progress Page Indicators**: Displays real-time page progress (`pagesRead / totalPages`) under chapter and reading list item titles strictly for in-progress items (`0 < pagesRead < totalPages` and not marked read). Fully finished or unread items display standard page counts.
