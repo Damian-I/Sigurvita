@@ -427,15 +427,6 @@ fun SigurvitaNavGraph(
                     onSeriesClick = { seriesId ->
                         navController.navigate(Screen.SeriesDetail.createRoute(seriesId))
                     },
-                    onReadingListsClick = {
-                        navController.navigate(Screen.ReadingLists.route)
-                    },
-                    onDownloadsClick = {
-                        navController.navigate(Screen.Downloads.route)
-                    },
-                    onSettingsClick = {
-                        navController.navigate(Screen.Settings.route)
-                    },
                     onOpenDrawer = {
                         scope.launch { drawerState.open() }
                     }

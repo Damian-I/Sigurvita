@@ -2,6 +2,7 @@ package com.zemmy.sigurvita.ui.screens.home
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -17,11 +18,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Card
@@ -62,9 +60,6 @@ import com.zemmy.sigurvita.ui.components.SeriesCard
 @Composable
 fun HomeScreen(
     onSeriesClick: (Int) -> Unit,
-    onReadingListsClick: () -> Unit,
-    onDownloadsClick: () -> Unit,
-    onSettingsClick: () -> Unit,
     onOpenDrawer: () -> Unit,
     viewModel: HomeViewModel = viewModel()
 ) {
@@ -98,7 +93,7 @@ fun HomeScreen(
                         TextField(
                             value = state.searchQuery,
                             onValueChange = { viewModel.updateSearchQuery(it) },
-                            placeholder = { Text("Search series...", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            placeholder = { Text("Search everything...", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                             singleLine = true,
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
@@ -142,15 +137,6 @@ fun HomeScreen(
                                 contentDescription = stringResource(R.string.toggle_incognito),
                                 tint = if (state.isIncognitoMode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
                             )
-                        }
-                        IconButton(onClick = onReadingListsClick) {
-                            Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = stringResource(R.string.reading_lists))
-                        }
-                        IconButton(onClick = onDownloadsClick) {
-                            Icon(Icons.Default.Download, contentDescription = stringResource(R.string.downloads))
-                        }
-                        IconButton(onClick = onSettingsClick) {
-                            Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings))
                         }
                     }
                 }
@@ -198,55 +184,101 @@ fun HomeScreen(
                     }
                 }
 
-                if (state.filteredOnDeckSeries.isNotEmpty()) {
-                    SectionHeader(title = stringResource(R.string.on_deck_title))
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(state.filteredOnDeckSeries, key = { it.id }) { series ->
-                            SeriesCard(
-                                series = series,
-                                onClick = { onSeriesClick(series.id) },
-                                modifier = Modifier.width(110.dp)
-                            )
+                if (state.searchQuery.isNotBlank()) {
+                    // Search Everything across all series
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (state.searchResults.isNotEmpty()) {
+                        val rows = state.searchResults.chunked(3)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            rows.forEach { rowItems ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    rowItems.forEach { series ->
+                                        SeriesCard(
+                                            series = series,
+                                            onClick = { onSeriesClick(series.id) },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    repeat(3 - rowItems.size) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
+                                }
+                            }
                         }
-                    }
-                    Spacer(modifier = Modifier.height(20.dp))
-                }
-
-                if (state.filteredRecentlyUpdatedSeries.isNotEmpty()) {
-                    SectionHeader(title = stringResource(R.string.recently_updated_title))
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(state.filteredRecentlyUpdatedSeries, key = { it.id }) { series ->
-                            SeriesCard(
-                                series = series,
-                                onClick = { onSeriesClick(series.id) },
-                                modifier = Modifier.width(110.dp)
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(20.dp))
-                }
-
-                if (state.filteredNewlyAddedSeries.isNotEmpty()) {
-                    SectionHeader(title = "Newly Added")
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(state.filteredNewlyAddedSeries, key = { it.id }) { series ->
-                            SeriesCard(
-                                series = series,
-                                onClick = { onSeriesClick(series.id) },
-                                modifier = Modifier.width(110.dp)
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No series found for \"${state.searchQuery}\"",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                     Spacer(modifier = Modifier.height(24.dp))
+                } else {
+                    if (state.filteredOnDeckSeries.isNotEmpty()) {
+                        SectionHeader(title = stringResource(R.string.on_deck_title))
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(state.filteredOnDeckSeries, key = { it.id }) { series ->
+                                SeriesCard(
+                                    series = series,
+                                    onClick = { onSeriesClick(series.id) },
+                                    modifier = Modifier.width(110.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
+                    }
+
+                    if (state.filteredRecentlyUpdatedSeries.isNotEmpty()) {
+                        SectionHeader(title = stringResource(R.string.recently_updated_title))
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(state.filteredRecentlyUpdatedSeries, key = { it.id }) { series ->
+                                SeriesCard(
+                                    series = series,
+                                    onClick = { onSeriesClick(series.id) },
+                                    modifier = Modifier.width(110.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
+                    }
+
+                    if (state.filteredNewlyAddedSeries.isNotEmpty()) {
+                        SectionHeader(title = "Newly Added")
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(state.filteredNewlyAddedSeries, key = { it.id }) { series ->
+                                SeriesCard(
+                                    series = series,
+                                    onClick = { onSeriesClick(series.id) },
+                                    modifier = Modifier.width(110.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
                 }
             }
         }

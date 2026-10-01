@@ -16,26 +16,26 @@ data class HomeUiState(
     val onDeckSeries: List<Series> = emptyList(),
     val recentlyUpdatedSeries: List<Series> = emptyList(),
     val newlyAddedSeries: List<Series> = emptyList(),
+    val allSeries: List<Series> = emptyList(),
     val searchQuery: String = "",
     val isSearchActive: Boolean = false,
     val isIncognitoMode: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
 ) {
-    val filteredOnDeckSeries: List<Series>
-        get() = if (searchQuery.isBlank()) onDeckSeries else onDeckSeries.filter {
+    val searchResults: List<Series>
+        get() = if (searchQuery.isBlank()) emptyList() else allSeries.filter {
             it.name.contains(searchQuery, ignoreCase = true) || (it.localizedName?.contains(searchQuery, ignoreCase = true) == true)
         }
+
+    val filteredOnDeckSeries: List<Series>
+        get() = onDeckSeries
 
     val filteredRecentlyUpdatedSeries: List<Series>
-        get() = if (searchQuery.isBlank()) recentlyUpdatedSeries else recentlyUpdatedSeries.filter {
-            it.name.contains(searchQuery, ignoreCase = true) || (it.localizedName?.contains(searchQuery, ignoreCase = true) == true)
-        }
+        get() = recentlyUpdatedSeries
 
     val filteredNewlyAddedSeries: List<Series>
-        get() = if (searchQuery.isBlank()) newlyAddedSeries else newlyAddedSeries.filter {
-            it.name.contains(searchQuery, ignoreCase = true) || (it.localizedName?.contains(searchQuery, ignoreCase = true) == true)
-        }
+        get() = newlyAddedSeries
 }
 
 class HomeViewModel : ViewModel() {
@@ -65,18 +65,21 @@ class HomeViewModel : ViewModel() {
             val onDeckDeferred = async { libraryRepository.getOnDeckSeries() }
             val recentlyUpdatedDeferred = async { libraryRepository.getRecentlyUpdatedSeries() }
             val newlyAddedDeferred = async { libraryRepository.getNewlyAddedSeries() }
+            val allSeriesDeferred = async { libraryRepository.getSeriesForLibrary(0) }
 
             val librariesRes = librariesDeferred.await()
             val onDeckRes = onDeckDeferred.await()
             val recentlyUpdatedRes = recentlyUpdatedDeferred.await()
             val newlyAddedRes = newlyAddedDeferred.await()
+            val allSeriesRes = allSeriesDeferred.await()
 
-            if (librariesRes.isSuccess || onDeckRes.isSuccess || recentlyUpdatedRes.isSuccess || newlyAddedRes.isSuccess) {
+            if (librariesRes.isSuccess || onDeckRes.isSuccess || recentlyUpdatedRes.isSuccess || newlyAddedRes.isSuccess || allSeriesRes.isSuccess) {
                 _uiState.value = _uiState.value.copy(
                     libraries = librariesRes.getOrDefault(emptyList()),
                     onDeckSeries = onDeckRes.getOrDefault(emptyList()),
                     recentlyUpdatedSeries = recentlyUpdatedRes.getOrDefault(emptyList()),
                     newlyAddedSeries = newlyAddedRes.getOrDefault(emptyList()),
+                    allSeries = allSeriesRes.getOrDefault(emptyList()),
                     isLoading = false
                 )
             } else {
