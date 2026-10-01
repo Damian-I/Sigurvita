@@ -70,6 +70,7 @@ data class ChapterDto(
     val seriesId: Int = 0,
     val number: String = "",
     val title: String = "",
+    val titleName: String? = null,
     val pages: Int = 0,
     val pagesRead: Int = 0,
     val isRead: Boolean = false,

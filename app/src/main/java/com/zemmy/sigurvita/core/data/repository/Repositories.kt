@@ -451,12 +451,22 @@ class SeriesRepository(
                         totalPages = vDto.totalPages,
                         chapters = vDto.chapters.map { cDto ->
                             val isChapterRead = cDto.isRead || (cDto.pages > 0 && cDto.pagesRead >= cDto.pages)
+                            val titleNameVal = cDto.titleName?.trim() ?: ""
+                            val titleVal = cDto.title.trim()
+                            val numVal = cDto.number.trim()
+
+                            val resolvedTitle = when {
+                                titleNameVal.isNotBlank() && titleNameVal != numVal -> titleNameVal
+                                titleVal.isNotBlank() && titleVal != numVal -> titleVal
+                                titleNameVal.isNotBlank() -> titleNameVal
+                                else -> titleVal
+                            }
                             Chapter(
                                 id = cDto.id,
                                 volumeId = cDto.volumeId,
                                 seriesId = cDto.seriesId,
                                 chapterNumber = cDto.number,
-                                title = cDto.title,
+                                title = resolvedTitle,
                                 pages = cDto.pages,
                                 pagesRead = cDto.pagesRead,
                                 isRead = isChapterRead,

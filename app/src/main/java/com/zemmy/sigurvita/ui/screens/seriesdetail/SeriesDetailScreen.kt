@@ -30,8 +30,8 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -41,12 +41,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +56,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -82,8 +87,22 @@ private fun formatChapterTitle(title: String, chapterNumber: String): String {
     val isSentinelNumber = chapterNumber.contains("100000") ||
             chapterNumber.toIntOrNull()?.let { abs(it) >= 10000 } == true
 
-    val cleanNumber = if (!isSentinelNumber && chapterNumber.isNotBlank()) "Issue #$chapterNumber" else ""
-    val cleanTitle = if (title.trim() == chapterNumber.trim()) "" else title
+    val cleanNumber = if (!isSentinelNumber && chapterNumber.isNotBlank()) "#$chapterNumber" else ""
+
+    var cleanTitle = title.trim()
+    if (chapterNumber.isNotBlank()) {
+        cleanTitle = cleanTitle
+            .removePrefix("Issue #$chapterNumber")
+            .removePrefix("Issue $chapterNumber")
+            .removePrefix("#$chapterNumber")
+            .removePrefix(chapterNumber)
+            .trimStart(' ', '-', ':', '•')
+            .trim()
+    }
+
+    if (cleanTitle.equals(chapterNumber.trim(), ignoreCase = true)) {
+        cleanTitle = ""
+    }
 
     return when {
         cleanNumber.isNotBlank() && cleanTitle.isNotBlank() -> "$cleanNumber - $cleanTitle"
@@ -103,6 +122,7 @@ fun SeriesDetailScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var showMassDownloadDialog by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, seriesId) {
@@ -114,6 +134,12 @@ fun SeriesDetailScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(state.isSearchActive) {
+        if (state.isSearchActive) {
+            focusRequester.requestFocus()
         }
     }
 
@@ -132,31 +158,65 @@ fun SeriesDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(state.series?.name ?: "Series Details") },
+                title = {
+                    if (state.isSearchActive) {
+                        TextField(
+                            value = state.searchQuery,
+                            onValueChange = { viewModel.updateSearchQuery(it) },
+                            placeholder = { Text("Search issue or title...", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            singleLine = true,
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester)
+                        )
+                    } else {
+                        Text(state.series?.name ?: "Series Details")
+                    }
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    if (state.isSearchActive) {
+                        IconButton(onClick = { viewModel.toggleSearchActive() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close Search")
+                        }
+                    } else {
+                        IconButton(onClick = onBackClick) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.toggleSearchActive() }) {
-                        Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
-                    }
-                    IconButton(onClick = { viewModel.toggleGridView() }) {
-                        Icon(
-                            imageVector = if (state.isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
-                            contentDescription = "Toggle Grid/List View"
-                        )
-                    }
-                    IconButton(onClick = { viewModel.toggleIncognitoMode() }) {
-                        Icon(
-                            imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = "Toggle Incognito Mode",
-                            tint = if (state.isIncognitoMode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    IconButton(onClick = { showMassDownloadDialog = true }) {
-                        Icon(Icons.Default.Download, contentDescription = "Mass Download")
+                    if (state.isSearchActive) {
+                        if (state.searchQuery.isNotBlank()) {
+                            IconButton(onClick = { viewModel.updateSearchQuery("") }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear")
+                            }
+                        }
+                    } else {
+                        IconButton(onClick = { viewModel.toggleSearchActive() }) {
+                            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
+                        }
+                        IconButton(onClick = { viewModel.toggleGridView() }) {
+                            Icon(
+                                imageVector = if (state.isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
+                                contentDescription = "Toggle Grid/List View"
+                            )
+                        }
+                        IconButton(onClick = { viewModel.toggleIncognitoMode() }) {
+                            Icon(
+                                imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = "Toggle Incognito Mode",
+                                tint = if (state.isIncognitoMode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        IconButton(onClick = { showMassDownloadDialog = true }) {
+                            Icon(Icons.Default.Download, contentDescription = "Mass Download")
+                        }
                     }
                 }
             )
@@ -182,6 +242,7 @@ fun SeriesDetailScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
+                // FIXED PINNED TOP SECTION
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -275,27 +336,9 @@ fun SeriesDetailScreen(
                             }
                         }
                     }
-
-                    if (state.isSearchActive) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = state.searchQuery,
-                            onValueChange = { viewModel.updateSearchQuery(it) },
-                            placeholder = { Text("Search issue or title...") },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                            trailingIcon = {
-                                if (state.searchQuery.isNotBlank()) {
-                                    IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                                        Icon(Icons.Default.Clear, contentDescription = null)
-                                    }
-                                }
-                            },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
                 }
 
+                // SCROLLABLE CHAPTERS SECTION BELOW
                 if (state.isGridView) {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
