@@ -4,6 +4,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -37,13 +39,13 @@ fun ImageReader(
     pages: List<ReaderPage>,
     currentPageIndex: Int,
     readingMode: ReadingMode,
-    fitMode: FitMode = FitMode.FIT_WIDTH,
-    touchEdgeNavigationEnabled: Boolean = true,
     onPageChanged: (Int) -> Unit,
     onNextPage: () -> Unit,
     onPreviousPage: () -> Unit,
     onTap: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    fitMode: FitMode = FitMode.FIT_WIDTH,
+    touchEdgeNavigationEnabled: Boolean = true
 ) {
     if (pages.isEmpty()) return
 
@@ -68,6 +70,12 @@ fun ImageReader(
         ReadingMode.WEBTOON -> {
             val listState = rememberLazyListState(initialFirstVisibleItemIndex = currentPageIndex)
 
+            LaunchedEffect(currentPageIndex) {
+                if (listState.firstVisibleItemIndex != currentPageIndex) {
+                    listState.scrollToItem(currentPageIndex)
+                }
+            }
+
             LaunchedEffect(listState) {
                 snapshotFlow { listState.firstVisibleItemIndex }.collect { index ->
                     onPageChanged(index)
@@ -78,7 +86,7 @@ fun ImageReader(
                 state = listState,
                 modifier = modifier.fillMaxSize()
             ) {
-                itemsIndexed(pages) { _, page ->
+                itemsIndexed(pages, key = { _, page -> page.pageNumber }) { _, page ->
                     ZoomableImage(
                         page = page,
                         fitMode = fitMode,
@@ -87,7 +95,9 @@ fun ImageReader(
                         onNextPage = onNextPage,
                         onPreviousPage = onPreviousPage,
                         onTap = onTap,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .wrapContentHeight()
                     )
                 }
             }
@@ -146,32 +156,44 @@ private fun ZoomableImage(
     var offsetX by remember(page.pageNumber) { mutableFloatStateOf(0f) }
     var offsetY by remember(page.pageNumber) { mutableFloatStateOf(0f) }
 
-    val contentScale = when (fitMode) {
-        FitMode.FIT_WIDTH -> ContentScale.FillWidth
-        FitMode.FIT_HEIGHT -> ContentScale.FillHeight
-        FitMode.FIT_SCREEN -> ContentScale.Fit
+    val contentScale = when {
+        readingMode == ReadingMode.WEBTOON -> ContentScale.FillWidth
+        fitMode == FitMode.FIT_WIDTH -> ContentScale.FillWidth
+        fitMode == FitMode.FIT_HEIGHT -> ContentScale.FillHeight
+        else -> ContentScale.Fit
+    }
+
+    val boxModifier = if (readingMode == ReadingMode.WEBTOON) {
+        modifier.fillMaxWidth().wrapContentHeight()
+    } else {
+        modifier.fillMaxSize()
+    }
+
+    val transformModifier = if (readingMode == ReadingMode.WEBTOON && scale <= 1.01f) {
+        Modifier
+    } else {
+        Modifier.pointerInput(page.pageNumber) {
+            detectTransformGestures { _, pan, zoom, _ ->
+                scale = (scale * zoom).coerceIn(1f, 4f)
+                if (scale > 1f) {
+                    offsetX += pan.x
+                    offsetY += pan.y
+                } else {
+                    offsetX = 0f
+                    offsetY = 0f
+                }
+            }
+        }
     }
 
     Box(
-        modifier = modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    scale = (scale * zoom).coerceIn(1f, 4f)
-                    if (scale > 1f) {
-                        offsetX += pan.x
-                        offsetY += pan.y
-                    } else {
-                        offsetX = 0f
-                        offsetY = 0f
-                    }
-                }
-            }
+        modifier = boxModifier
+            .then(transformModifier)
             .pointerInput(touchEdgeNavigationEnabled, readingMode, scale) {
                 detectTapGestures(
                     onTap = { offset ->
                         val width = size.width.toFloat()
-                        if (touchEdgeNavigationEnabled && scale <= 1.05f && width > 0f) {
+                        if (readingMode != ReadingMode.WEBTOON && touchEdgeNavigationEnabled && scale <= 1.05f && width > 0f) {
                             val leftThreshold = width * 0.3f
                             val rightThreshold = width * 0.7f
                             when {
@@ -201,6 +223,27 @@ private fun ZoomableImage(
             },
         contentAlignment = Alignment.Center
     ) {
+        val imageModifier = if (readingMode == ReadingMode.WEBTOON) {
+            Modifier
+                .fillMaxWidth()
+                .wrapContentHeight()
+                .graphicsLayer(
+                    scaleX = scale,
+                    scaleY = scale,
+                    translationX = offsetX,
+                    translationY = offsetY
+                )
+        } else {
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer(
+                    scaleX = scale,
+                    scaleY = scale,
+                    translationX = offsetX,
+                    translationY = offsetY
+                )
+        }
+
         AsyncImage(
             model = ImageRequest.Builder(context)
                 .data(page.imageUrl)
@@ -210,14 +253,7 @@ private fun ZoomableImage(
                 .build(),
             contentDescription = stringResource(R.string.page_desc, page.pageNumber),
             contentScale = contentScale,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(
-                    scaleX = scale,
-                    scaleY = scale,
-                    translationX = offsetX,
-                    translationY = offsetY
-                )
+            modifier = imageModifier
         )
     }
 }

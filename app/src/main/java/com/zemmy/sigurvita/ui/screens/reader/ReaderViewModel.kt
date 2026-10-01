@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
+import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
@@ -28,6 +29,7 @@ data class ReaderUiState(
     val seriesId: Int = 0,
     val volumeId: Int = 0,
     val readingListId: Int = 0,
+    val libraryDefaultMode: ReadingMode = ReadingMode.LTR,
     val showResumePrompt: Boolean = false,
     val promptPageNum: Int = 0
 )
@@ -110,6 +112,7 @@ class ReaderViewModel : ViewModel() {
             val userSettings = preferencesRepository.readerSettingsFlow.first()
 
             var effectiveReadingMode = userSettings.readingMode
+            var defaultMode = ReadingMode.LTR
             try {
                 if (seriesId > 0) {
                     val seriesRes = seriesRepository.getSeriesDetail(seriesId)
@@ -120,7 +123,8 @@ class ReaderViewModel : ViewModel() {
                         if (library != null) {
                             cachedLibraryId = library.id
                             val isManga = library.type == 0 || library.name.lowercase().contains("manga")
-                            effectiveReadingMode = if (isManga) ReadingMode.RTL else ReadingMode.LTR
+                            defaultMode = if (isManga) ReadingMode.RTL else ReadingMode.LTR
+                            effectiveReadingMode = defaultMode
                         }
                     }
                 }
@@ -131,6 +135,7 @@ class ReaderViewModel : ViewModel() {
             _uiState.value = _uiState.value.copy(
                 isLoading = true,
                 settings = effectiveSettings,
+                libraryDefaultMode = defaultMode,
                 chapterId = chapterId,
                 seriesId = seriesId,
                 volumeId = volumeId,
@@ -296,6 +301,38 @@ class ReaderViewModel : ViewModel() {
 
     fun toggleControls() {
         _uiState.value = _uiState.value.copy(controlsVisible = !_uiState.value.controlsVisible)
+    }
+
+    fun updateReadingMode(mode: ReadingMode) {
+        val currentSettings = _uiState.value.settings
+        _uiState.value = _uiState.value.copy(settings = currentSettings.copy(readingMode = mode))
+        viewModelScope.launch {
+            preferencesRepository.updateReadingMode(mode)
+        }
+    }
+
+    fun updateFitMode(mode: FitMode) {
+        val currentSettings = _uiState.value.settings
+        _uiState.value = _uiState.value.copy(settings = currentSettings.copy(fitMode = mode))
+        viewModelScope.launch {
+            preferencesRepository.updateFitMode(mode)
+        }
+    }
+
+    fun updateTouchEdgeNav(enabled: Boolean) {
+        val currentSettings = _uiState.value.settings
+        _uiState.value = _uiState.value.copy(settings = currentSettings.copy(touchEdgeNavigationEnabled = enabled))
+        viewModelScope.launch {
+            preferencesRepository.updateTouchEdgeNavigation(enabled)
+        }
+    }
+
+    fun updateKeepScreenOn(keep: Boolean) {
+        val currentSettings = _uiState.value.settings
+        _uiState.value = _uiState.value.copy(settings = currentSettings.copy(keepScreenOn = keep))
+        viewModelScope.launch {
+            preferencesRepository.updateKeepScreenOn(keep)
+        }
     }
 
     fun handleVolumeKey(isVolumeUp: Boolean): Boolean {

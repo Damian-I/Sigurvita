@@ -104,6 +104,8 @@ com.zemmy.sigurvita/
 - Hardware volume keys (`KEYCODE_VOLUME_UP` / `KEYCODE_VOLUME_DOWN` in `MainActivity`) are intercepted to enable physical page flipping.
 - **Edge Touch Page Navigation**: Tapping the left or right edges of the screen allows seamless page navigation (respecting LTR/RTL reading direction), with the center area toggling control overlays. Can be toggled on/off in Settings.
 - **RTL Reading & Progress Support**: Automatically mirrors page progression (`HorizontalPager` reverseLayout) and reader control overlays/sliders (`LayoutDirection.Rtl`) for manga and RTL reading modes.
+- **On-The-Go (OTG) Reader Options**: Features an in-reader settings sheet (`Icons.Default.Tune`) allowing users to dynamically switch between `RTL`, `LTR`, and `WEBTOON` reading modes, adjust `FitMode` scaling, and toggle touch edge navigation or screen timeout on the fly while reading. Displays a `"Library Default"` indicator under the default mode.
+- **Fluid Webtoon Reading & Finger Swiping**: Webtoon mode renders panels as a continuous vertical scroll (`wrapContentHeight()`), bypassing transform gesture interception when unzoomed so single-finger vertical swipes/drags pass directly to `LazyColumn` for natural, fluid finger scrolling. Hardware volume navigation continues to function seamlessly.
 
 ### 4.5 Offline Downloads (`core.download.DownloadWorker`)
 - Background work managed via `WorkManager`.

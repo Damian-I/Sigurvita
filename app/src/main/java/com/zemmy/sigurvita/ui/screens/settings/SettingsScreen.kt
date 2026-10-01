@@ -42,10 +42,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
-
 import com.zemmy.sigurvita.core.model.DownloadLocation
 import com.zemmy.sigurvita.core.model.FitMode
-import com.zemmy.sigurvita.core.model.ReadingMode
 import com.zemmy.sigurvita.ui.components.FolderPickerDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -93,20 +91,6 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.primary
             )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(stringResource(R.string.reading_mode), style = MaterialTheme.typography.bodyLarge)
-            Row(modifier = Modifier.padding(vertical = 8.dp)) {
-                ReadingMode.entries.forEach { mode ->
-                    FilterChip(
-                        selected = (settings.readingMode == mode),
-                        onClick = { viewModel.updateReadingMode(mode) },
-                        label = { Text(mode.name) },
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                }
-            }
 
             Spacer(modifier = Modifier.height(12.dp))
 
