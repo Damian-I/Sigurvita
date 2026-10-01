@@ -485,13 +485,16 @@ fun SeriesDetailScreen(
                                                 Spacer(modifier = Modifier.height(2.dp))
                                                 Row(
                                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.fillMaxWidth()
                                                 ) {
                                                     readingLists.forEach { (listId, listTitle) ->
                                                         Surface(
                                                             color = MaterialTheme.colorScheme.secondaryContainer,
                                                             shape = MaterialTheme.shapes.extraSmall,
-                                                            modifier = Modifier.clickable { onReadingListClick(listId) }
+                                                            modifier = Modifier
+                                                                .clickable { onReadingListClick(listId) }
+                                                                .weight(1f, fill = false)
                                                         ) {
                                                             Text(
                                                                 text = "📖 $listTitle",
