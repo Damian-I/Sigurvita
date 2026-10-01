@@ -43,6 +43,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +69,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReadingListScreen(
+    initialReadingListId: Int = 0,
     onBackClick: () -> Unit,
     onSeriesClick: (Int) -> Unit,
     onChapterClick: (chapterId: Int, seriesId: Int, volumeId: Int, readingListId: Int) -> Unit,
@@ -76,6 +78,12 @@ fun ReadingListScreen(
     val state by viewModel.uiState.collectAsState()
     var showMassDownloadDialog by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
+
+    LaunchedEffect(initialReadingListId) {
+        if (initialReadingListId > 0) {
+            viewModel.selectReadingListById(initialReadingListId)
+        }
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {

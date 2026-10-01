@@ -121,6 +121,7 @@ com.zemmy.sigurvita/
 - **"Next to Read" Indicators**: Highlights the next unread issue in both Series detail views and Reading Lists with primary card borders and a `"▶ Next to Read"` indicator tag.
 - **Quick "Resume" Buttons**: Provides prominent "Resume" buttons in Series Detail and Reading List headers to immediately launch the user's next unread issue.
 - **Conditional In-Progress Page Indicators**: Displays real-time page progress (`pagesRead / totalPages`) under chapter and reading list item titles strictly for in-progress items (`0 < pagesRead < totalPages` and not marked read). Fully finished or unread items display standard page counts.
+- **Clickable Library & Reading List Badges**: Displays a clickable library badge (`Library: [Name]`) in the non-scrollable top section of `SeriesDetailScreen` (navigating to Home/Library) and interactive reading list tags (`📖 [List Title]`) on chapters, allowing users to tap and jump directly to that specific reading list.
 
 ### 4.7 Dependency Injection / Singletons (`SigurvitaApp.kt`)
 - To prevent heavy memory overhead and thread starvation, all primary repositories (`ReaderRepository`, `SeriesRepository`, `UserPreferencesRepository`, etc.) and the `OkHttpClient`/`KavitaApi` networking stack are instantiated lazily as singletons attached to `SigurvitaApp.instance`. ViewModels retrieve these shared instances rather than recreating them.

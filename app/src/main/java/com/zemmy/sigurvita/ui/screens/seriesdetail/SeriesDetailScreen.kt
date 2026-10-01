@@ -41,14 +41,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,9 +55,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -118,11 +114,12 @@ fun SeriesDetailScreen(
     seriesId: Int,
     onBackClick: () -> Unit,
     onChapterClick: (chapterId: Int, totalPages: Int, volumeId: Int) -> Unit,
+    onLibraryClick: (libraryId: Int) -> Unit = {},
+    onReadingListClick: (readingListId: Int) -> Unit = {},
     viewModel: SeriesDetailViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
     var showMassDownloadDialog by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, seriesId) {
@@ -134,12 +131,6 @@ fun SeriesDetailScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-
-    LaunchedEffect(state.isSearchActive) {
-        if (state.isSearchActive) {
-            focusRequester.requestFocus()
         }
     }
 
@@ -158,65 +149,31 @@ fun SeriesDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    if (state.isSearchActive) {
-                        TextField(
-                            value = state.searchQuery,
-                            onValueChange = { viewModel.updateSearchQuery(it) },
-                            placeholder = { Text("Search issue or title...", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                            singleLine = true,
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(focusRequester)
-                        )
-                    } else {
-                        Text(state.series?.name ?: "Series Details")
-                    }
-                },
+                title = { Text(state.series?.name ?: "Series Details") },
                 navigationIcon = {
-                    if (state.isSearchActive) {
-                        IconButton(onClick = { viewModel.toggleSearchActive() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close Search")
-                        }
-                    } else {
-                        IconButton(onClick = onBackClick) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    if (state.isSearchActive) {
-                        if (state.searchQuery.isNotBlank()) {
-                            IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Clear")
-                            }
-                        }
-                    } else {
-                        IconButton(onClick = { viewModel.toggleSearchActive() }) {
-                            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
-                        }
-                        IconButton(onClick = { viewModel.toggleGridView() }) {
-                            Icon(
-                                imageVector = if (state.isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
-                                contentDescription = "Toggle Grid/List View"
-                            )
-                        }
-                        IconButton(onClick = { viewModel.toggleIncognitoMode() }) {
-                            Icon(
-                                imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = "Toggle Incognito Mode",
-                                tint = if (state.isIncognitoMode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        IconButton(onClick = { showMassDownloadDialog = true }) {
-                            Icon(Icons.Default.Download, contentDescription = "Mass Download")
-                        }
+                    IconButton(onClick = { viewModel.toggleSearchActive() }) {
+                        Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
+                    }
+                    IconButton(onClick = { viewModel.toggleGridView() }) {
+                        Icon(
+                            imageVector = if (state.isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
+                            contentDescription = "Toggle Grid/List View"
+                        )
+                    }
+                    IconButton(onClick = { viewModel.toggleIncognitoMode() }) {
+                        Icon(
+                            imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = "Toggle Incognito Mode",
+                            tint = if (state.isIncognitoMode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    IconButton(onClick = { showMassDownloadDialog = true }) {
+                        Icon(Icons.Default.Download, contentDescription = "Mass Download")
                     }
                 }
             )
@@ -303,6 +260,21 @@ fun SeriesDetailScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            if (state.libraryName.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = MaterialTheme.shapes.extraSmall,
+                                    modifier = Modifier.clickable { onLibraryClick(state.libraryId) }
+                                ) {
+                                    Text(
+                                        text = "Library: ${state.libraryName}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
                             Spacer(modifier = Modifier.height(6.dp))
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -336,6 +308,25 @@ fun SeriesDetailScreen(
                             }
                         }
                     }
+
+                    if (state.isSearchActive) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = state.searchQuery,
+                            onValueChange = { viewModel.updateSearchQuery(it) },
+                            placeholder = { Text("Search issue or title...") },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            trailingIcon = {
+                                if (state.searchQuery.isNotBlank()) {
+                                    IconButton(onClick = { viewModel.updateSearchQuery("") }) {
+                                        Icon(Icons.Default.Clear, contentDescription = null)
+                                    }
+                                }
+                            },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
 
                 // SCROLLABLE CHAPTERS SECTION BELOW
@@ -362,6 +353,7 @@ fun SeriesDetailScreen(
                                 val downloadTask = state.downloadTasks[chapter.id]
                                 val isDownloaded = chapter.isDownloaded || (downloadTask?.status == DownloadStatus.COMPLETED)
                                 val isNextUp = (chapter.id == nextToReadChapterId)
+                                val readingLists = state.chapterReadingLists[chapter.id]
 
                                 Card(
                                     modifier = Modifier
@@ -389,6 +381,28 @@ fun SeriesDetailScreen(
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
+                                        if (!readingLists.isNullOrEmpty()) {
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                readingLists.forEach { (listId, listTitle) ->
+                                                    Surface(
+                                                        color = MaterialTheme.colorScheme.secondaryContainer,
+                                                        shape = MaterialTheme.shapes.extraSmall,
+                                                        modifier = Modifier.clickable { onReadingListClick(listId) }
+                                                    ) {
+                                                        Text(
+                                                            text = "📖 $listTitle",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -435,6 +449,7 @@ fun SeriesDetailScreen(
                                 val downloadTask = state.downloadTasks[chapter.id]
                                 val isDownloaded = chapter.isDownloaded || (downloadTask?.status == DownloadStatus.COMPLETED)
                                 val isNextUp = (chapter.id == nextToReadChapterId)
+                                val readingLists = state.chapterReadingLists[chapter.id]
 
                                 Card(
                                     modifier = Modifier
@@ -466,6 +481,28 @@ fun SeriesDetailScreen(
                                                 maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis
                                             )
+                                            if (!readingLists.isNullOrEmpty()) {
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    readingLists.forEach { (listId, listTitle) ->
+                                                        Surface(
+                                                            color = MaterialTheme.colorScheme.secondaryContainer,
+                                                            shape = MaterialTheme.shapes.extraSmall,
+                                                            modifier = Modifier.clickable { onReadingListClick(listId) }
+                                                        ) {
+                                                            Text(
+                                                                text = "📖 $listTitle",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
                                             Spacer(modifier = Modifier.height(4.dp))
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 val showProgress = chapter.pagesRead > 0 && chapter.pages > 0 && chapter.pagesRead < chapter.pages && !chapter.isRead

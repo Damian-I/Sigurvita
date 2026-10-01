@@ -371,6 +371,28 @@ class ReadingListRepository(
             Result.failure(e)
         }
     }
+
+    suspend fun getChapterReadingLists(seriesId: Int): Map<Int, List<Pair<Int, String>>> = withContext(Dispatchers.IO) {
+        val map = mutableMapOf<Int, MutableList<Pair<Int, String>>>()
+        try {
+            val listsRes = getReadingLists()
+            if (listsRes.isSuccess) {
+                val lists = listsRes.getOrDefault(emptyList())
+                for (list in lists) {
+                    val itemsRes = getReadingListItems(list.id)
+                    if (itemsRes.isSuccess) {
+                        val items = itemsRes.getOrDefault(emptyList())
+                        for (item in items) {
+                            if (item.seriesId == seriesId && item.chapterId != null && item.chapterId > 0) {
+                                map.getOrPut(item.chapterId) { mutableListOf() }.add(Pair(list.id, list.title))
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return@withContext map
+    }
 }
 
 class SeriesRepository(

@@ -223,6 +223,24 @@ class ReadingListViewModel : ViewModel() {
         }
     }
 
+    fun selectReadingListById(readingListId: Int) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            val result = repository.getReadingLists()
+            if (result.isSuccess) {
+                val lists = result.getOrNull() ?: emptyList()
+                val targetList = lists.find { it.id == readingListId }
+                if (targetList != null) {
+                    loadListDetail(readingListId, targetList.title)
+                } else {
+                    _uiState.value = _uiState.value.copy(readingLists = lists, isLoading = false)
+                }
+            } else {
+                _uiState.value = _uiState.value.copy(isLoading = false, errorMessage = "Failed to load reading list")
+            }
+        }
+    }
+
     fun updateSearchQuery(query: String) {
         _uiState.value = _uiState.value.copy(searchQuery = query)
     }

@@ -18,6 +18,8 @@ data class SeriesDetailUiState(
     val volumes: List<Volume> = emptyList(),
     val downloadTasks: Map<Int, DownloadTask> = emptyMap(),
     val libraryName: String = "Comics",
+    val libraryId: Int = 0,
+    val chapterReadingLists: Map<Int, List<Pair<Int, String>>> = emptyMap(),
     val totalChapters: Int = 0,
     val chaptersRead: Int = 0,
     val totalPages: Int = 0,
@@ -50,6 +52,7 @@ class SeriesDetailViewModel : ViewModel() {
     private val preferencesRepository = app.userPreferencesRepository
     private val seriesRepository = app.seriesRepository
     private val libraryRepository = app.libraryRepository
+    private val readingListRepository = app.readingListRepository
     private val downloadRepository = app.downloadRepository
 
     private val _uiState = MutableStateFlow(SeriesDetailUiState())
@@ -88,6 +91,7 @@ class SeriesDetailViewModel : ViewModel() {
                 var volumes = volumesRes.getOrDefault(emptyList())
 
                 val library = libraryRes.getOrNull()?.find { it.id == fetchedSeries?.libraryId }
+                val resolvedLibraryId = library?.id ?: fetchedSeries?.libraryId ?: 0
                 val resolvedLibraryName = when {
                     library?.type == 0 || library?.name?.contains("manga", ignoreCase = true) == true -> "Manga"
                     library?.type == 1 || library?.name?.contains("comic", ignoreCase = true) == true -> "Comics"
@@ -128,12 +132,20 @@ class SeriesDetailViewModel : ViewModel() {
                     series = updatedSeries,
                     volumes = volumes,
                     libraryName = resolvedLibraryName,
+                    libraryId = resolvedLibraryId,
                     totalChapters = computedTotalChapters,
                     chaptersRead = computedChaptersRead,
                     totalPages = calculatedTotalPages,
                     pagesRead = calculatedPagesRead,
                     isLoading = false
                 )
+
+                launch {
+                    try {
+                        val readingListsMap = readingListRepository.getChapterReadingLists(seriesId)
+                        _uiState.value = _uiState.value.copy(chapterReadingLists = readingListsMap)
+                    } catch (_: Exception) {}
+                }
             } else {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,

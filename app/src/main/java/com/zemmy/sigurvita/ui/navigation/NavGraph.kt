@@ -71,6 +71,31 @@ fun SigurvitaNavGraph(
         }
 
         composable(
+            route = "reading_list_detail/{listId}",
+            arguments = listOf(navArgument("listId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val listId = backStackEntry.arguments?.getInt("listId") ?: 0
+            ReadingListScreen(
+                initialReadingListId = listId,
+                onBackClick = { navController.popBackStack() },
+                onSeriesClick = { seriesId ->
+                    navController.navigate(Screen.SeriesDetail.createRoute(seriesId))
+                },
+                onChapterClick = { chapterId, seriesId, volumeId, readingListId ->
+                    navController.navigate(
+                        Screen.Reader.createRoute(
+                            chapterId = chapterId,
+                            totalPages = 0,
+                            seriesId = seriesId,
+                            volumeId = volumeId,
+                            readingListId = readingListId
+                        )
+                    )
+                }
+            )
+        }
+
+        composable(
             route = Screen.SeriesDetail.route,
             arguments = listOf(navArgument("seriesId") { type = NavType.IntType })
         ) { backStackEntry ->
@@ -87,6 +112,12 @@ fun SigurvitaNavGraph(
                             volumeId = volumeId
                         )
                     )
+                },
+                onLibraryClick = { _ ->
+                    navController.navigate(Screen.Home.route)
+                },
+                onReadingListClick = { listId ->
+                    navController.navigate("reading_list_detail/$listId")
                 }
             )
         }
