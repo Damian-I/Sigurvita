@@ -60,3 +60,69 @@ fun extractChapterNumber(number: String, title: String): String {
     return trimmedNum.ifBlank { "0" }
 }
 
+/**
+ * Cleans reading list titles by removing bracket prefixes, year ranges, and trailing parenthetical suffixes.
+ */
+fun cleanReadingListTitle(title: String): String {
+    var result = title.trim()
+
+    // 1. Strip bracket prefix like [Marvel] or [DC]
+    result = result.replace(Regex("""^\[[^]]+]\s*"""), "")
+
+    // 2. Strip year range like 2012-2015 or 1961-1970
+    result = result.replace(Regex("""\b\d{4}-\d{4}\b\s*"""), "")
+
+    // 3. Strip trailing parenthetical suffixes like (MG) or (WEB-CBRO) or (CBRO)
+    result = result.replace(Regex("""\s*\([A-Z0-9\s-]+\)$"""), "")
+
+    return result.trim().ifBlank { title }
+}
+
+data class EraCategory(
+    val name: String,
+    val years: String? = null
+)
+
+fun extractEraInfo(title: String): EraCategory {
+    val cleanTitle = title.trim()
+
+    // Star Wars special rule
+    if (cleanTitle.contains("Star Wars", ignoreCase = true)) {
+        return EraCategory(name = "Star Wars", years = null)
+    }
+
+    // Alternate Universes special rule
+    if (cleanTitle.contains("Alternate Universes", ignoreCase = true)) {
+        return EraCategory(name = "Alternate Universes", years = null)
+    }
+
+    // Year range matching
+    val yearRangeRegex = Regex("""(\d{4}-\d{4})""")
+    val yearMatch = yearRangeRegex.find(cleanTitle)?.groupValues?.get(1)
+
+    if (yearMatch != null) {
+        val name = when (yearMatch) {
+            "1939-1956" -> "Golden Age"
+            "1961-1970" -> "Silver Age"
+            "1970-1984" -> "Bronze Age"
+            "1984-1997" -> "Modern Age Begins"
+            "1997-2004" -> "Heroes Relaunched"
+            "2004-2012" -> "Marvel Disassembled"
+            "2012-2015" -> "Marvel NOW!"
+            "2015-2018" -> "ANAD Marvel"
+            "2018-2021" -> "Fresh Start"
+            "2021-2024" -> "Timeless"
+            else -> yearMatch
+        }
+        return EraCategory(name = name, years = yearMatch)
+    }
+
+    // Bracket prefix
+    val bracketRegex = Regex("""^\[([^]]+)]""")
+    val bracketMatch = bracketRegex.find(cleanTitle)?.groupValues?.get(1)
+    if (bracketMatch != null && !bracketMatch.equals("Marvel", ignoreCase = true)) {
+        return EraCategory(name = bracketMatch, years = null)
+    }
+
+    return EraCategory(name = "General", years = null)
+}

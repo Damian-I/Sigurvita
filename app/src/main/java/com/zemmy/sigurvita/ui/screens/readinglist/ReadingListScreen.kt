@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
@@ -27,6 +28,8 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Bookmark
+import com.zemmy.sigurvita.core.util.extractEraInfo
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -56,6 +59,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zemmy.sigurvita.core.model.DownloadStatus
+import com.zemmy.sigurvita.core.util.cleanReadingListTitle
 import com.zemmy.sigurvita.ui.components.CoverImage
 import com.zemmy.sigurvita.ui.components.ErrorState
 import com.zemmy.sigurvita.ui.components.LoadingState
@@ -419,6 +423,7 @@ fun ReadingListScreen(
                     items(lists, key = { it.id }) { list ->
                         val eraInfo = extractEraInfo(list.title)
                         val displayTitle = cleanReadingListTitle(list.title)
+                        val isPinned = state.chosenReadingListIds.contains(list.id)
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -436,7 +441,7 @@ fun ReadingListScreen(
                                         .height(90.dp)
                                 )
                                 Spacer(modifier = Modifier.width(16.dp))
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = displayTitle,
                                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
@@ -446,6 +451,13 @@ fun ReadingListScreen(
                                         text = "${eraInfo.name} • ${list.itemCount} items",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                IconButton(onClick = { viewModel.togglePin(list.id) }) {
+                                    Icon(
+                                        imageVector = if (isPinned) Icons.Default.Bookmark else Icons.Outlined.Bookmark,
+                                        contentDescription = if (isPinned) "Unpin from sidebar" else "Pin to sidebar",
+                                        tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }

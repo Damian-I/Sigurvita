@@ -13,21 +13,15 @@ import kotlinx.coroutines.launch
 
 data class HomeUiState(
     val libraries: List<Library> = emptyList(),
-    val selectedLibraryId: Int = 0,
-    val selectedLibrarySeries: List<Series> = emptyList(),
     val onDeckSeries: List<Series> = emptyList(),
     val recentlyUpdatedSeries: List<Series> = emptyList(),
+    val newlyAddedSeries: List<Series> = emptyList(),
     val searchQuery: String = "",
     val isSearchActive: Boolean = false,
     val isIncognitoMode: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
 ) {
-    val filteredSelectedLibrarySeries: List<Series>
-        get() = if (searchQuery.isBlank()) selectedLibrarySeries else selectedLibrarySeries.filter {
-            it.name.contains(searchQuery, ignoreCase = true) || (it.localizedName?.contains(searchQuery, ignoreCase = true) == true)
-        }
-
     val filteredOnDeckSeries: List<Series>
         get() = if (searchQuery.isBlank()) onDeckSeries else onDeckSeries.filter {
             it.name.contains(searchQuery, ignoreCase = true) || (it.localizedName?.contains(searchQuery, ignoreCase = true) == true)
@@ -35,6 +29,11 @@ data class HomeUiState(
 
     val filteredRecentlyUpdatedSeries: List<Series>
         get() = if (searchQuery.isBlank()) recentlyUpdatedSeries else recentlyUpdatedSeries.filter {
+            it.name.contains(searchQuery, ignoreCase = true) || (it.localizedName?.contains(searchQuery, ignoreCase = true) == true)
+        }
+
+    val filteredNewlyAddedSeries: List<Series>
+        get() = if (searchQuery.isBlank()) newlyAddedSeries else newlyAddedSeries.filter {
             it.name.contains(searchQuery, ignoreCase = true) || (it.localizedName?.contains(searchQuery, ignoreCase = true) == true)
         }
 }
@@ -62,24 +61,22 @@ class HomeViewModel : ViewModel() {
     fun loadData() {
         _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
         viewModelScope.launch {
-            // Run all independent API calls concurrently
             val librariesDeferred = async { libraryRepository.getLibraries() }
             val onDeckDeferred = async { libraryRepository.getOnDeckSeries() }
             val recentlyUpdatedDeferred = async { libraryRepository.getRecentlyUpdatedSeries() }
-            val initialSeriesDeferred = async { libraryRepository.getSeriesForLibrary(0) }
+            val newlyAddedDeferred = async { libraryRepository.getNewlyAddedSeries() }
 
             val librariesRes = librariesDeferred.await()
             val onDeckRes = onDeckDeferred.await()
             val recentlyUpdatedRes = recentlyUpdatedDeferred.await()
-            val initialSeriesRes = initialSeriesDeferred.await()
+            val newlyAddedRes = newlyAddedDeferred.await()
 
-            if (librariesRes.isSuccess || onDeckRes.isSuccess || initialSeriesRes.isSuccess) {
+            if (librariesRes.isSuccess || onDeckRes.isSuccess || recentlyUpdatedRes.isSuccess || newlyAddedRes.isSuccess) {
                 _uiState.value = _uiState.value.copy(
                     libraries = librariesRes.getOrDefault(emptyList()),
-                    selectedLibraryId = 0,
-                    selectedLibrarySeries = initialSeriesRes.getOrDefault(emptyList()),
                     onDeckSeries = onDeckRes.getOrDefault(emptyList()),
                     recentlyUpdatedSeries = recentlyUpdatedRes.getOrDefault(emptyList()),
+                    newlyAddedSeries = newlyAddedRes.getOrDefault(emptyList()),
                     isLoading = false
                 )
             } else {
@@ -88,19 +85,6 @@ class HomeViewModel : ViewModel() {
                     errorMessage = "Failed to load content from Kavita"
                 )
             }
-        }
-    }
-
-    fun selectLibrary(libraryId: Int) {
-        if (_uiState.value.selectedLibraryId == libraryId && _uiState.value.selectedLibrarySeries.isNotEmpty()) return
-
-        _uiState.value = _uiState.value.copy(selectedLibraryId = libraryId, isLoading = true)
-        viewModelScope.launch {
-            val seriesRes = libraryRepository.getSeriesForLibrary(libraryId)
-            _uiState.value = _uiState.value.copy(
-                selectedLibrarySeries = seriesRes.getOrDefault(emptyList()),
-                isLoading = false
-            )
         }
     }
 

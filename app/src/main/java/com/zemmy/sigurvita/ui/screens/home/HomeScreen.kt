@@ -1,5 +1,6 @@
 package com.zemmy.sigurvita.ui.screens.home
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -26,7 +27,6 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -65,6 +65,7 @@ fun HomeScreen(
     onReadingListsClick: () -> Unit,
     onDownloadsClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onOpenDrawer: () -> Unit,
     viewModel: HomeViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -110,7 +111,11 @@ fun HomeScreen(
                                 .focusRequester(focusRequester)
                         )
                     } else {
-                        Text(stringResource(R.string.app_name), fontWeight = FontWeight.Bold)
+                        Text(
+                            text = stringResource(R.string.app_name),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { onOpenDrawer() }
+                        )
                     }
                 },
                 navigationIcon = {
@@ -227,56 +232,21 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(20.dp))
                 }
 
-                SectionHeader(title = stringResource(R.string.libraries_title))
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    item {
-                        FilterChip(
-                            selected = (state.selectedLibraryId == 0),
-                            onClick = { viewModel.selectLibrary(0) },
-                            label = { Text(stringResource(R.string.all_libraries)) }
-                        )
-                    }
-                    items(state.libraries, key = { it.id }) { library ->
-                        FilterChip(
-                            selected = (state.selectedLibraryId == library.id),
-                            onClick = { viewModel.selectLibrary(library.id) },
-                            label = { Text(library.name) }
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                if (state.filteredSelectedLibrarySeries.isNotEmpty()) {
-                    val rows = state.filteredSelectedLibrarySeries.chunked(3)
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                if (state.filteredNewlyAddedSeries.isNotEmpty()) {
+                    SectionHeader(title = "Newly Added")
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        rows.forEach { rowItems ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                rowItems.forEach { series ->
-                                    SeriesCard(
-                                        series = series,
-                                        onClick = { onSeriesClick(series.id) },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                // Fill remaining spaces if last row has fewer than 3 items
-                                repeat(3 - rowItems.size) {
-                                    Spacer(modifier = Modifier.weight(1f))
-                                }
-                            }
+                        items(state.filteredNewlyAddedSeries, key = { it.id }) { series ->
+                            SeriesCard(
+                                series = series,
+                                onClick = { onSeriesClick(series.id) },
+                                modifier = Modifier.width(110.dp)
+                            )
                         }
                     }
+                    Spacer(modifier = Modifier.height(24.dp))
                 }
             }
         }

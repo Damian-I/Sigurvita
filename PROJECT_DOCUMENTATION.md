@@ -126,6 +126,15 @@ com.zemmy.sigurvita/
 ### 4.7 Dependency Injection / Singletons (`SigurvitaApp.kt`)
 - To prevent heavy memory overhead and thread starvation, all primary repositories (`ReaderRepository`, `SeriesRepository`, `UserPreferencesRepository`, etc.) and the `OkHttpClient`/`KavitaApi` networking stack are instantiated lazily as singletons attached to `SigurvitaApp.instance`. ViewModels retrieve these shared instances rather than recreating them.
 
+### 4.8 Home Screen Revamp & Sliding Panel Navigation
+- **Home Screen (`HomeScreen`)**: Displays On Deck / Continue Reading, Recently Updated Series, and Newly Added Series (via `/api/Series/recently-added-v2`), keeping libraries accessible via the navigation panel.
+- **Sliding Panel / Navigation Drawer (`SigurvitaNavGraph`)**: Triggered by tapping the "Sigurvita" text in the top bar OR swiping left-to-right. Contains:
+  - Home (main screen)
+  - Libraries (All Libraries + individual libraries, reorderable via drag gestures on hamburger handles with custom order saved in DataStore).
+  - Reading Lists (showing **ONLY in-progress reading lists by default**, grouped into a **collapsible era folder tree view** categorized by major eras using `extractEraInfo`, sorted alphanumerically within each era using `naturalCompare` and `cleanReadingListTitle`. Manual reordering for reading lists has been removed in favor of automatic alphanumeric sorting). Pin state is synchronized in real-time with `ReadingListScreen` via DataStore (`chosenReadingListIdsFlow`).
+  - Downloads & Settings
+- **Dedicated Library Browsing (`LibraryScreen`)**: Dedicated view and ViewModel for browsing all libraries or specific library series grids.
+
 ---
 
 ## 5. Guide for Future AI Development & Maintenance

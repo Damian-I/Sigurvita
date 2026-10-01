@@ -50,6 +50,8 @@ class UserPreferencesRepository(private val context: Context) {
         val AUTO_DELETE_OPTION = stringPreferencesKey("auto_delete_option")
         val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")
         val COMPLETED_CHAPTER_HISTORY = stringPreferencesKey("completed_chapter_history")
+        val LIBRARY_ORDER = stringPreferencesKey("library_order")
+        val CHOSEN_READING_LISTS = stringPreferencesKey("chosen_reading_lists")
     }
 
     @Volatile
@@ -260,6 +262,51 @@ class UserPreferencesRepository(private val context: Context) {
                 val list = current.split(",").mapNotNull { it.trim().toIntOrNull() }.toMutableList()
                 list.removeAll(chapterIds)
                 preferences[Keys.COMPLETED_CHAPTER_HISTORY] = list.joinToString(",")
+            }
+        }
+    }
+
+    val libraryOrderFlow: Flow<List<Int>> = context.dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { preferences ->
+            val raw = preferences[Keys.LIBRARY_ORDER] ?: ""
+            if (raw.isBlank()) emptyList()
+            else raw.split(",").mapNotNull { it.trim().toIntOrNull() }
+        }
+
+    suspend fun updateLibraryOrder(order: List<Int>) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.LIBRARY_ORDER] = order.joinToString(",")
+        }
+    }
+
+    val chosenReadingListsFlow: Flow<List<Int>> = context.dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { preferences ->
+            val raw = preferences[Keys.CHOSEN_READING_LISTS] ?: ""
+            if (raw.isBlank()) emptyList()
+            else raw.split(",").mapNotNull { it.trim().toIntOrNull() }
+        }
+
+    suspend fun addChosenReadingList(listId: Int) {
+        context.dataStore.edit { preferences ->
+            val current = preferences[Keys.CHOSEN_READING_LISTS] ?: ""
+            val list = if (current.isBlank()) mutableListOf()
+            else current.split(",").mapNotNull { it.trim().toIntOrNull() }.toMutableList()
+            if (!list.contains(listId)) {
+                list.add(listId)
+                preferences[Keys.CHOSEN_READING_LISTS] = list.joinToString(",")
+            }
+        }
+    }
+
+    suspend fun removeChosenReadingList(listId: Int) {
+        context.dataStore.edit { preferences ->
+            val current = preferences[Keys.CHOSEN_READING_LISTS] ?: ""
+            if (current.isNotBlank()) {
+                val list = current.split(",").mapNotNull { it.trim().toIntOrNull() }.toMutableList()
+                list.remove(listId)
+                preferences[Keys.CHOSEN_READING_LISTS] = list.joinToString(",")
             }
         }
     }

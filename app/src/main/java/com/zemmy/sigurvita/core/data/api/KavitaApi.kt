@@ -58,6 +58,12 @@ interface KavitaApi {
         @Query("PageSize") pageSize: Int = 20
     ): Response<List<SeriesDto>>
 
+    @POST("api/Series/recently-added-v2")
+    suspend fun getRecentlyAddedSeries(
+        @Query("PageNumber") pageNumber: Int = 1,
+        @Query("PageSize") pageSize: Int = 20
+    ): Response<List<SeriesDto>>
+
     @GET("api/Series/series-detail")
     suspend fun getSeriesDetail(
         @Query("seriesId") seriesId: Int

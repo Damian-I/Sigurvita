@@ -195,6 +195,35 @@ class LibraryRepository(
         }
     }
 
+    suspend fun getNewlyAddedSeries(): Result<List<Series>> = withContext(Dispatchers.IO) {
+        try {
+            val config = preferencesRepository.serverConfigFlow.first()
+            var dtoList = api.getRecentlyAddedSeries().body()
+
+            if (dtoList.isNullOrEmpty()) {
+                dtoList = api.getSeriesV2(libraryId = 0, filter = FilterV2Dto(), pageNumber = 1, pageSize = 20).body()
+            }
+
+            val seriesList = dtoList?.filter { it.id > 0 && it.name.isNotBlank() }?.map { dto ->
+                Series(
+                    id = dto.id,
+                    libraryId = dto.libraryId,
+                    name = dto.name,
+                    localizedName = dto.localizedName,
+                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
+                    summary = dto.summary,
+                    pagesRead = dto.pagesRead,
+                    totalPages = dto.totalPages,
+                    userRating = dto.userRating
+                )
+            } ?: emptyList()
+
+            Result.success(seriesList)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun getSeriesForLibrary(libraryId: Int): Result<List<Series>> = withContext(Dispatchers.IO) {
         try {
             val config = preferencesRepository.serverConfigFlow.first()
