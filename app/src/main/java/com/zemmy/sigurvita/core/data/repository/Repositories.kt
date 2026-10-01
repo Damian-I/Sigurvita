@@ -34,6 +34,7 @@ import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.model.ReadingListItem
 import com.zemmy.sigurvita.core.model.Series
 import com.zemmy.sigurvita.core.model.Volume
+import com.zemmy.sigurvita.core.util.extractChapterNumber
 import com.zemmy.sigurvita.core.util.naturalCompare
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -477,9 +478,11 @@ class SeriesRepository(
                             val titleVal = cDto.title.trim()
                             val numVal = cDto.number.trim()
 
+                            val resolvedNumber = extractChapterNumber(numVal, titleVal.ifBlank { titleNameVal })
+
                             val resolvedTitle = when {
-                                titleNameVal.isNotBlank() && titleNameVal != numVal -> titleNameVal
-                                titleVal.isNotBlank() && titleVal != numVal -> titleVal
+                                titleNameVal.isNotBlank() && titleNameVal != resolvedNumber -> titleNameVal
+                                titleVal.isNotBlank() && titleVal != resolvedNumber -> titleVal
                                 titleNameVal.isNotBlank() -> titleNameVal
                                 else -> titleVal
                             }
@@ -487,7 +490,7 @@ class SeriesRepository(
                                 id = cDto.id,
                                 volumeId = cDto.volumeId,
                                 seriesId = cDto.seriesId,
-                                chapterNumber = cDto.number,
+                                chapterNumber = resolvedNumber,
                                 title = resolvedTitle,
                                 pages = cDto.pages,
                                 pagesRead = cDto.pagesRead,

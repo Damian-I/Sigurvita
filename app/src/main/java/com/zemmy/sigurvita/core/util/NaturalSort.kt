@@ -28,3 +28,35 @@ fun naturalCompare(s1: String, s2: String): Int {
 
     return chunks1.size.compareTo(chunks2.size)
 }
+
+/**
+ * Dynamically extracts chapter number from chapter number string and/or title
+ * if the chapter number is blank, "0", or "0.0".
+ */
+fun extractChapterNumber(number: String, title: String): String {
+    val trimmedNum = number.trim()
+    if (trimmedNum.isNotBlank() && trimmedNum != "0" && trimmedNum != "0.0") {
+        return trimmedNum
+    }
+    val candidateText = title.trim()
+    if (candidateText.isBlank()) return trimmedNum.ifBlank { "0" }
+
+    val patterns = listOf(
+        Regex("""^(?:Chapter|Issue|Vol\.?)\s*#?(\d+(?:\.\d+)?[A-Za-z]*)""", RegexOption.IGNORE_CASE),
+        Regex("""^#?(\d+(?:\.\d+)?[A-Za-z]*)(\s*[-:].*)?"""),
+        Regex("""^(\d+(?:\.\d+)?[A-Za-z]*)\b""")
+    )
+
+    for (pattern in patterns) {
+        val match = pattern.find(candidateText)
+        if (match != null) {
+            val extracted = match.groupValues.getOrNull(1)
+            if (!extracted.isNullOrBlank()) {
+                return extracted
+            }
+        }
+    }
+
+    return trimmedNum.ifBlank { "0" }
+}
+

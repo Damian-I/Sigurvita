@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,6 +20,8 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ViewList
@@ -32,7 +35,9 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -40,14 +45,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,7 +62,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,7 +69,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.zemmy.sigurvita.R
 import com.zemmy.sigurvita.core.model.DownloadStatus
 import com.zemmy.sigurvita.ui.components.CoverImage
 import com.zemmy.sigurvita.ui.components.ErrorState
@@ -120,6 +124,14 @@ fun SeriesDetailScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var showMassDownloadDialog by remember { mutableStateOf(false) }
+    var showMarkReadConfirmDialog by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(state.isSearchActive) {
+        if (state.isSearchActive) {
+            focusRequester.requestFocus()
+        }
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, seriesId) {
@@ -146,36 +158,41 @@ fun SeriesDetailScreen(
         )
     }
 
+    if (showMarkReadConfirmDialog) {
+        val series = state.series
+        val isSeriesCompleted = series != null && (series.isCompleted || (state.chaptersRead >= state.totalChapters && state.totalChapters > 0))
+        AlertDialog(
+            onDismissRequest = { showMarkReadConfirmDialog = false },
+            title = { Text(if (isSeriesCompleted) "Mark Series Unread" else "Mark Series Read") },
+            text = { Text(if (isSeriesCompleted) "Are you sure you want to mark all chapters in this series as unread?" else "Are you sure you want to mark all chapters in this series as read?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showMarkReadConfirmDialog = false
+                        viewModel.toggleMarkRead()
+                    }
+                ) {
+                    Text("Confirm")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMarkReadConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(state.series?.name ?: "Series Details") },
+                title = { },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                actions = {
-                    IconButton(onClick = { viewModel.toggleSearchActive() }) {
-                        Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
-                    }
-                    IconButton(onClick = { viewModel.toggleGridView() }) {
-                        Icon(
-                            imageVector = if (state.isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
-                            contentDescription = "Toggle Grid/List View"
-                        )
-                    }
-                    IconButton(onClick = { viewModel.toggleIncognitoMode() }) {
-                        Icon(
-                            imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = "Toggle Incognito Mode",
-                            tint = if (state.isIncognitoMode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    IconButton(onClick = { showMassDownloadDialog = true }) {
-                        Icon(Icons.Default.Download, contentDescription = "Mass Download")
-                    }
-                }
+                actions = { }
             )
         }
     ) { innerPadding ->
@@ -205,32 +222,6 @@ fun SeriesDetailScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    if (state.isIncognitoMode) {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Default.VisibilityOff,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onTertiaryContainer
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = "Incognito Mode Active: Reading progress is private and won't sync to Kavita.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer
-                                )
-                            }
-                        }
-                    }
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.Top
@@ -242,7 +233,9 @@ fun SeriesDetailScreen(
                                 .height(145.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
-                        Column {
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Text(
                                 text = series.name,
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -277,7 +270,8 @@ fun SeriesDetailScreen(
                             }
                             Spacer(modifier = Modifier.height(6.dp))
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Button(
@@ -286,14 +280,61 @@ fun SeriesDetailScreen(
                                         if (nextChapter != null) {
                                             onChapterClick(nextChapter.id, nextChapter.pages, nextChapter.volumeId)
                                         }
+                                    },
+                                    colors = if (state.isIncognitoMode) {
+                                        ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.tertiary,
+                                            contentColor = MaterialTheme.colorScheme.onTertiary
+                                        )
+                                    } else {
+                                        ButtonDefaults.buttonColors()
                                     }
                                 ) {
-                                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(
+                                        imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.PlayArrow,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text("Resume")
                                 }
-                                OutlinedButton(onClick = { viewModel.toggleMarkRead() }) {
-                                    Text(if (isSeriesCompleted) "Mark Unread" else "Mark Read")
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(0.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(
+                                        onClick = { showMarkReadConfirmDialog = true },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.CheckCircle,
+                                            contentDescription = if (isSeriesCompleted) "Mark Unread" else "Mark Read",
+                                            tint = if (isSeriesCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { viewModel.toggleIncognitoMode() },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            contentDescription = "Toggle Incognito Mode",
+                                            tint = if (state.isIncognitoMode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { showMassDownloadDialog = true },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Download,
+                                            contentDescription = "Mass Download",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
                             if (series.summary?.isNotBlank() == true) {
@@ -309,28 +350,96 @@ fun SeriesDetailScreen(
                         }
                     }
 
+                    // search active handled under thumbnail on the left
+                }
+
+                // SCROLLABLE CHAPTERS SECTION BELOW
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val volumeHeaderStr = displayVolumes.firstOrNull()?.let { formatVolumeHeader(it.name, it.number) } ?: "Chapters"
+                    Text(
+                        text = volumeHeaderStr,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
                     if (state.isSearchActive) {
-                        Spacer(modifier = Modifier.height(8.dp))
                         OutlinedTextField(
                             value = state.searchQuery,
                             onValueChange = { viewModel.updateSearchQuery(it) },
-                            placeholder = { Text("Search issue or title...") },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                            trailingIcon = {
-                                if (state.searchQuery.isNotBlank()) {
-                                    IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                                        Icon(Icons.Default.Clear, contentDescription = null)
-                                    }
+                            placeholder = { Text("Search...", style = MaterialTheme.typography.bodyMedium) },
+                            leadingIcon = {
+                                IconButton(
+                                    onClick = { viewModel.toggleSearchActive() },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Clear,
+                                        contentDescription = "Close Search",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
                                 }
                             },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Search",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            textStyle = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .focusRequester(focusRequester)
+                        )
+                    } else {
+                        IconButton(
+                            onClick = { viewModel.toggleSearchActive() },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                    IconButton(
+                        onClick = { viewModel.toggleGridView() },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (state.isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
+                            contentDescription = "Toggle Grid/List View",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
 
-                // SCROLLABLE CHAPTERS SECTION BELOW
-                if (state.isGridView) {
+                if (displayVolumes.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No results",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(32.dp)
+                        )
+                    }
+                } else if (state.isGridView) {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -341,13 +450,15 @@ fun SeriesDetailScreen(
                             .weight(1f)
                     ) {
                         displayVolumes.forEach { volume ->
-                            item(span = { GridItemSpan(3) }) {
-                                Text(
-                                    text = formatVolumeHeader(volume.name, volume.number),
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
-                                )
+                            if (displayVolumes.size > 1) {
+                                item(span = { GridItemSpan(3) }) {
+                                    Text(
+                                        text = formatVolumeHeader(volume.name, volume.number),
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                                    )
+                                }
                             }
                             items(volume.chapters, key = { it.id }) { chapter ->
                                 val downloadTask = state.downloadTasks[chapter.id]
@@ -372,7 +483,7 @@ fun SeriesDetailScreen(
                                             url = chapter.coverUrl ?: series.coverUrl,
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(110.dp)
+                                                .aspectRatio(0.7f)
                                         )
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
@@ -411,7 +522,7 @@ fun SeriesDetailScreen(
                                             Text(
                                                 text = if (chapter.isRead) "• Read" else if (isNextUp) "▶ Next" else "Unread",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = if (chapter.isRead) MaterialTheme.colorScheme.primary else if (isNextUp) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = if (chapter.isRead) MaterialTheme.colorScheme.onSurfaceVariant else if (isNextUp) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
                                             )
                                             IconButton(
                                                 onClick = { viewModel.downloadChapter(chapter) },
@@ -438,14 +549,18 @@ fun SeriesDetailScreen(
                             .fillMaxWidth()
                             .weight(1f)
                     ) {
-                        items(displayVolumes, key = { it.id }) { volume ->
-                            Text(
-                                text = formatVolumeHeader(volume.name, volume.number),
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
-                            )
-                            volume.chapters.forEach { chapter ->
+                        displayVolumes.forEach { volume ->
+                            if (displayVolumes.size > 1) {
+                                item {
+                                    Text(
+                                        text = formatVolumeHeader(volume.name, volume.number),
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                                    )
+                                }
+                            }
+                            items(volume.chapters, key = { it.id }) { chapter ->
                                 val downloadTask = state.downloadTasks[chapter.id]
                                 val isDownloaded = chapter.isDownloaded || (downloadTask?.status == DownloadStatus.COMPLETED)
                                 val isNextUp = (chapter.id == nextToReadChapterId)
@@ -518,8 +633,8 @@ fun SeriesDetailScreen(
                                                     Spacer(modifier = Modifier.width(8.dp))
                                                     Text(
                                                         text = "• Read",
-                                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                                        color = MaterialTheme.colorScheme.primary,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                         modifier = Modifier.clickable { viewModel.toggleChapterRead(chapter) }
                                                     )
                                                 } else if (isNextUp) {
@@ -534,8 +649,8 @@ fun SeriesDetailScreen(
                                                     Spacer(modifier = Modifier.width(8.dp))
                                                     Text(
                                                         text = "• Unread",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                                        color = MaterialTheme.colorScheme.primary,
                                                         modifier = Modifier.clickable { viewModel.toggleChapterRead(chapter) }
                                                     )
                                                 }

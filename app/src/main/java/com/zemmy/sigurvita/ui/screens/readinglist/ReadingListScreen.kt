@@ -334,8 +334,8 @@ fun ReadingListScreen(
                                         if (item.isRead) {
                                             Text(
                                                 text = "• Read",
-                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                                color = MaterialTheme.colorScheme.primary
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         } else if (isNextUp) {
                                             Text(
@@ -345,9 +345,9 @@ fun ReadingListScreen(
                                             )
                                         } else {
                                             Text(
-                                                text = "Unread",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                text = "• Unread",
+                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.primary
                                             )
                                         }
                                     }
