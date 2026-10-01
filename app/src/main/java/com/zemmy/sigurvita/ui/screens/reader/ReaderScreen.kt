@@ -182,7 +182,7 @@ fun ReaderScreen(
                     },
                     actions = {
                         IconButton(onClick = { showOptionsBottomSheet = true }) {
-                            Icon(Icons.Default.Tune, contentDescription = "Reader Settings", tint = Color.White)
+                            Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.reader_options_cd), tint = Color.White)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -252,14 +252,14 @@ fun ReaderScreen(
                             .padding(horizontal = 24.dp, vertical = 16.dp)
                     ) {
                         Text(
-                            text = "Reader Options",
+                            text = stringResource(R.string.reader_options_title),
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                             color = Color.White
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        Text("Reading Mode", style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                        Text(stringResource(R.string.reading_mode), style = MaterialTheme.typography.bodyLarge, color = Color.White)
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             ReadingMode.entries.forEach { mode ->
@@ -268,12 +268,12 @@ fun ReaderScreen(
                                     FilterChip(
                                         selected = (state.settings.readingMode == mode),
                                         onClick = { viewModel.updateReadingMode(mode) },
-                                        label = { Text(mode.name) }
+                                        label = { Text(stringResource(mode.stringRes)) }
                                     )
                                     if (isLibraryDefault) {
                                         Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            text = "Library Default",
+                                            text = stringResource(R.string.library_default_label),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.primary
                                         )
@@ -284,14 +284,14 @@ fun ReaderScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        Text("Fit Mode", style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                        Text(stringResource(R.string.fit_mode), style = MaterialTheme.typography.bodyLarge, color = Color.White)
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FitMode.entries.forEach { mode ->
                                 FilterChip(
                                     selected = (state.settings.fitMode == mode),
                                     onClick = { viewModel.updateFitMode(mode) },
-                                    label = { Text(mode.name) }
+                                    label = { Text(stringResource(mode.stringRes)) }
                                 )
                             }
                         }
@@ -303,8 +303,8 @@ fun ReaderScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Edge Touch Navigation", style = MaterialTheme.typography.bodyLarge, color = Color.White)
-                                Text("Tap left or right screen edges to flip pages", style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                                Text(stringResource(R.string.touch_edge_nav), style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                                Text(stringResource(R.string.touch_edge_nav_subtitle), style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
                             }
                             Switch(
                                 checked = state.settings.touchEdgeNavigationEnabled,
@@ -319,8 +319,8 @@ fun ReaderScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Keep Screen On", style = MaterialTheme.typography.bodyLarge, color = Color.White)
-                                Text("Prevent display timeout while reading", style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                                Text(stringResource(R.string.keep_screen_on), style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                                Text(stringResource(R.string.keep_screen_on_subtitle), style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
                             }
                             Switch(
                                 checked = state.settings.keepScreenOn,

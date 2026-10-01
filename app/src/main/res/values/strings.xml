@@ -69,6 +69,32 @@
     <string name="downloaded">Downloaded</string>
     <string name="download_chapter">Download Chapter</string>
 
+    <!-- Reading Modes -->
+    <string name="reading_mode_rtl">Right to Left</string>
+    <string name="reading_mode_ltr">Left to Right</string>
+    <string name="reading_mode_webtoon">Webtoon</string>
+
+    <!-- Fit Modes -->
+    <string name="fit_mode_width">Fit Width</string>
+    <string name="fit_mode_height">Fit Height</string>
+    <string name="fit_mode_screen">Fit Screen</string>
+
+    <!-- Download Locations -->
+    <string name="download_location_documents">Documents</string>
+    <string name="download_location_downloads">Downloads</string>
+
+    <!-- Auto Delete Options -->
+    <string name="auto_delete_never">Never (Keep Indefinitely)</string>
+    <string name="auto_delete_immediately">Immediately After Issue Read</string>
+    <string name="auto_delete_after_1">After 1 More Issue Read</string>
+    <string name="auto_delete_after_2">After 2 More Issues Read</string>
+    <string name="auto_delete_after_5">After 5 More Issues Read</string>
+
+    <!-- OTG Reader Options -->
+    <string name="reader_options_title">Reader Options</string>
+    <string name="library_default_label">Library Default</string>
+    <string name="reader_options_cd">Reader Options Settings</string>
+
     <!-- Settings -->
     <string name="reader_configuration">Reader Configuration</string>
     <string name="reading_mode">Reading Mode</string>

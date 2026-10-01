@@ -100,7 +100,7 @@ fun SettingsScreen(
                     FilterChip(
                         selected = (settings.fitMode == mode),
                         onClick = { viewModel.updateFitMode(mode) },
-                        label = { Text(mode.name) },
+                        label = { Text(stringResource(mode.stringRes)) },
                         modifier = Modifier.padding(end = 8.dp)
                     )
                 }
@@ -202,7 +202,7 @@ fun SettingsScreen(
                     FilterChip(
                         selected = (settings.downloadLocation == loc),
                         onClick = { viewModel.updateDownloadLocation(loc) },
-                        label = { Text(loc.displayName) },
+                        label = { Text(stringResource(loc.stringRes)) },
                         modifier = Modifier.padding(end = 8.dp)
                     )
                 }
@@ -249,7 +249,7 @@ fun SettingsScreen(
                     FilterChip(
                         selected = (settings.autoDeleteOption == option),
                         onClick = { viewModel.updateAutoDeleteOption(option) },
-                        label = { Text(option.displayName) }
+                        label = { Text(stringResource(option.stringRes)) }
                     )
                 }
             }

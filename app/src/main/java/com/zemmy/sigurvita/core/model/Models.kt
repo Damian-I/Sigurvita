@@ -1,29 +1,31 @@
 package com.zemmy.sigurvita.core.model
 
-enum class ReadingMode {
-    RTL,       // Right to Left (Manga)
-    LTR,       // Left to Right (Comic)
-    WEBTOON    // Vertical Continuous Scroll
+import androidx.annotation.StringRes
+import com.zemmy.sigurvita.R
+
+enum class ReadingMode(@param:StringRes val stringRes: Int) {
+    RTL(R.string.reading_mode_rtl),
+    LTR(R.string.reading_mode_ltr),
+    WEBTOON(R.string.reading_mode_webtoon)
 }
 
-enum class FitMode {
-    FIT_WIDTH,
-    FIT_HEIGHT,
-    FIT_SCREEN
+enum class FitMode(@param:StringRes val stringRes: Int) {
+    FIT_WIDTH(R.string.fit_mode_width),
+    FIT_HEIGHT(R.string.fit_mode_height),
+    FIT_SCREEN(R.string.fit_mode_screen)
 }
 
-enum class DownloadLocation(val displayName: String, val folderName: String) {
-    DOCUMENTS("Documents", "Documents/Sigurvita"),
-    DOWNLOADS("Downloads", "Download/Sigurvita")
+enum class DownloadLocation(@param:StringRes val stringRes: Int, val folderName: String) {
+    DOCUMENTS(R.string.download_location_documents, "Documents/Sigurvita"),
+    DOWNLOADS(R.string.download_location_downloads, "Download/Sigurvita")
 }
 
-
-enum class AutoDeleteOption(val displayName: String) {
-    NEVER("Never (Keep Indefinitely)"),
-    IMMEDIATELY("Immediately After Issue Read"),
-    AFTER_1_ISSUE("After 1 More Issue Read"),
-    AFTER_2_ISSUES("After 2 More Issues Read"),
-    AFTER_5_ISSUES("After 5 More Issues Read")
+enum class AutoDeleteOption(@param:StringRes val stringRes: Int) {
+    NEVER(R.string.auto_delete_never),
+    IMMEDIATELY(R.string.auto_delete_immediately),
+    AFTER_1_ISSUE(R.string.auto_delete_after_1),
+    AFTER_2_ISSUES(R.string.auto_delete_after_2),
+    AFTER_5_ISSUES(R.string.auto_delete_after_5)
 }
 
 data class ServerConfig(
