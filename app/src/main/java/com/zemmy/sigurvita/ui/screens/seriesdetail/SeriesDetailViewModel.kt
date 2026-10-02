@@ -7,11 +7,136 @@ import com.zemmy.sigurvita.core.model.Chapter
 import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.core.model.Series
 import com.zemmy.sigurvita.core.model.Volume
+import com.zemmy.sigurvita.core.util.naturalCompare
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+
+enum class SeriesViewFilter(val displayName: String) {
+    BOTH("Both"),
+    VOLUMES("Only Volumes"),
+    CHAPTERS("Only Chapters")
+}
+
+private fun formatMangaChapterTitle(title: String, chapterNumber: String): String {
+    val isSentinelNumber = chapterNumber.contains("100000") ||
+            chapterNumber.toIntOrNull()?.let { abs(it) >= 10000 } == true
+
+    val cleanNumber = if (!isSentinelNumber && chapterNumber.isNotBlank()) "Chapter $chapterNumber" else ""
+
+    var cleanTitle = title.trim()
+    if (chapterNumber.isNotBlank()) {
+        cleanTitle = cleanTitle
+            .removePrefix("Chapter #$chapterNumber")
+            .removePrefix("Chapter $chapterNumber")
+            .removePrefix("Issue #$chapterNumber")
+            .removePrefix("Issue $chapterNumber")
+            .removePrefix("#$chapterNumber")
+            .removePrefix(chapterNumber)
+            .trimStart(' ', '-', ':', '•')
+            .trim()
+    }
+
+    if (cleanTitle.equals(chapterNumber.trim(), ignoreCase = true)) {
+        cleanTitle = ""
+    }
+
+    return when {
+        cleanNumber.isNotBlank() && cleanTitle.isNotBlank() -> "$cleanNumber - $cleanTitle"
+        cleanTitle.isNotBlank() -> cleanTitle
+        cleanNumber.isNotBlank() -> cleanNumber
+        else -> "Chapter"
+    }
+}
+
+private fun formatComicChapterTitle(title: String, chapterNumber: String): String {
+    val isSentinelNumber = chapterNumber.contains("100000") ||
+            chapterNumber.toIntOrNull()?.let { abs(it) >= 10000 } == true
+
+    val cleanNumber = if (!isSentinelNumber && chapterNumber.isNotBlank()) "#$chapterNumber" else ""
+
+    var cleanTitle = title.trim()
+    if (chapterNumber.isNotBlank()) {
+        cleanTitle = cleanTitle
+            .removePrefix("Issue #$chapterNumber")
+            .removePrefix("Issue $chapterNumber")
+            .removePrefix("#$chapterNumber")
+            .removePrefix(chapterNumber)
+            .trimStart(' ', '-', ':', '•')
+            .trim()
+    }
+
+    if (cleanTitle.equals(chapterNumber.trim(), ignoreCase = true)) {
+        cleanTitle = ""
+    }
+
+    return when {
+        cleanNumber.isNotBlank() && cleanTitle.isNotBlank() -> "$cleanNumber - $cleanTitle"
+        cleanTitle.isNotBlank() -> cleanTitle
+        cleanNumber.isNotBlank() -> cleanNumber
+        else -> "Issue"
+    }
+}
+
+private fun isVolumeFile(v: Volume): Boolean {
+    val nameLower = v.name.trim().lowercase()
+    if (nameLower.startsWith("c") || nameLower.startsWith("ch") || nameLower.contains("chapter") || Regex("""\bc\d+""").containsMatchIn(nameLower)) {
+        return false // It's a chapter file (like c123)
+    }
+    if (nameLower.startsWith("v") || nameLower.startsWith("vol") || nameLower.contains("volume") || Regex("""\bv\d+""").containsMatchIn(nameLower)) {
+        return true // It's a volume file (like V12)
+    }
+    return v.number > 0f && !v.name.contains("100000") && abs(v.number) < 10000f
+}
+
+sealed class SeriesItem {
+    abstract val id: Int
+    abstract val coverUrl: String?
+    abstract val isRead: Boolean
+    abstract val isDownloaded: Boolean
+    abstract val pages: Int
+    abstract val pagesRead: Int
+    abstract val title: String
+    abstract val subtitle: String?
+
+    data class VolumeItem(
+        val volume: Volume,
+        override val id: Int = volume.id,
+        override val coverUrl: String? = volume.chapters.firstOrNull()?.coverUrl,
+        override val isRead: Boolean = volume.chapters.isNotEmpty() && volume.chapters.all { it.isRead },
+        override val isDownloaded: Boolean = volume.chapters.isNotEmpty() && volume.chapters.all { it.isDownloaded },
+        override val pages: Int = if (volume.totalPages > 0) volume.totalPages else volume.chapters.sumOf { it.pages },
+        override val pagesRead: Int = if (volume.pagesRead > 0) volume.pagesRead else volume.chapters.sumOf { it.pagesRead },
+        override val title: String = run {
+            val name = volume.name.trim()
+            when {
+                name.contains("Volume", ignoreCase = true) -> name
+                name.isNotBlank() -> "Volume $name"
+                else -> "Volume ${volume.number}"
+            }
+        },
+        override val subtitle: String? = null,
+        val firstChapterId: Int = volume.chapters.firstOrNull()?.id ?: 0,
+        val volumeId: Int = volume.id
+    ) : SeriesItem()
+
+    data class ChapterItem(
+        val chapter: Chapter,
+        val volumeId: Int,
+        val isManga: Boolean = true,
+        override val id: Int = chapter.id,
+        override val coverUrl: String? = chapter.coverUrl,
+        override val isRead: Boolean = chapter.isRead,
+        override val isDownloaded: Boolean = chapter.isDownloaded,
+        override val pages: Int = chapter.pages,
+        override val pagesRead: Int = chapter.pagesRead,
+        override val title: String = if (isManga) formatMangaChapterTitle(chapter.title, chapter.chapterNumber) else formatComicChapterTitle(chapter.title, chapter.chapterNumber),
+        override val subtitle: String? = null
+    ) : SeriesItem()
+}
 
 data class SeriesDetailUiState(
     val series: Series? = null,
@@ -19,18 +144,88 @@ data class SeriesDetailUiState(
     val downloadTasks: Map<Int, DownloadTask> = emptyMap(),
     val libraryName: String = "Comics",
     val libraryId: Int = 0,
+    val isMangaLibrary: Boolean = false,
     val chapterReadingLists: Map<Int, List<Pair<Int, String>>> = emptyMap(),
     val totalChapters: Int = 0,
     val chaptersRead: Int = 0,
     val totalPages: Int = 0,
     val pagesRead: Int = 0,
     val searchQuery: String = "",
+    val viewFilter: SeriesViewFilter = SeriesViewFilter.BOTH,
     val isSearchActive: Boolean = false,
     val isGridView: Boolean = false,
     val isIncognitoMode: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
 ) {
+    val displayMangaItems: List<SeriesItem>
+        get() {
+            if (!isMangaLibrary) return emptyList()
+
+            val volumeItems = mutableListOf<SeriesItem.VolumeItem>()
+            val chapterItems = mutableListOf<SeriesItem.ChapterItem>()
+
+            for (v in volumes) {
+                if (isVolumeFile(v)) {
+                    volumeItems.add(SeriesItem.VolumeItem(v))
+                } else {
+                    for (c in v.chapters) {
+                        chapterItems.add(SeriesItem.ChapterItem(c, v.id, isManga = true))
+                    }
+                    if (v.chapters.isEmpty()) {
+                        val dummyChapter = Chapter(
+                            id = v.id,
+                            volumeId = v.id,
+                            seriesId = 0,
+                            chapterNumber = v.name.replace(Regex("""[^0-9.]"""), ""),
+                            title = v.name,
+                            pages = v.totalPages,
+                            pagesRead = v.pagesRead
+                        )
+                        chapterItems.add(SeriesItem.ChapterItem(dummyChapter, v.id, isManga = true))
+                    }
+                }
+            }
+
+            val sortedVolumes = volumeItems.sortedBy { it.volume.number }
+            val sortedChapters = chapterItems.sortedWith { c1, c2 -> naturalCompare(c1.chapter.chapterNumber, c2.chapter.chapterNumber) }
+
+            val baseItems = when (viewFilter) {
+                SeriesViewFilter.BOTH -> sortedVolumes + sortedChapters
+                SeriesViewFilter.VOLUMES -> sortedVolumes
+                SeriesViewFilter.CHAPTERS -> sortedChapters
+            }
+
+            if (searchQuery.isBlank()) return baseItems
+
+            return baseItems.filter { item ->
+                item.title.contains(searchQuery, ignoreCase = true) ||
+                (item is SeriesItem.ChapterItem && item.chapter.chapterNumber.contains(searchQuery, ignoreCase = true))
+            }
+        }
+
+    val nextToReadId: Int?
+        get() {
+            if (isMangaLibrary) {
+                for (item in displayMangaItems) {
+                    when (item) {
+                        is SeriesItem.VolumeItem -> {
+                            val firstUnread = item.volume.chapters.firstOrNull { !it.isRead }
+                            if (firstUnread != null) return firstUnread.id
+                        }
+                        is SeriesItem.ChapterItem -> {
+                            if (!item.chapter.isRead) return item.chapter.id
+                        }
+                    }
+                }
+            }
+            for (v in volumes) {
+                val unread = v.chapters.firstOrNull { !it.isRead }
+                if (unread != null) return unread.id
+            }
+            return volumes.firstOrNull()?.chapters?.firstOrNull()?.id
+        }
+
     val filteredVolumes: List<Volume>
         get() {
             if (searchQuery.isBlank()) return volumes
@@ -92,8 +287,9 @@ class SeriesDetailViewModel : ViewModel() {
 
                 val library = libraryRes.getOrNull()?.find { it.id == fetchedSeries?.libraryId }
                 val resolvedLibraryId = library?.id ?: fetchedSeries?.libraryId ?: 0
+                val isManga = library?.type == 0 || library?.name?.contains("manga", ignoreCase = true) == true
                 val resolvedLibraryName = when {
-                    library?.type == 0 || library?.name?.contains("manga", ignoreCase = true) == true -> "Manga"
+                    isManga -> "Manga"
                     library?.type == 1 || library?.name?.contains("comic", ignoreCase = true) == true -> "Comics"
                     library?.name?.isNotBlank() == true -> library.name
                     else -> "Comics"
@@ -133,6 +329,7 @@ class SeriesDetailViewModel : ViewModel() {
                     volumes = volumes,
                     libraryName = resolvedLibraryName,
                     libraryId = resolvedLibraryId,
+                    isMangaLibrary = isManga,
                     totalChapters = computedTotalChapters,
                     chaptersRead = computedChaptersRead,
                     totalPages = calculatedTotalPages,
@@ -159,6 +356,10 @@ class SeriesDetailViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(searchQuery = query)
     }
 
+    fun selectViewFilter(filter: SeriesViewFilter) {
+        _uiState.value = _uiState.value.copy(viewFilter = filter)
+    }
+
     fun toggleSearchActive() {
         val newSearchState = !_uiState.value.isSearchActive
         _uiState.value = _uiState.value.copy(
@@ -173,12 +374,13 @@ class SeriesDetailViewModel : ViewModel() {
 
     fun downloadChapter(chapter: Chapter) {
         val series = _uiState.value.series ?: return
+        val itemLabel = if (_uiState.value.isMangaLibrary) "Chapter ${chapter.chapterNumber}" else "Issue ${chapter.chapterNumber}"
         viewModelScope.launch {
             downloadRepository.enqueueDownload(
                 chapterId = chapter.id,
                 seriesId = series.id,
                 volumeId = chapter.volumeId,
-                title = chapter.title.ifBlank { "Issue ${chapter.chapterNumber}" },
+                title = chapter.title.ifBlank { itemLabel },
                 coverUrl = chapter.coverUrl ?: series.coverUrl,
                 totalPages = chapter.pages,
                 libraryName = _uiState.value.libraryName,
@@ -190,7 +392,7 @@ class SeriesDetailViewModel : ViewModel() {
 
     fun downloadBulk(count: Int, unreadOnly: Boolean) {
         val series = _uiState.value.series ?: return
-        val allChapters = _uiState.value.volumes.flatMap { it.chapters }
+        val allChapters = _uiState.value.volumes.flatMap { v -> v.chapters }
         val eligibleChapters = if (unreadOnly) {
             allChapters.filter { !it.isRead }
         } else {
@@ -201,11 +403,12 @@ class SeriesDetailViewModel : ViewModel() {
 
         viewModelScope.launch {
             chaptersToDownload.forEach { chapter ->
+                val itemLabel = if (_uiState.value.isMangaLibrary) "Chapter ${chapter.chapterNumber}" else "Issue ${chapter.chapterNumber}"
                 downloadRepository.enqueueDownload(
                     chapterId = chapter.id,
                     seriesId = series.id,
                     volumeId = chapter.volumeId,
-                    title = chapter.title.ifBlank { "Issue ${chapter.chapterNumber}" },
+                    title = chapter.title.ifBlank { itemLabel },
                     coverUrl = chapter.coverUrl ?: series.coverUrl,
                     totalPages = chapter.pages,
                     libraryName = _uiState.value.libraryName,
