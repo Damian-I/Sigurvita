@@ -18,6 +18,7 @@ import com.zemmy.sigurvita.core.data.api.dto.ReaderProgressDto
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListDto
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListItemDto
 import com.zemmy.sigurvita.core.data.api.dto.SeriesDto
+import com.zemmy.sigurvita.core.data.api.dto.SortOptionsDto
 import com.zemmy.sigurvita.core.data.db.SigurvitaDatabase
 import com.zemmy.sigurvita.core.data.db.entity.CachedReadingListEntity
 import com.zemmy.sigurvita.core.data.db.entity.CachedSeriesEntity
@@ -37,6 +38,8 @@ import com.zemmy.sigurvita.core.model.Volume
 import com.zemmy.sigurvita.core.util.extractChapterNumber
 import com.zemmy.sigurvita.core.util.naturalCompare
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -198,10 +201,17 @@ class LibraryRepository(
     suspend fun getNewlyAddedSeries(): Result<List<Series>> = withContext(Dispatchers.IO) {
         try {
             val config = preferencesRepository.serverConfigFlow.first()
-            var dtoList = api.getRecentlyAddedSeries().body()
+            val filter = FilterV2Dto(
+                sortOptions = SortOptionsDto(sortField = 2, isAscending = false)
+            )
+            val res = api.getRecentlyAddedSeries(filter = filter)
+            var dtoList = if (res.isSuccessful && !res.body().isNullOrEmpty()) res.body() else null
 
             if (dtoList.isNullOrEmpty()) {
-                dtoList = api.getSeriesV2(libraryId = 0, filter = FilterV2Dto(), pageNumber = 1, pageSize = 20).body()
+                val fallbackRes = api.getSeriesV2(libraryId = 0, filter = filter, pageNumber = 1, pageSize = 20)
+                if (fallbackRes.isSuccessful) {
+                    dtoList = fallbackRes.body()
+                }
             }
 
             val seriesList = dtoList?.filter { it.id > 0 && it.name.isNotBlank() }?.map { dto ->
@@ -336,6 +346,29 @@ class ReadingListRepository(
         }
     }
 
+    suspend fun hasReadingListProgress(readingListId: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            var dtoList: List<ReadingListItemDto>? = null
+            val resPath = api.getReadingListItems(readingListId)
+            if (resPath.isSuccessful && !resPath.body().isNullOrEmpty()) {
+                dtoList = resPath.body()
+            } else {
+                val resQuery1 = api.getReadingListItemsQuery(readingListId)
+                if (resQuery1.isSuccessful && !resQuery1.body().isNullOrEmpty()) {
+                    dtoList = resQuery1.body()
+                } else {
+                    val resQuery2 = api.getReadingListItemsReadingListId(readingListId)
+                    if (resQuery2.isSuccessful && !resQuery2.body().isNullOrEmpty()) {
+                        dtoList = resQuery2.body()
+                    }
+                }
+            }
+            return@withContext dtoList?.any { it.pagesRead > 0 || it.isRead } == true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     suspend fun getReadingListItems(readingListId: Int): Result<List<ReadingListItem>> = withContext(Dispatchers.IO) {
         try {
             val config = preferencesRepository.serverConfigFlow.first()
@@ -356,46 +389,55 @@ class ReadingListRepository(
                 }
             }
 
-            val items = dtoList?.filter { it.id > 0 }?.map { dto ->
-                var pages = dto.pages
-                var pagesRead = dto.pagesRead
-                var isRead = dto.isRead
+            if (dtoList.isNullOrEmpty()) {
+                return@withContext Result.success(emptyList())
+            }
 
-                if (dto.chapterId != null && dto.chapterId > 0 && pages <= 0) {
-                    try {
-                        val cRes = api.getChapterById(dto.chapterId)
-                        if (cRes.isSuccessful && cRes.body() != null) {
-                            val cBody = cRes.body()!!
-                            pages = cBody.pages
-                            pagesRead = cBody.pagesRead
-                            isRead = cBody.isRead || (cBody.pages > 0 && cBody.pagesRead >= cBody.pages)
-                        }
-                    } catch (_: Exception) {}
-                } else {
-                    isRead = dto.isRead || (pages > 0 && pagesRead >= pages)
+            val validDtos = dtoList.filter { it.id > 0 }
+
+            val itemsDeferred = validDtos.map { dto ->
+                async {
+                    var pages = dto.pages
+                    var pagesRead = dto.pagesRead
+                    var isRead = dto.isRead
+
+                    if (dto.chapterId != null && dto.chapterId > 0 && pages <= 0) {
+                        try {
+                            val cRes = api.getChapterById(dto.chapterId)
+                            if (cRes.isSuccessful && cRes.body() != null) {
+                                val cBody = cRes.body()!!
+                                pages = cBody.pages
+                                pagesRead = cBody.pagesRead
+                                isRead = cBody.isRead || (cBody.pages > 0 && cBody.pagesRead >= cBody.pages)
+                            }
+                        } catch (_: Exception) {}
+                    } else {
+                        isRead = dto.isRead || (pages > 0 && pagesRead >= pages)
+                    }
+
+                    val coverUrl = if (dto.chapterId != null && dto.chapterId > 0) {
+                        "${config.serverUrl}/api/image/chapter-cover?chapterId=${dto.chapterId}&apiKey=${config.apiKey}"
+                    } else {
+                        "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}"
+                    }
+
+                    ReadingListItem(
+                        id = dto.id,
+                        readingListId = dto.readingListId,
+                        seriesId = dto.seriesId,
+                        seriesName = dto.seriesName,
+                        volumeId = dto.volumeId,
+                        chapterId = dto.chapterId,
+                        title = dto.title,
+                        coverUrl = coverUrl,
+                        pages = pages,
+                        pagesRead = pagesRead,
+                        isRead = isRead
+                    )
                 }
+            }
 
-                val coverUrl = if (dto.chapterId != null && dto.chapterId > 0) {
-                    "${config.serverUrl}/api/image/chapter-cover?chapterId=${dto.chapterId}&apiKey=${config.apiKey}"
-                } else {
-                    "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}"
-                }
-
-                ReadingListItem(
-                    id = dto.id,
-                    readingListId = dto.readingListId,
-                    seriesId = dto.seriesId,
-                    seriesName = dto.seriesName,
-                    volumeId = dto.volumeId,
-                    chapterId = dto.chapterId,
-                    title = dto.title,
-                    coverUrl = coverUrl,
-                    pages = pages,
-                    pagesRead = pagesRead,
-                    isRead = isRead
-                )
-            } ?: emptyList()
-
+            val items = itemsDeferred.awaitAll()
             Result.success(items)
         } catch (e: Exception) {
             Result.failure(e)
@@ -405,17 +447,34 @@ class ReadingListRepository(
     suspend fun getChapterReadingLists(seriesId: Int): Map<Int, List<Pair<Int, String>>> = withContext(Dispatchers.IO) {
         val map = mutableMapOf<Int, MutableList<Pair<Int, String>>>()
         try {
-            val listsRes = getReadingLists()
-            if (listsRes.isSuccess) {
-                val lists = listsRes.getOrDefault(emptyList())
-                for (list in lists) {
-                    val itemsRes = getReadingListItems(list.id)
-                    if (itemsRes.isSuccess) {
-                        val items = itemsRes.getOrDefault(emptyList())
-                        for (item in items) {
-                            if (item.seriesId == seriesId && item.chapterId != null && item.chapterId > 0) {
-                                map.getOrPut(item.chapterId) { mutableListOf() }.add(Pair(list.id, list.title))
-                            }
+            // First try direct fast API call for reading lists containing this series
+            val directRes = api.getReadingListsForSeries(seriesId)
+            var listsToFetch: List<Pair<Int, String>> = emptyList()
+
+            if (directRes.isSuccessful && !directRes.body().isNullOrEmpty()) {
+                listsToFetch = directRes.body()!!.map { Pair(it.id, it.title) }
+            } else {
+                // Fallback if endpoint returns empty/unavailable
+                val listsRes = getReadingLists()
+                if (listsRes.isSuccess) {
+                    listsToFetch = listsRes.getOrDefault(emptyList()).map { Pair(it.id, it.title) }
+                }
+            }
+
+            if (listsToFetch.isNotEmpty()) {
+                // Concurrently fetch items for the relevant lists in parallel
+                val deferreds = listsToFetch.map { (listId, listTitle) ->
+                    async {
+                        val itemsRes = getReadingListItems(listId)
+                        Pair(Pair(listId, listTitle), itemsRes.getOrDefault(emptyList()))
+                    }
+                }
+                val results = deferreds.awaitAll()
+                for ((listInfo, items) in results) {
+                    val (listId, listTitle) = listInfo
+                    for (item in items) {
+                        if (item.seriesId == seriesId && item.chapterId != null && item.chapterId > 0) {
+                            map.getOrPut(item.chapterId) { mutableListOf() }.add(Pair(listId, listTitle))
                         }
                     }
                 }

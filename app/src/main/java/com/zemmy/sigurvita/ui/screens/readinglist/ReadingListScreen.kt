@@ -269,7 +269,7 @@ fun ReadingListScreen(
                                     )
                                 }
                                 val nextItem = if (nextUnreadIndex in itemsList.indices) itemsList[nextUnreadIndex] else itemsList.firstOrNull()
-                                if (nextItem != null && nextItem.chapterId != null && nextItem.chapterId > 0) {
+                                if (nextItem?.chapterId != null && nextItem.chapterId > 0) {
                                     Button(
                                         onClick = {
                                             onChapterClick(nextItem.chapterId, nextItem.seriesId, nextItem.volumeId ?: 0, nextItem.readingListId)

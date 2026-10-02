@@ -60,6 +60,7 @@ interface KavitaApi {
 
     @POST("api/Series/recently-added-v2")
     suspend fun getRecentlyAddedSeries(
+        @Body filter: FilterV2Dto = FilterV2Dto(),
         @Query("PageNumber") pageNumber: Int = 1,
         @Query("PageSize") pageSize: Int = 20
     ): Response<List<SeriesDto>>
@@ -103,6 +104,16 @@ interface KavitaApi {
 
     @GET("api/ReadingList")
     suspend fun getReadingListsAll(): Response<List<ReadingListDto>>
+
+    @GET("api/ReadingList/lists-for-series")
+    suspend fun getReadingListsForSeries(
+        @Query("seriesId") seriesId: Int
+    ): Response<List<ReadingListDto>>
+
+    @GET("api/ReadingList/lists-for-chapter")
+    suspend fun getReadingListsForChapter(
+        @Query("chapterId") chapterId: Int
+    ): Response<List<ReadingListDto>>
 
     @GET("api/ReadingList/{id}")
     suspend fun getReadingListItems(

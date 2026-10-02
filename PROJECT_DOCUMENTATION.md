@@ -134,6 +134,7 @@ com.zemmy.sigurvita/
   - Reading Lists (showing **ONLY in-progress reading lists by default**, grouped into a **collapsible era folder tree view** categorized by major eras using `extractEraInfo`, sorted alphanumerically within each era using `naturalCompare` and `cleanReadingListTitle`. Manual reordering for reading lists has been removed in favor of automatic alphanumeric sorting). Pin state is synchronized in real-time with `ReadingListScreen` via DataStore (`chosenReadingListIdsFlow`).
   - Downloads & Settings
 - **Dedicated Library Browsing (`LibraryScreen`)**: Dedicated view and ViewModel for browsing all libraries or specific library series grids.
+- **High-Performance Reading List Optimizations**: Series detail chapter indicators and sidebar in-progress evaluations utilize Kavita's direct endpoints (`/api/ReadingList/lists-for-series`, `hasReadingListProgress`) combined with concurrent parallel coroutine execution (`async`/`awaitAll`) to eliminate sequential N+1 query overhead and load in milliseconds.
 
 ---
 

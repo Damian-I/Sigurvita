@@ -116,7 +116,6 @@ private fun formatChapterTitle(title: String, chapterNumber: String): String {
 @Composable
 fun SeriesDetailScreen(
     seriesId: Int,
-    onBackClick: () -> Unit,
     onChapterClick: (chapterId: Int, totalPages: Int, volumeId: Int) -> Unit,
     onLibraryClick: (libraryId: Int) -> Unit = {},
     onReadingListClick: (readingListId: Int) -> Unit = {},
@@ -183,19 +182,7 @@ fun SeriesDetailScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = { }
-            )
-        }
-    ) { innerPadding ->
+    Scaffold { innerPadding ->
         if (state.isLoading) {
             LoadingState(modifier = Modifier.padding(innerPadding))
         } else if (state.errorMessage != null) {

@@ -1,5 +1,8 @@
 package com.zemmy.sigurvita.ui.navigation
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
@@ -41,15 +44,19 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -70,7 +77,10 @@ import com.zemmy.sigurvita.ui.screens.reader.ReaderScreen
 import com.zemmy.sigurvita.ui.screens.readinglist.ReadingListScreen
 import com.zemmy.sigurvita.ui.screens.seriesdetail.SeriesDetailScreen
 import com.zemmy.sigurvita.ui.screens.settings.SettingsScreen
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,6 +103,11 @@ fun SigurvitaNavGraph(
     var libraryOrder by remember { mutableStateOf<List<Int>>(emptyList()) }
     var showAddReadingListDialog by remember { mutableStateOf(false) }
 
+    // Live dragging state for libraries
+    var draggingLibraryIndex by remember { mutableStateOf<Int?>(null) }
+    var libraryDragOffsetY by remember { mutableFloatStateOf(0f) }
+    val itemHeightPx = with(LocalDensity.current) { 48.dp.toPx() }
+
     LaunchedEffect(Unit) {
         scope.launch {
             val libRes = libraryRepo.getLibraries()
@@ -103,18 +118,16 @@ fun SigurvitaNavGraph(
                 val fetchedLists = rlRes.getOrDefault(emptyList())
                 readingLists = fetchedLists
 
-                // Determine which reading lists are in-progress
-                val inProgress = mutableSetOf<Int>()
-                for (rl in fetchedLists) {
-                    val itemsRes = readingListRepo.getReadingListItems(rl.id)
-                    if (itemsRes.isSuccess) {
-                        val items = itemsRes.getOrDefault(emptyList())
-                        if (items.any { it.pagesRead > 0 || it.isRead }) {
-                            inProgress.add(rl.id)
-                        }
+                // Concurrently check progress for all reading lists in parallel using fast endpoint
+                val deferreds = fetchedLists.map { rl ->
+                    async {
+                        if (readingListRepo.hasReadingListProgress(rl.id)) {
+                            rl.id
+                        } else null
                     }
                 }
-                inProgressReadingListIds = inProgress
+                val inProgressIds = deferreds.awaitAll().filterNotNull()
+                inProgressReadingListIds = inProgressIds.toSet()
             }
         }
     }
@@ -248,15 +261,50 @@ fun SigurvitaNavGraph(
                         )
                     }
 
-                    // Individual Libraries (drag to reorder)
+                    // Individual Libraries (live drag to reorder with fluid surrounding items displacement)
                     itemsIndexed(orderedLibraries, key = { _, lib -> lib.id }) { index, library ->
-                        var dragY by remember { mutableStateOf(0f) }
+                        val isDragging = (draggingLibraryIndex == index)
+                        val targetIndex = remember(draggingLibraryIndex, libraryDragOffsetY, orderedLibraries.size) {
+                            if (draggingLibraryIndex == null) null
+                            else {
+                                val delta = (libraryDragOffsetY / itemHeightPx).roundToInt()
+                                (draggingLibraryIndex!! + delta).coerceIn(0, orderedLibraries.size - 1)
+                            }
+                        }
+
+                        val shiftPx = remember(index, draggingLibraryIndex, targetIndex) {
+                            if (draggingLibraryIndex == null || targetIndex == null || isDragging) 0f
+                            else {
+                                val startIndex = draggingLibraryIndex!!
+                                if (startIndex < targetIndex && index in (startIndex + 1)..targetIndex) {
+                                    -itemHeightPx
+                                } else if (startIndex > targetIndex && index in targetIndex..<startIndex) {
+                                    itemHeightPx
+                                } else {
+                                    0f
+                                }
+                            }
+                        }
+
+                        val animatedShiftY by animateFloatAsState(
+                            targetValue = shiftPx,
+                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                            label = "itemShift"
+                        )
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .zIndex(if (isDragging) 10f else 0f)
+                                .graphicsLayer {
+                                    translationY = if (isDragging) libraryDragOffsetY else animatedShiftY
+                                    shadowElevation = if (isDragging) 8.dp.toPx() else 0f
+                                }
                                 .clickable {
-                                    scope.launch { drawerState.close() }
-                                    navController.navigate(Screen.Library.createRoute(library.id))
+                                    if (draggingLibraryIndex == null) {
+                                        scope.launch { drawerState.close() }
+                                        navController.navigate(Screen.Library.createRoute(library.id))
+                                    }
                                 }
                                 .padding(horizontal = 24.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -271,27 +319,30 @@ fun SigurvitaNavGraph(
                                     .size(32.dp)
                                     .pointerInput(library.id) {
                                         detectDragGestures(
+                                            onDragStart = {
+                                                draggingLibraryIndex = index
+                                                libraryDragOffsetY = 0f
+                                            },
                                             onDrag = { change, dragAmount ->
                                                 change.consume()
-                                                dragY += dragAmount.y
-                                                if (dragY > 40f && index < orderedLibraries.size - 1) {
-                                                    val mutable = orderedLibraries.map { it.id }.toMutableList()
-                                                    val temp = mutable[index]
-                                                    mutable[index] = mutable[index + 1]
-                                                    mutable[index + 1] = temp
-                                                    scope.launch { prefsRepo.updateLibraryOrder(mutable) }
-                                                    dragY = 0f
-                                                } else if (dragY < -40f && index > 0) {
-                                                    val mutable = orderedLibraries.map { it.id }.toMutableList()
-                                                    val temp = mutable[index]
-                                                    mutable[index] = mutable[index - 1]
-                                                    mutable[index - 1] = temp
-                                                    scope.launch { prefsRepo.updateLibraryOrder(mutable) }
-                                                    dragY = 0f
-                                                }
+                                                libraryDragOffsetY += dragAmount.y
                                             },
-                                            onDragEnd = { dragY = 0f },
-                                            onDragCancel = { dragY = 0f }
+                                            onDragEnd = {
+                                                val start = draggingLibraryIndex
+                                                val target = targetIndex
+                                                if (start != null && target != null && start != target) {
+                                                    val mutable = orderedLibraries.map { it.id }.toMutableList()
+                                                    val item = mutable.removeAt(start)
+                                                    mutable.add(target, item)
+                                                    scope.launch { prefsRepo.updateLibraryOrder(mutable) }
+                                                }
+                                                draggingLibraryIndex = null
+                                                libraryDragOffsetY = 0f
+                                            },
+                                            onDragCancel = {
+                                                draggingLibraryIndex = null
+                                                libraryDragOffsetY = 0f
+                                            }
                                         )
                                     },
                                 contentAlignment = Alignment.Center
@@ -299,7 +350,7 @@ fun SigurvitaNavGraph(
                                 Icon(
                                     Icons.Default.Menu,
                                     contentDescription = "Drag to Rearrange",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = if (isDragging) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -499,7 +550,6 @@ fun SigurvitaNavGraph(
                 val seriesId = backStackEntry.arguments?.getInt("seriesId") ?: 0
                 SeriesDetailScreen(
                     seriesId = seriesId,
-                    onBackClick = { navController.popBackStack() },
                     onChapterClick = { chapterId, totalPages, volumeId ->
                         navController.navigate(
                             Screen.Reader.createRoute(
