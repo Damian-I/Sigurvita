@@ -28,9 +28,14 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Bookmark
+import androidx.compose.ui.res.stringResource
+import com.zemmy.sigurvita.R
 import com.zemmy.sigurvita.core.util.extractEraInfo
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -138,6 +143,13 @@ fun ReadingListScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { viewModel.toggleIncognitoMode() }) {
+                        Icon(
+                            imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = stringResource(R.string.toggle_incognito),
+                            tint = if (state.isIncognitoMode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                     if (state.selectedListTitle != null) {
                         IconButton(onClick = { showMassDownloadDialog = true }) {
                             Icon(Icons.Default.Download, contentDescription = "Mass Download")
@@ -177,6 +189,32 @@ fun ReadingListScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            if (state.isIncognitoMode) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.VisibilityOff,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = stringResource(R.string.incognito_active_message),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+                }
+            }
+
             // Search Bar
             OutlinedTextField(
                 value = state.searchQuery,
@@ -273,6 +311,11 @@ fun ReadingListScreen(
                                     Button(
                                         onClick = {
                                             onChapterClick(nextItem.chapterId, nextItem.seriesId, nextItem.volumeId ?: 0, nextItem.readingListId)
+                                        },
+                                        colors = if (state.isIncognitoMode) {
+                                            ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                                        } else {
+                                            ButtonDefaults.buttonColors()
                                         }
                                     ) {
                                         Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -322,7 +365,8 @@ fun ReadingListScreen(
                                     Text(
                                         text = item.seriesName,
                                         style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.clickable { onSeriesClick(item.seriesId) }
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Row(verticalAlignment = Alignment.CenterVertically) {

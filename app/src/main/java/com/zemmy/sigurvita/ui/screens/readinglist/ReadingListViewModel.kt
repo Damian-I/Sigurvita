@@ -36,6 +36,7 @@ data class ReadingListUiState(
     val totalPages: Int = 0,
     val pagesRead: Int = 0,
     val chosenReadingListIds: Set<Int> = emptySet(),
+    val isIncognitoMode: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
 ) {
@@ -106,7 +107,19 @@ class ReadingListViewModel : ViewModel() {
                 _uiState.value = _uiState.value.copy(chosenReadingListIds = ids.toSet())
             }
         }
+        viewModelScope.launch {
+            preferencesRepository.readerSettingsFlow.collect { settings ->
+                _uiState.value = _uiState.value.copy(isIncognitoMode = settings.isIncognitoMode)
+            }
+        }
         loadReadingLists()
+    }
+
+    fun toggleIncognitoMode() {
+        val newMode = !_uiState.value.isIncognitoMode
+        viewModelScope.launch {
+            preferencesRepository.updateIncognitoMode(newMode)
+        }
     }
 
     fun loadReadingLists() {

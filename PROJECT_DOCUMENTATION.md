@@ -91,7 +91,7 @@ com.zemmy.sigurvita/
 
 ### 4.3 Data Layer & Repositories (`core.data`)
 - **API (`KavitaApi`)**: Exposes Retrofit endpoints for authentication, library listing, series details, chapter lists, chapter pages, and downloads matching the official Kavita API specification.
-  - **Official Kavita API Reference**: [Kavita API Documentation](https://www.kavitareader.com/docs/api/#/)
+    - **Official Kavita API Reference**: [Kavita API Documentation](https://www.kavitareader.com/docs/api/#/)
 - **Database (`SigurvitaDatabase`, `Daos`, `Entities`)**: Provides local offline caching for series, chapters, pages, and download queue items.
 - **Repositories (`Repositories.kt`)**: Implements single-source-of-truth or offline-first patterns by coordinating between `KavitaApi` and Room DAOs.
 
@@ -101,7 +101,7 @@ com.zemmy.sigurvita/
 - **Debounced Progress Synchronization**: Progress updates (`saveProgress`) are debounced to fire at most once every 3 seconds to eliminate excessive network requests during rapid page flipping. Progress is always flushed when exiting the reader or changing chapters.
 - **Resume Position Prompt**: When opening a previously completed issue (or moving to a completed next chapter), the reader presents a prompt dialog asking the user whether to start from the beginning or resume from the last page.
 - **Auto-Delete Local Downloads**: Integrates configurable automatic cleanup ("Immediately", "After 1 Issue", "After 2 Issues", "After 5 Issues") upon finishing a chapter, tracking completed history in `UserPreferencesRepository` and removing downloaded files, extracted CBZ caches, and empty parent directories up to the root download directory.
-- Hardware volume keys (`KEYCODE_VOLUME_UP` / `KEYCODE_VOLUME_DOWN` in `MainActivity`) are intercepted to enable physical page flipping.
+- Hardware volume keys (`KEYCODE_VOLUME_UP` / `KEYCODE_VOLUME_DOWN` in `MainActivity`) are intercepted to enable physical page flipping. In Settings, the "Invert Volume Keys" option is rendered as a conditional subsection under "Volume Page Navigation" (visible only when volume page navigation is enabled).
 - **Edge Touch Page Navigation**: Tapping the left or right edges of the screen allows seamless page navigation (respecting LTR/RTL reading direction), with the center area toggling control overlays. Can be toggled on/off in Settings.
 - **RTL Reading & Progress Support**: Automatically mirrors page progression (`HorizontalPager` reverseLayout) and reader control overlays/sliders (`LayoutDirection.Rtl`) for manga and RTL reading modes.
 - **On-The-Go (OTG) Reader Options**: Features an in-reader settings sheet (`Icons.Default.Tune`) allowing users to dynamically switch between reading modes (`Right to Left (Manga)`, `Left to Right (Comic)`, `Webtoon (Vertical)`), adjust `FitMode` scaling (`Fit Width`, `Fit Height`, `Fit Screen`), and toggle touch edge navigation or screen timeout on the fly while reading. Displays a `"Library Default"` indicator under the default mode. All labels utilize localized string resources (`strings.xml`).
@@ -123,6 +123,7 @@ com.zemmy.sigurvita/
 - **Conditional In-Progress Page Indicators**: Displays real-time page progress (`pagesRead / totalPages`) under chapter and reading list item titles strictly for in-progress items (`0 < pagesRead < totalPages` and not marked read). Fully finished or unread items display standard page counts.
 - **Clickable Library & Reading List Badges**: Displays a clickable library badge (`Library: [Name]`) in the non-scrollable top section of `SeriesDetailScreen` (navigating to Home/Library) and interactive reading list tags (`📖 [List Title]`) on chapters, allowing users to tap and jump directly to that specific reading list.
 - **Unified Manga Volumes & Chapters Layout**: For series belonging strictly to Manga libraries (`isMangaLibrary == true`), renders volumes (`V12`) and stand-alone chapters (`c123`) in 1 continuous list or grid without separate volume label headers breaking up the view. Volumes appear first (sorted numerically), followed by stand-alone chapters (formatted as `"Chapter xx"`). Includes toolbar filter chips: `Both` (default), `Only Volumes`, `Only Chapters`. Non-manga libraries (Comics/Books) retain their original standard volume grouping.
+- **Reading List Series Access & Incognito Toggle**: Pressing on a series name within any reading list item navigates directly to that item's series detail screen. Reading lists feature an Incognito Mode toggle in the TopAppBar (displaying an active banner when enabled) to keep reading progress private across all reading list activities.
 
 ### 4.7 Dependency Injection / Singletons (`SigurvitaApp.kt`)
 - To prevent heavy memory overhead and thread starvation, all primary repositories (`ReaderRepository`, `SeriesRepository`, `UserPreferencesRepository`, etc.) and the `OkHttpClient`/`KavitaApi` networking stack are instantiated lazily as singletons attached to `SigurvitaApp.instance`. ViewModels retrieve these shared instances rather than recreating them.
@@ -130,10 +131,10 @@ com.zemmy.sigurvita/
 ### 4.8 Home Screen Revamp & Sliding Panel Navigation
 - **Home Screen (`HomeScreen`)**: Displays On Deck / Continue Reading, Recently Updated Series, and Newly Added Series (via `/api/Series/recently-added-v2`), keeping libraries accessible via the navigation panel.
 - **Sliding Panel / Navigation Drawer (`SigurvitaNavGraph`)**: Triggered by tapping the "Sigurvita" text in the top bar OR swiping left-to-right. Contains:
-  - Home (main screen)
-  - Libraries (All Libraries + individual libraries, reorderable via drag gestures on hamburger handles with custom order saved in DataStore).
-  - Reading Lists (showing **ONLY in-progress reading lists by default**, grouped into a **collapsible era folder tree view** categorized by major eras using `extractEraInfo`, sorted alphanumerically within each era using `naturalCompare` and `cleanReadingListTitle`. Manual reordering for reading lists has been removed in favor of automatic alphanumeric sorting). Pin state is synchronized in real-time with `ReadingListScreen` via DataStore (`chosenReadingListIdsFlow`).
-  - Downloads & Settings
+    - Home (main screen)
+    - Libraries (All Libraries + individual libraries, reorderable via drag gestures on hamburger handles with custom order saved in DataStore).
+    - Reading Lists (showing **ONLY in-progress reading lists by default**, grouped into a **collapsible era folder tree view** categorized by major eras using `extractEraInfo`, sorted alphanumerically within each era using `naturalCompare` and `cleanReadingListTitle`. Manual reordering for reading lists has been removed in favor of automatic alphanumeric sorting). Pin state is synchronized in real-time with `ReadingListScreen` via DataStore (`chosenReadingListIdsFlow`).
+    - Downloads & Settings
 - **Dedicated Library Browsing (`LibraryScreen`)**: Dedicated view and ViewModel for browsing all libraries or specific library series grids.
 - **High-Performance Reading List Optimizations**: Series detail chapter indicators and sidebar in-progress evaluations utilize Kavita's direct endpoints (`/api/ReadingList/lists-for-series`, `hasReadingListProgress`) combined with concurrent parallel coroutine execution (`async`/`awaitAll`) to eliminate sequential N+1 query overhead and load in milliseconds.
 
@@ -144,23 +145,23 @@ com.zemmy.sigurvita/
 When modifying or extending Sigurvita, adhere to the following guidelines:
 
 1. **Documentation Maintenance**:
-   - Always update `PROJECT_DOCUMENTATION.md` whenever structural changes, new feature workflows, or data/architecture changes are introduced to maintain a single source of truth.
+    - Always update `PROJECT_DOCUMENTATION.md` whenever structural changes, new feature workflows, or data/architecture changes are introduced to maintain a single source of truth.
 
 2. **Architecture Consistency**:
-   - Keep UI logic inside Jetpack Compose screens (`ui.screens.*`) and state management inside respective ViewModels.
-   - Use Repository pattern (`core.data.repository`) for data fetching; never call `KavitaApi` directly from UI or ViewModels.
+    - Keep UI logic inside Jetpack Compose screens (`ui.screens.*`) and state management inside respective ViewModels.
+    - Use Repository pattern (`core.data.repository`) for data fetching; never call `KavitaApi` directly from UI or ViewModels.
 
 3. **Navigation**:
-   - Add new screens to [Screen.kt](file:///home/zemmy/AndroidStudioProjects/Sigurvita/app/src/main/java/com/zemmy/sigurvita/ui/navigation/Screen.kt) with route strings and argument helpers.
-   - Register new composable destinations in [NavGraph.kt](file:///home/zemmy/AndroidStudioProjects/Sigurvita/app/src/main/java/com/zemmy/sigurvita/ui/navigation/NavGraph.kt).
+    - Add new screens to [Screen.kt](file:///home/zemmy/AndroidStudioProjects/Sigurvita/app/src/main/java/com/zemmy/sigurvita/ui/navigation/Screen.kt) with route strings and argument helpers.
+    - Register new composable destinations in [NavGraph.kt](file:///home/zemmy/AndroidStudioProjects/Sigurvita/app/src/main/java/com/zemmy/sigurvita/ui/navigation/NavGraph.kt).
 
 4. **Database Changes**:
-   - When modifying Room entities (`Entities.kt`) or DAOs (`Daos.kt`), increment database version in [SigurvitaDatabase.kt](file:///home/zemmy/AndroidStudioProjects/Sigurvita/app/src/main/java/com/zemmy/sigurvita/core/data/db/SigurvitaDatabase.kt) and provide proper migration strategies if needed.
+    - When modifying Room entities (`Entities.kt`) or DAOs (`Daos.kt`), increment database version in [SigurvitaDatabase.kt](file:///home/zemmy/AndroidStudioProjects/Sigurvita/app/src/main/java/com/zemmy/sigurvita/core/data/db/SigurvitaDatabase.kt) and provide proper migration strategies if needed.
 
 5. **Code Quality**:
-   - Write idiomatic Kotlin.
-   - Utilize coroutines and Flows (`StateFlow`, `SharedFlow`) for asynchronous operations.
-   - Maintain Material 3 consistency across all UI components.
+    - Write idiomatic Kotlin.
+    - Utilize coroutines and Flows (`StateFlow`, `SharedFlow`) for asynchronous operations.
+    - Maintain Material 3 consistency across all UI components.
 
 6. **Kavita API Reference**:
-   - When updating or adding REST endpoints, DTOs, or authentication parameters, always cross-reference the official [Kavita API Documentation](https://www.kavitareader.com/docs/api/#/).
+    - When updating or adding REST endpoints, DTOs, or authentication parameters, always cross-reference the official [Kavita API Documentation](https://www.kavitareader.com/docs/api/#/).
