@@ -81,7 +81,7 @@ com.zemmy.sigurvita/
 
 ### 4.1 Initialization & App Lifecycle (`SigurvitaApp`)
 - Initializes Room (`SigurvitaDatabase`) and DataStore (`UserPreferencesRepository`) on application startup.
-- Implements `ImageLoaderFactory` to configure Coil with a 100MB disk cache and 25% memory cache allocation.
+- Implements `ImageLoaderFactory` to configure Coil with a 500MB disk cache and 30% memory cache allocation.
 
 ### 4.2 Authentication & Server Connection (`core.datastore` & `core.data.api`)
 - Users configure their Kavita server URL and API key/credentials in `AuthScreen`.
