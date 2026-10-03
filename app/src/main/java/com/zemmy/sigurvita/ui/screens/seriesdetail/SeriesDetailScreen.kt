@@ -1,5 +1,6 @@
 package com.zemmy.sigurvita.ui.screens.seriesdetail
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -70,6 +71,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zemmy.sigurvita.core.model.DownloadStatus
+import com.zemmy.sigurvita.core.util.cleanReadingListTitle
+import com.zemmy.sigurvita.core.util.extractEraInfo
 import com.zemmy.sigurvita.ui.components.CoverImage
 import com.zemmy.sigurvita.ui.components.ErrorState
 import com.zemmy.sigurvita.ui.components.LoadingState
@@ -112,6 +115,55 @@ private fun formatChapterTitle(title: String, chapterNumber: String): String {
     }
 }
 
+@Composable
+private fun IntegratedReadingListBadge(
+    eraName: String,
+    partName: String,
+    listId: Int,
+    onEraClick: (String) -> Unit,
+    onReadingListClick: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val showEra = eraName.isNotBlank() && eraName != "General"
+    Surface(
+        shape = MaterialTheme.shapes.extraSmall,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+        color = MaterialTheme.colorScheme.surface,
+        modifier = modifier
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (showEra) {
+                Surface(
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.clickable { onEraClick(eraName) }
+                ) {
+                    Text(
+                        text = eraName,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.clickable { onReadingListClick(listId) }
+            ) {
+                Text(
+                    text = partName,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SeriesDetailScreen(
@@ -119,6 +171,7 @@ fun SeriesDetailScreen(
     onChapterClick: (chapterId: Int, totalPages: Int, volumeId: Int) -> Unit,
     onLibraryClick: (libraryId: Int) -> Unit = {},
     onReadingListClick: (readingListId: Int) -> Unit = {},
+    onEraClick: (eraName: String) -> Unit = {},
     viewModel: SeriesDetailViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -378,6 +431,14 @@ fun SeriesDetailScreen(
                             onValueChange = { viewModel.updateSearchQuery(it) },
                             placeholder = { Text("Search...", style = MaterialTheme.typography.bodyMedium) },
                             leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Search",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            trailingIcon = {
                                 IconButton(
                                     onClick = { viewModel.toggleSearchActive() },
                                     modifier = Modifier.size(24.dp)
@@ -388,14 +449,6 @@ fun SeriesDetailScreen(
                                         tint = MaterialTheme.colorScheme.primary
                                     )
                                 }
-                            },
-                            trailingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Search,
-                                    contentDescription = "Search",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp)
-                                )
                             },
                             singleLine = true,
                             textStyle = MaterialTheme.typography.bodyMedium,
@@ -449,8 +502,8 @@ fun SeriesDetailScreen(
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(3),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
@@ -504,18 +557,18 @@ fun SeriesDetailScreen(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 readingLists.forEach { (listId, listTitle) ->
-                                                    Surface(
-                                                        color = MaterialTheme.colorScheme.secondaryContainer,
-                                                        shape = MaterialTheme.shapes.extraSmall,
-                                                        modifier = Modifier.clickable { onReadingListClick(listId) }
-                                                    ) {
-                                                        Text(
-                                                            text = "📖 $listTitle",
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                        )
-                                                    }
+                                                    val eraInfo = extractEraInfo(listTitle)
+                                                    val eraName = eraInfo.name
+                                                    val cleanTitle = cleanReadingListTitle(listTitle)
+                                                    val partName = cleanTitle.removePrefix(eraName).trimStart('-', ':', '•', ' ').ifBlank { cleanTitle }
+
+                                                    IntegratedReadingListBadge(
+                                                        eraName = eraName,
+                                                        partName = partName,
+                                                        listId = listId,
+                                                        onEraClick = onEraClick,
+                                                        onReadingListClick = onReadingListClick
+                                                    )
                                                 }
                                             }
                                         }
@@ -555,7 +608,7 @@ fun SeriesDetailScreen(
                     } else {
                         LazyColumn(
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
@@ -570,7 +623,6 @@ fun SeriesDetailScreen(
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 4.dp)
                                         .clickable {
                                             when (item) {
                                                 is SeriesItem.VolumeItem -> {
@@ -622,20 +674,19 @@ fun SeriesDetailScreen(
                                                     modifier = Modifier.fillMaxWidth()
                                                 ) {
                                                     readingLists.forEach { (listId, listTitle) ->
-                                                        Surface(
-                                                            color = MaterialTheme.colorScheme.secondaryContainer,
-                                                            shape = MaterialTheme.shapes.extraSmall,
-                                                            modifier = Modifier
-                                                                .clickable { onReadingListClick(listId) }
-                                                                .weight(1f, fill = false)
-                                                        ) {
-                                                            Text(
-                                                                text = "📖 $listTitle",
-                                                                style = MaterialTheme.typography.labelSmall,
-                                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                            )
-                                                        }
+                                                        val eraInfo = extractEraInfo(listTitle)
+                                                        val eraName = eraInfo.name
+                                                        val cleanTitle = cleanReadingListTitle(listTitle)
+                                                        val partName = cleanTitle.removePrefix(eraName).trimStart('-', ':', '•', ' ').ifBlank { cleanTitle }
+
+                                                        IntegratedReadingListBadge(
+                                                            eraName = eraName,
+                                                            partName = partName,
+                                                            listId = listId,
+                                                            onEraClick = onEraClick,
+                                                            onReadingListClick = onReadingListClick,
+                                                            modifier = Modifier.weight(1f, fill = false)
+                                                        )
                                                     }
                                                 }
                                             }
@@ -713,8 +764,8 @@ fun SeriesDetailScreen(
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(3),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
@@ -726,7 +777,7 @@ fun SeriesDetailScreen(
                                             text = formatVolumeHeader(volume.name, volume.number),
                                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                                            modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                                            modifier = Modifier.padding(top = 2.dp, bottom = 1.dp)
                                         )
                                     }
                                 }
@@ -769,18 +820,18 @@ fun SeriesDetailScreen(
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     readingLists.forEach { (listId, listTitle) ->
-                                                        Surface(
-                                                            color = MaterialTheme.colorScheme.secondaryContainer,
-                                                            shape = MaterialTheme.shapes.extraSmall,
-                                                            modifier = Modifier.clickable { onReadingListClick(listId) }
-                                                        ) {
-                                                            Text(
-                                                                text = "📖 $listTitle",
-                                                                style = MaterialTheme.typography.labelSmall,
-                                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                            )
-                                                        }
+                                                        val eraInfo = extractEraInfo(listTitle)
+                                                        val eraName = eraInfo.name
+                                                        val cleanTitle = cleanReadingListTitle(listTitle)
+                                                        val partName = cleanTitle.removePrefix(eraName).trimStart('-', ':', '•', ' ').ifBlank { cleanTitle }
+
+                                                        IntegratedReadingListBadge(
+                                                            eraName = eraName,
+                                                            partName = partName,
+                                                            listId = listId,
+                                                            onEraClick = onEraClick,
+                                                            onReadingListClick = onReadingListClick
+                                                        )
                                                     }
                                                 }
                                             }
@@ -814,7 +865,7 @@ fun SeriesDetailScreen(
                     } else {
                         LazyColumn(
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
@@ -826,7 +877,7 @@ fun SeriesDetailScreen(
                                             text = formatVolumeHeader(volume.name, volume.number),
                                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                                            modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                                            modifier = Modifier.padding(top = 2.dp, bottom = 1.dp)
                                         )
                                     }
                                 }
@@ -839,7 +890,6 @@ fun SeriesDetailScreen(
                                     Card(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(vertical = 4.dp)
                                             .clickable {
                                                 onChapterClick(chapter.id, chapter.pages, volume.id)
                                             },
@@ -874,20 +924,19 @@ fun SeriesDetailScreen(
                                                         modifier = Modifier.fillMaxWidth()
                                                     ) {
                                                         readingLists.forEach { (listId, listTitle) ->
-                                                            Surface(
-                                                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                                                shape = MaterialTheme.shapes.extraSmall,
-                                                                modifier = Modifier
-                                                                    .clickable { onReadingListClick(listId) }
-                                                                    .weight(1f, fill = false)
-                                                            ) {
-                                                                Text(
-                                                                    text = "📖 $listTitle",
-                                                                    style = MaterialTheme.typography.labelSmall,
-                                                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                                )
-                                                            }
+                                                            val eraInfo = extractEraInfo(listTitle)
+                                                            val eraName = eraInfo.name
+                                                            val cleanTitle = cleanReadingListTitle(listTitle)
+                                                            val partName = cleanTitle.removePrefix(eraName).trimStart('-', ':', '•', ' ').ifBlank { cleanTitle }
+
+                                                            IntegratedReadingListBadge(
+                                                                eraName = eraName,
+                                                                partName = partName,
+                                                                listId = listId,
+                                                                onEraClick = onEraClick,
+                                                                onReadingListClick = onReadingListClick,
+                                                                modifier = Modifier.weight(1f, fill = false)
+                                                            )
                                                         }
                                                     }
                                                 }

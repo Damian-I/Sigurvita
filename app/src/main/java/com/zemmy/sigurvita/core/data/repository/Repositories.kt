@@ -36,6 +36,7 @@ import com.zemmy.sigurvita.core.model.ReadingListItem
 import com.zemmy.sigurvita.core.model.Series
 import com.zemmy.sigurvita.core.model.Volume
 import com.zemmy.sigurvita.core.util.extractChapterNumber
+import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
 import com.zemmy.sigurvita.core.util.naturalCompare
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -401,18 +402,32 @@ class ReadingListRepository(
                     var pagesRead = dto.pagesRead
                     var isRead = dto.isRead
 
-                    if (dto.chapterId != null && dto.chapterId > 0 && pages <= 0) {
-                        try {
-                            val cRes = api.getChapterById(dto.chapterId)
-                            if (cRes.isSuccessful && cRes.body() != null) {
-                                val cBody = cRes.body()!!
-                                pages = cBody.pages
-                                pagesRead = cBody.pagesRead
-                                isRead = cBody.isRead || (cBody.pages > 0 && cBody.pagesRead >= cBody.pages)
-                            }
-                        } catch (_: Exception) {}
+                    var resolvedTitle = dto.title
+                    if (dto.chapterId != null && dto.chapterId > 0) {
+                        val cachedChapter = database.chapterDao().getChapterById(dto.chapterId)
+                        if (cachedChapter != null) {
+                            if (pages <= 0) pages = cachedChapter.pages
+                            if (pagesRead <= 0) pagesRead = cachedChapter.pagesRead
+                            isRead = isRead || cachedChapter.isRead
+                            resolvedTitle = formatChapterDisplayTitle(cachedChapter.title, cachedChapter.chapterNumber)
+                        } else {
+                            try {
+                                val cRes = api.getChapterById(dto.chapterId)
+                                if (cRes.isSuccessful && cRes.body() != null) {
+                                    val cBody = cRes.body()!!
+                                    if (pages <= 0) pages = cBody.pages
+                                    if (pagesRead <= 0) pagesRead = cBody.pagesRead
+                                    isRead = isRead || cBody.isRead || (cBody.pages > 0 && cBody.pagesRead >= cBody.pages)
+                                    resolvedTitle = formatChapterDisplayTitle(cBody.titleName ?: cBody.title, cBody.number)
+                                }
+                            } catch (_: Exception) {}
+                        }
                     } else {
                         isRead = dto.isRead || (pages > 0 && pagesRead >= pages)
+                    }
+
+                    if (resolvedTitle.isBlank() || resolvedTitle.startsWith("Issue", ignoreCase = true)) {
+                        resolvedTitle = formatChapterDisplayTitle(dto.title, "")
                     }
 
                     val coverUrl = if (dto.chapterId != null && dto.chapterId > 0) {
@@ -421,14 +436,28 @@ class ReadingListRepository(
                         "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}"
                     }
 
+                    val resolvedSeriesName = if (dto.seriesName.isNotBlank()) {
+                        dto.seriesName
+                    } else if (dto.seriesId > 0) {
+                        val cachedSeries = database.seriesDao().getSeriesById(dto.seriesId)
+                        if (cachedSeries != null && cachedSeries.name.isNotBlank()) {
+                            cachedSeries.name
+                        } else {
+                            try {
+                                val sRes = api.getSeriesById(dto.seriesId)
+                                sRes.body()?.name ?: ""
+                            } catch (_: Exception) { "" }
+                        }
+                    } else ""
+
                     ReadingListItem(
                         id = dto.id,
                         readingListId = dto.readingListId,
                         seriesId = dto.seriesId,
-                        seriesName = dto.seriesName,
+                        seriesName = resolvedSeriesName,
                         volumeId = dto.volumeId,
                         chapterId = dto.chapterId,
-                        title = dto.title,
+                        title = resolvedTitle,
                         coverUrl = coverUrl,
                         pages = pages,
                         pagesRead = pagesRead,

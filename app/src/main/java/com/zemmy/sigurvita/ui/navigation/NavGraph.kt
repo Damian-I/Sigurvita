@@ -498,8 +498,13 @@ fun SigurvitaNavGraph(
                 )
             }
 
-            composable(Screen.ReadingLists.route) {
+            composable(
+                route = Screen.ReadingLists.route,
+                arguments = listOf(navArgument("eraName") { type = NavType.StringType; defaultValue = "" })
+            ) { backStackEntry ->
+                val eraName = backStackEntry.arguments?.getString("eraName") ?: ""
                 ReadingListScreen(
+                    initialEraName = eraName,
                     onBackClick = { navController.popBackStack() },
                     onSeriesClick = { seriesId ->
                         navController.navigate(Screen.SeriesDetail.createRoute(seriesId))
@@ -565,6 +570,9 @@ fun SigurvitaNavGraph(
                     },
                     onReadingListClick = { listId ->
                         navController.navigate(Screen.ReadingListDetail.createRoute(listId))
+                    },
+                    onEraClick = { eraName ->
+                        navController.navigate(Screen.ReadingLists.createRoute(eraName))
                     }
                 )
             }

@@ -75,10 +75,26 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
+private fun formatReadingListItemTitle(title: String): String {
+    val trimmed = title.trim()
+    if (trimmed.isBlank()) return "Issue"
+    if (trimmed.all { it.isDigit() || it == '.' }) return "#$trimmed"
+    if (trimmed.startsWith("#") || trimmed.startsWith("Issue", ignoreCase = true) || trimmed.startsWith("Chapter", ignoreCase = true)) {
+        return trimmed
+    }
+    val firstToken = trimmed.substringBefore(" ")
+    if (firstToken.all { it.isDigit() || it == '.' }) {
+        val rest = trimmed.substringAfter(" ").trimStart('-', ':', '•', ' ').trim()
+        return if (rest.isNotBlank()) "#$firstToken - $rest" else "#$firstToken"
+    }
+    return trimmed
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReadingListScreen(
     initialReadingListId: Int = 0,
+    initialEraName: String = "",
     onBackClick: () -> Unit,
     onSeriesClick: (Int) -> Unit,
     onChapterClick: (chapterId: Int, seriesId: Int, volumeId: Int, readingListId: Int) -> Unit,
@@ -88,9 +104,11 @@ fun ReadingListScreen(
     var showMassDownloadDialog by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
 
-    LaunchedEffect(initialReadingListId) {
+    LaunchedEffect(initialReadingListId, initialEraName) {
         if (initialReadingListId > 0) {
             viewModel.selectReadingListById(initialReadingListId)
+        } else if (initialEraName.isNotBlank()) {
+            viewModel.selectEra(initialEraName)
         }
     }
 
@@ -358,7 +376,7 @@ fun ReadingListScreen(
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = item.title.ifBlank { item.seriesName },
+                                        text = formatReadingListItemTitle(item.title.ifBlank { item.seriesName }),
                                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))

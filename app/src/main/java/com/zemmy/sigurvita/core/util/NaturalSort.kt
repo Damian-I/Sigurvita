@@ -61,21 +61,62 @@ fun extractChapterNumber(number: String, title: String): String {
 }
 
 /**
- * Cleans reading list titles by removing bracket prefixes, year ranges, and trailing parenthetical suffixes.
+ * Formats a chapter/issue title and chapter number into clean "#X - Title" or "#X" display string.
+ */
+fun formatChapterDisplayTitle(title: String, chapterNumber: String): String {
+    val chNum = extractChapterNumber(chapterNumber, title)
+    val isSentinelNumber = chNum.contains("100000") || (chNum.toIntOrNull()?.let { kotlin.math.abs(it) >= 10000 } == true)
+
+    val cleanNumber = if (!isSentinelNumber && chNum.isNotBlank() && chNum != "0") "#$chNum" else ""
+
+    var cleanTitle = title.trim()
+    if (chNum.isNotBlank()) {
+        cleanTitle = cleanTitle
+            .removePrefix("Chapter #$chNum")
+            .removePrefix("Chapter $chNum")
+            .removePrefix("Issue #$chNum")
+            .removePrefix("Issue $chapterNumber")
+            .removePrefix("Issue $chNum")
+            .removePrefix("#$chNum")
+            .removePrefix(chNum)
+            .trimStart(' ', '-', ':', '•')
+            .trim()
+    }
+
+    if (cleanTitle.equals(chNum.trim(), ignoreCase = true) || cleanTitle.equals("Issue $chNum", ignoreCase = true) || cleanTitle.equals("Chapter $chNum", ignoreCase = true)) {
+        cleanTitle = ""
+    }
+
+    return when {
+        cleanNumber.isNotBlank() && cleanTitle.isNotBlank() -> "$cleanNumber - $cleanTitle"
+        cleanTitle.isNotBlank() -> cleanTitle
+        cleanNumber.isNotBlank() -> cleanNumber
+        else -> "Issue"
+    }
+}
+
+/**
+ * Cleans reading list titles by removing bracket prefixes, year ranges, and trailing parenthetical suffixes,
+ * resulting in a clean "Era Name - Part Name" string.
  */
 fun cleanReadingListTitle(title: String): String {
     var result = title.trim()
 
-    // 1. Strip bracket prefix like [Marvel] or [DC]
+    // 1. Strip bracket prefix like [Marvel] or [DC] or [Star Wars]
     result = result.replace(Regex("""^\[[^]]+]\s*"""), "")
 
     // 2. Strip year range like 2012-2015 or 1961-1970
     result = result.replace(Regex("""\b\d{4}-\d{4}\b\s*"""), "")
 
-    // 3. Strip trailing parenthetical suffixes like (MG) or (WEB-CBRO) or (CBRO)
-    result = result.replace(Regex("""\s*\([A-Z0-9\s-]+\)$"""), "")
+    // 3. Repeatedly strip trailing parenthetical suffixes like (2012), (WEB-CBRO), (v1), (MG), etc.
+    while (result.contains(Regex("""\s*\([^)]+\)$"""))) {
+        result = result.replace(Regex("""\s*\([^)]+\)$"""), "").trim()
+    }
 
-    return result.trim().ifBlank { title }
+    // 4. Strip leading separators like "- " or ": " left after removing year ranges
+    result = result.trim().trimStart('-', ':', '•', ' ').trim()
+
+    return result.ifBlank { title }
 }
 
 data class EraCategory(

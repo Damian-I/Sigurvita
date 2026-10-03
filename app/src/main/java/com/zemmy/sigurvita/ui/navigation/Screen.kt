@@ -6,7 +6,9 @@ sealed class Screen(val route: String) {
     object Library : Screen("library/{libraryId}") {
         fun createRoute(libraryId: Int) = "library/$libraryId"
     }
-    object ReadingLists : Screen("reading_lists")
+    object ReadingLists : Screen("reading_lists?eraName={eraName}") {
+        fun createRoute(eraName: String = "") = if (eraName.isNotBlank()) "reading_lists?eraName=$eraName" else "reading_lists"
+    }
     object ReadingListDetail : Screen("reading_list_detail/{listId}") {
         fun createRoute(listId: Int) = "reading_list_detail/$listId"
     }
