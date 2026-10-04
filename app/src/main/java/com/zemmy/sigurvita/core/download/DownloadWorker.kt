@@ -288,20 +288,22 @@ class DownloadWorker(
                 try {
                     val responseBody = response.body
                     if (response.isSuccessful && responseBody != null) {
+                        val tempFile = File.createTempFile("page_dl_", ".tmp", context.cacheDir)
                         try {
                             responseBody.byteStream().use { input ->
-                                FileOutputStream(pageFile).use { output ->
+                                FileOutputStream(tempFile).use { output ->
                                     input.copyTo(output, bufferSize = 8192)
                                 }
                             }
-                        } catch (_: Exception) {
-                            pageTargetDir = File(File(safeAppDir, "$libraryName/$seriesName"), title).apply { mkdirs() }
-                            pageFile = File(pageTargetDir, formattedName)
-                            responseBody.byteStream().use { input ->
-                                FileOutputStream(pageFile).use { output ->
-                                    input.copyTo(output, bufferSize = 8192)
-                                }
+                            try {
+                                tempFile.copyTo(pageFile, overwrite = true)
+                            } catch (_: Exception) {
+                                pageTargetDir = File(File(safeAppDir, "$libraryName/$seriesName"), title).apply { mkdirs() }
+                                pageFile = File(pageTargetDir, formattedName)
+                                tempFile.copyTo(pageFile, overwrite = true)
                             }
+                        } finally {
+                            tempFile.delete()
                         }
                     } else {
                         val errorMsg = "HTTP ${response.code}: ${response.message}"

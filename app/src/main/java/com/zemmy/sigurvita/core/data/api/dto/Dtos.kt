@@ -3,18 +3,25 @@ package com.zemmy.sigurvita.core.data.api.dto
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class TokenResponseDto(
-    val token: String? = null,
-    val refreshToken: String? = null,
-    val username: String? = null
-)
-
-@Serializable
 data class UserDto(
     val id: Int = 0,
     val username: String = "",
     val email: String? = null,
-    val apiKey: String? = null
+    val apiKey: String? = null,
+    val token: String? = null,
+    val refreshToken: String? = null
+)
+
+@Serializable
+data class GroupedSeriesDto(
+    val seriesId: Int = 0,
+    val seriesName: String? = null,
+    val localizedSeriesName: String? = null,
+    val libraryId: Int = 0,
+    val libraryType: Int = 0,
+    val id: Int = 0,
+    val format: Int = 0,
+    val count: Int = 0
 )
 
 @Serializable
@@ -23,7 +30,7 @@ data class LibraryDto(
     val name: String = "",
     val type: Int = 0,
     val coverImage: String? = null,
-    val folder: String? = null
+    val folders: List<String>? = null
 )
 
 @Serializable
@@ -35,10 +42,12 @@ data class SeriesDto(
     val coverImage: String? = null,
     val summary: String? = null,
     val pagesRead: Int = 0,
-    val totalPages: Int = 0,
+    val pages: Int = 0,
     val format: Int = 0,
     val userRating: Float = 0f
-)
+) {
+    val totalPages: Int get() = pages
+}
 
 @Serializable
 data class SeriesDetailDto(
@@ -48,9 +57,11 @@ data class SeriesDetailDto(
     val coverImage: String? = null,
     val libraryId: Int = 0,
     val isCompleted: Boolean = false,
-    val totalPages: Int = 0,
+    val pages: Int = 0,
     val pagesRead: Int = 0
-)
+) {
+    val totalPages: Int get() = pages
+}
 
 @Serializable
 data class VolumeDto(
@@ -58,23 +69,24 @@ data class VolumeDto(
     val seriesId: Int = 0,
     val name: String = "",
     val number: Float = 0f,
+    val minNumber: Float = 0f,
+    val maxNumber: Float = 0f,
     val pagesRead: Int = 0,
-    val totalPages: Int = 0,
+    val pages: Int = 0,
     val chapters: List<ChapterDto> = emptyList()
-)
+) {
+    val totalPages: Int get() = pages
+}
 
 @Serializable
 data class ChapterDto(
     val id: Int = 0,
     val volumeId: Int = 0,
-    val seriesId: Int = 0,
     val number: String = "",
     val title: String = "",
     val titleName: String? = null,
     val pages: Int = 0,
-    val pagesRead: Int = 0,
-    val isRead: Boolean = false,
-    val coverImage: String? = null
+    val pagesRead: Int = 0
 )
 
 @Serializable
@@ -93,13 +105,12 @@ data class ReadingListItemDto(
     val readingListId: Int = 0,
     val seriesId: Int = 0,
     val seriesName: String = "",
-    val volumeId: Int? = null,
-    val chapterId: Int? = null,
+    val volumeId: Int = 0,
+    val chapterId: Int = 0,
     val title: String = "",
-    val coverImage: String? = null,
     val pages: Int = 0,
-    val pagesRead: Int = 0,
-    val isRead: Boolean = false
+    val pagesTotal: Int = 0,
+    val pagesRead: Int = 0
 )
 
 @Serializable

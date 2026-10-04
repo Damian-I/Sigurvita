@@ -109,6 +109,8 @@ fun ReadingListScreen(
             viewModel.selectReadingListById(initialReadingListId)
         } else if (initialEraName.isNotBlank()) {
             viewModel.selectEra(initialEraName)
+        } else {
+            viewModel.loadReadingLists()
         }
     }
 

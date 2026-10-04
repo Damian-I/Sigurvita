@@ -15,70 +15,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
+import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
+
 enum class SeriesViewFilter(val displayName: String) {
     BOTH("Both"),
     VOLUMES("Only Volumes"),
     CHAPTERS("Only Chapters")
-}
-
-private fun formatMangaChapterTitle(title: String, chapterNumber: String): String {
-    val isSentinelNumber = chapterNumber.contains("100000") ||
-            chapterNumber.toIntOrNull()?.let { abs(it) >= 10000 } == true
-
-    val cleanNumber = if (!isSentinelNumber && chapterNumber.isNotBlank()) "Chapter $chapterNumber" else ""
-
-    var cleanTitle = title.trim()
-    if (chapterNumber.isNotBlank()) {
-        cleanTitle = cleanTitle
-            .removePrefix("Chapter #$chapterNumber")
-            .removePrefix("Chapter $chapterNumber")
-            .removePrefix("Issue #$chapterNumber")
-            .removePrefix("Issue $chapterNumber")
-            .removePrefix("#$chapterNumber")
-            .removePrefix(chapterNumber)
-            .trimStart(' ', '-', ':', '•')
-            .trim()
-    }
-
-    if (cleanTitle.equals(chapterNumber.trim(), ignoreCase = true)) {
-        cleanTitle = ""
-    }
-
-    return when {
-        cleanNumber.isNotBlank() && cleanTitle.isNotBlank() -> "$cleanNumber - $cleanTitle"
-        cleanTitle.isNotBlank() -> cleanTitle
-        cleanNumber.isNotBlank() -> cleanNumber
-        else -> "Chapter"
-    }
-}
-
-private fun formatComicChapterTitle(title: String, chapterNumber: String): String {
-    val isSentinelNumber = chapterNumber.contains("100000") ||
-            chapterNumber.toIntOrNull()?.let { abs(it) >= 10000 } == true
-
-    val cleanNumber = if (!isSentinelNumber && chapterNumber.isNotBlank()) "#$chapterNumber" else ""
-
-    var cleanTitle = title.trim()
-    if (chapterNumber.isNotBlank()) {
-        cleanTitle = cleanTitle
-            .removePrefix("Issue #$chapterNumber")
-            .removePrefix("Issue $chapterNumber")
-            .removePrefix("#$chapterNumber")
-            .removePrefix(chapterNumber)
-            .trimStart(' ', '-', ':', '•')
-            .trim()
-    }
-
-    if (cleanTitle.equals(chapterNumber.trim(), ignoreCase = true)) {
-        cleanTitle = ""
-    }
-
-    return when {
-        cleanNumber.isNotBlank() && cleanTitle.isNotBlank() -> "$cleanNumber - $cleanTitle"
-        cleanTitle.isNotBlank() -> cleanTitle
-        cleanNumber.isNotBlank() -> cleanNumber
-        else -> "Issue"
-    }
 }
 
 private fun isVolumeFile(v: Volume): Boolean {
@@ -133,7 +75,7 @@ sealed class SeriesItem {
         override val isDownloaded: Boolean = chapter.isDownloaded,
         override val pages: Int = chapter.pages,
         override val pagesRead: Int = chapter.pagesRead,
-        override val title: String = if (isManga) formatMangaChapterTitle(chapter.title, chapter.chapterNumber) else formatComicChapterTitle(chapter.title, chapter.chapterNumber),
+        override val title: String = formatChapterDisplayTitle(chapter.title, chapter.chapterNumber),
         override val subtitle: String? = null
     ) : SeriesItem()
 }

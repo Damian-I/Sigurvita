@@ -90,10 +90,26 @@ com.zemmy.sigurvita/
 - `MainActivity` observes server configuration state to determine whether to start at `Screen.Auth` or `Screen.Home`.
 
 ### 4.3 Data Layer & Repositories (`core.data`)
-- **API (`KavitaApi`)**: Exposes Retrofit endpoints for authentication, library listing, series details, chapter lists, chapter pages, and downloads matching the official Kavita API specification.
+- **API (`KavitaApi`)**: Exposes Retrofit endpoints for authentication, library listing, series details, chapter lists, chapter pages, and downloads matching the official Kavita API specification (v0.9.1.6).
     - **Official Kavita API Reference**: [Kavita API Documentation](https://www.kavitareader.com/docs/api/#/)
+    - **Endpoint Cleanup & Fixes**:
+        - `authenticatePlugin()` returns `Response<UserDto>` containing embedded `token` and server API keys.
+        - `getLibraries()` maps to `/api/Library/libraries` (returns `List<LibraryDto>` of all server libraries).
+        - `getRecentlyUpdatedSeries()` returns `Response<List<GroupedSeriesDto>>` matching Kavita's grouped series schema.
+        - `getReadingListItems()` cleanly queries `/api/ReadingList/items?readingListId=X`.
+        - Added `/api/Reader/continue-point?seriesId=X` (`getContinuePoint`) returning `ChapterDto` for resume capabilities.
+        - Removed legacy / duplicate fallback methods (`getLibrariesFilter`, `getReadingListsGet`, `getReadingListsAll`, `getReadingListItemsQuery`, `getReadingListItemsReadingListId`).
+- **DTOs & API Schemas (`dto/Dtos.kt`)**: Re-aligned all Data Transfer Objects with Kavita API v0.9.1.6 specs:
+    - `SeriesDto`, `VolumeDto`, `SeriesDetailDto`: Mapped `pages` property (replacing mismatched `totalPages` field).
+    - `VolumeDto`: Added `minNumber` / `maxNumber` float fields for multi-issue volumes.
+    - `LibraryDto`: Fixed `folders` list field name.
+    - `ReadingListItemDto`: Mapped `pagesTotal` / `pages` fields and updated non-nullable `volumeId` and `chapterId`.
 - **Database (`SigurvitaDatabase`, `Daos`, `Entities`)**: Provides local offline caching for series, chapters, pages, and download queue items.
 - **Repositories (`Repositories.kt`)**: Implements single-source-of-truth or offline-first patterns by coordinating between `KavitaApi` and Room DAOs.
+    - **Single Endpoint Cleanups**: Streamlined `getReadingLists()`, `getReadingListItems()`, and `hasReadingListProgress()` to execute direct primary API calls instead of 3-level fallback chains.
+    - **DTO Mapping & Read Computation**: Resolved `isRead` states directly via `pagesRead >= pagesTotal` / `pagesRead >= pages` calculations across Chapter and Reading List mappings.
+    - **Context Propagation**: Preserves `seriesId` through Volume context when mapping chapters.
+    - **Direct Resolution**: Uses `getSeriesById()` in `ReaderRepository.saveProgress()` as primary lookup for `libraryId`.
 
 ### 4.4 Reader Experience (`ui.screens.reader`)
 - `ReaderScreen` and `ImageReader` provide a high-performance reading interface for pages, utilizing **image prefetching** (caching the next 3 pages into memory) and zoom state keying for seamless swiping.
@@ -110,7 +126,7 @@ com.zemmy.sigurvita/
 ### 4.5 Offline Downloads (`core.download.DownloadWorker`)
 - Background work managed via `WorkManager`.
 - **Native CBZ Downloading**: Actively prioritizes downloading the original `.cbz` archive directly from Kavita (`/api/Download/chapter`) utilizing the `AuthInterceptor` to rewrite URLs.
-- **Graceful Fallback**: If the native archive download fails, it gracefully falls back to a page-by-page download mapping individual `.jpg` files into a dedicated folder.
+- **Graceful Fallback & Stream Buffering**: If native archive download fails, falls back to page-by-page downloads. Page streams are buffered to temporary cache files before target output stream copy to prevent OkHttp single-shot response body re-read exceptions.
 - Allows users to read completely offline without an active network connection.
 
 ### 4.6 Series & Reading List Workflows (`ui.screens.seriesdetail` & `ui.screens.readinglist`)
@@ -123,7 +139,7 @@ com.zemmy.sigurvita/
 - **Conditional In-Progress Page Indicators**: Displays real-time page progress (`pagesRead / totalPages`) under chapter and reading list item titles strictly for in-progress items (`0 < pagesRead < totalPages` and not marked read). Fully finished or unread items display standard page counts.
 - **Clickable Library & Reading List Badges**: Displays a clickable library badge (`Library: [Name]`) in the non-scrollable top section of `SeriesDetailScreen` (navigating to Home/Library) and interactive reading list tags (`[List Title]`) on chapters, allowing users to tap and jump directly to that specific reading list.
 - **Unified Manga Volumes & Chapters Layout**: For series belonging strictly to Manga libraries (`isMangaLibrary == true`), renders volumes (`V12`) and stand-alone chapters (`c123`) in 1 continuous list or grid without separate volume label headers breaking up the view. Volumes appear first (sorted numerically), followed by stand-alone chapters (formatted as `"Chapter xx"`). Includes toolbar filter chips: `Both` (default), `Only Volumes`, `Only Chapters`. Non-manga libraries (Comics/Books) retain their original standard volume grouping.
-- **Integrated Single-Border Reading List Badges**: Displays unified interactive reading list capsules on chapters with a single outer border and differentiated background colors (`tertiaryContainer` for the Era section e.g. `Marvel Disassembled`, and `secondaryContainer` for the Part section e.g. `Part 01.1 Marvel Next`, without emojis). Tapping the Era section pre-selects that Era tab on `ReadingListScreen`, while tapping the Part section opens that exact reading list detail view.
+- **Integrated Single-Border Reading List Badges**: Displays unified interactive reading list capsules on chapters with a single outer border and differentiated background colors (`tertiaryContainer` for the Era section e.g. `Marvel Disassembled`, and `secondaryContainer` for the Part section e.g. `Part 01.1 Marvel Next`, without emojis). Tapping the Era section pre-selects that Era tab on `ReadingListScreen`, while tapping the Part section opens that exact reading list detail view. Navigating to `ReadingListScreen` from top-level navigation defaults to the `"All"` era filter tab.
 - **Full Chapter Titles & Series Links in Reading Lists**: Reading list items load full chapter metadata to format complete issue titles (`#1 - Sidekicks (Part 1)` or `#1`) instead of raw generic labels, with clickable series titles underneath. Includes an Incognito Mode toggle in the Reading Lists TopAppBar.
 
 ### 4.7 Dependency Injection / Singletons (`SigurvitaApp.kt`)

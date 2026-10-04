@@ -27,15 +27,6 @@ data class HomeUiState(
         get() = if (searchQuery.isBlank()) emptyList() else allSeries.filter {
             it.name.contains(searchQuery, ignoreCase = true) || (it.localizedName?.contains(searchQuery, ignoreCase = true) == true)
         }
-
-    val filteredOnDeckSeries: List<Series>
-        get() = onDeckSeries
-
-    val filteredRecentlyUpdatedSeries: List<Series>
-        get() = recentlyUpdatedSeries
-
-    val filteredNewlyAddedSeries: List<Series>
-        get() = newlyAddedSeries
 }
 
 class HomeViewModel : ViewModel() {

@@ -2,6 +2,7 @@ package com.zemmy.sigurvita.core.data.api
 
 import com.zemmy.sigurvita.core.data.api.dto.ChapterDto
 import com.zemmy.sigurvita.core.data.api.dto.FilterV2Dto
+import com.zemmy.sigurvita.core.data.api.dto.GroupedSeriesDto
 import com.zemmy.sigurvita.core.data.api.dto.LibraryDto
 import com.zemmy.sigurvita.core.data.api.dto.MarkMultipleDto
 import com.zemmy.sigurvita.core.data.api.dto.MarkSeriesDto
@@ -10,7 +11,6 @@ import com.zemmy.sigurvita.core.data.api.dto.ReadingListDto
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListItemDto
 import com.zemmy.sigurvita.core.data.api.dto.SeriesDetailDto
 import com.zemmy.sigurvita.core.data.api.dto.SeriesDto
-import com.zemmy.sigurvita.core.data.api.dto.TokenResponseDto
 import com.zemmy.sigurvita.core.data.api.dto.UserDto
 import com.zemmy.sigurvita.core.data.api.dto.VolumeDto
 import retrofit2.Response
@@ -26,16 +26,13 @@ interface KavitaApi {
     suspend fun authenticatePlugin(
         @Query("apiKey") apiKey: String,
         @Query("pluginName") pluginName: String = "Sigurvita"
-    ): Response<TokenResponseDto>
+    ): Response<UserDto>
 
     @GET("api/Account")
     suspend fun getAccount(): Response<UserDto>
 
-    @GET("api/Library")
+    @GET("api/Library/libraries")
     suspend fun getLibraries(): Response<List<LibraryDto>>
-
-    @GET("api/library/libraries")
-    suspend fun getLibrariesFilter(): Response<List<LibraryDto>>
 
     @POST("api/Series/v2")
     suspend fun getSeriesV2(
@@ -56,7 +53,7 @@ interface KavitaApi {
     suspend fun getRecentlyUpdatedSeries(
         @Query("PageNumber") pageNumber: Int = 1,
         @Query("PageSize") pageSize: Int = 20
-    ): Response<List<SeriesDto>>
+    ): Response<List<GroupedSeriesDto>>
 
     @POST("api/Series/recently-added-v2")
     suspend fun getRecentlyAddedSeries(
@@ -94,17 +91,6 @@ interface KavitaApi {
         @Query("PageSize") pageSize: Int = 100
     ): Response<List<ReadingListDto>>
 
-    @GET("api/ReadingList/lists")
-    suspend fun getReadingListsGet(
-        @Query("includePromoted") includePromoted: Boolean = true,
-        @Query("sortByLastModified") sortByLastModified: Boolean = true,
-        @Query("PageNumber") pageNumber: Int = 1,
-        @Query("PageSize") pageSize: Int = 100
-    ): Response<List<ReadingListDto>>
-
-    @GET("api/ReadingList")
-    suspend fun getReadingListsAll(): Response<List<ReadingListDto>>
-
     @GET("api/ReadingList/lists-for-series")
     suspend fun getReadingListsForSeries(
         @Query("seriesId") seriesId: Int
@@ -115,18 +101,8 @@ interface KavitaApi {
         @Query("chapterId") chapterId: Int
     ): Response<List<ReadingListDto>>
 
-    @GET("api/ReadingList/{id}")
+    @GET("api/ReadingList/items")
     suspend fun getReadingListItems(
-        @Path("id") readingListId: Int
-    ): Response<List<ReadingListItemDto>>
-
-    @GET("api/ReadingList/items")
-    suspend fun getReadingListItemsQuery(
-        @Query("userReadingListId") readingListId: Int
-    ): Response<List<ReadingListItemDto>>
-
-    @GET("api/ReadingList/items")
-    suspend fun getReadingListItemsReadingListId(
         @Query("readingListId") readingListId: Int
     ): Response<List<ReadingListItemDto>>
 
@@ -134,6 +110,11 @@ interface KavitaApi {
     suspend fun getReaderProgress(
         @Query("chapterId") chapterId: Int
     ): Response<ReaderProgressDto>
+
+    @GET("api/Reader/continue-point")
+    suspend fun getContinuePoint(
+        @Query("seriesId") seriesId: Int
+    ): Response<ChapterDto>
 
     @POST("api/Reader/progress")
     suspend fun setReaderProgress(

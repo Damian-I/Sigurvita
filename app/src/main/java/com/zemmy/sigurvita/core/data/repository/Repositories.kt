@@ -102,11 +102,6 @@ class LibraryRepository(
             val res = api.getLibraries()
             if (res.isSuccessful && !res.body().isNullOrEmpty()) {
                 dtoList = res.body()
-            } else {
-                val filterRes = api.getLibrariesFilter()
-                if (filterRes.isSuccessful) {
-                    dtoList = filterRes.body()
-                }
             }
 
             val libraries = dtoList?.filter { it.id > 0 && it.name.isNotBlank() }?.map { dto ->
@@ -127,10 +122,14 @@ class LibraryRepository(
     suspend fun getOnDeckSeries(): Result<List<Series>> = withContext(Dispatchers.IO) {
         try {
             val config = preferencesRepository.serverConfigFlow.first()
-            var dtoList = api.getOnDeckSeries().body()
+            val onDeckRes = api.getOnDeckSeries()
+            var dtoList = if (onDeckRes.isSuccessful) onDeckRes.body() else null
 
             if (dtoList.isNullOrEmpty()) {
-                dtoList = api.getSeriesV2(libraryId = 0, filter = FilterV2Dto(), pageNumber = 1, pageSize = 20).body()
+                val fallbackRes = api.getSeriesV2(libraryId = 0, filter = FilterV2Dto(), pageNumber = 1, pageSize = 20)
+                if (fallbackRes.isSuccessful) {
+                    dtoList = fallbackRes.body()
+                }
             }
 
             val seriesList = dtoList?.filter { it.id > 0 && it.name.isNotBlank() }?.map { dto ->
@@ -142,7 +141,7 @@ class LibraryRepository(
                     coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
                     summary = dto.summary,
                     pagesRead = dto.pagesRead,
-                    totalPages = dto.totalPages,
+                    totalPages = dto.pages,
                     userRating = dto.userRating
                 )
             } ?: emptyList()
@@ -173,25 +172,33 @@ class LibraryRepository(
     suspend fun getRecentlyUpdatedSeries(): Result<List<Series>> = withContext(Dispatchers.IO) {
         try {
             val config = preferencesRepository.serverConfigFlow.first()
-            var dtoList = api.getRecentlyUpdatedSeries().body()
-
-            if (dtoList.isNullOrEmpty()) {
-                dtoList = api.getSeriesV2(libraryId = 0, filter = FilterV2Dto(), pageNumber = 1, pageSize = 20).body()
+            val groupedRes = api.getRecentlyUpdatedSeries()
+            val seriesList = if (groupedRes.isSuccessful && !groupedRes.body().isNullOrEmpty()) {
+                groupedRes.body()!!.filter { it.seriesId > 0 && !it.seriesName.isNullOrBlank() }.map { dto ->
+                    Series(
+                        id = dto.seriesId,
+                        libraryId = dto.libraryId,
+                        name = dto.seriesName ?: "",
+                        localizedName = dto.localizedSeriesName,
+                        coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}"
+                    )
+                }
+            } else {
+                val fallbackList = api.getSeriesV2(libraryId = 0, filter = FilterV2Dto(), pageNumber = 1, pageSize = 20).body()
+                fallbackList?.filter { it.id > 0 && it.name.isNotBlank() }?.map { dto ->
+                    Series(
+                        id = dto.id,
+                        libraryId = dto.libraryId,
+                        name = dto.name,
+                        localizedName = dto.localizedName,
+                        coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
+                        summary = dto.summary,
+                        pagesRead = dto.pagesRead,
+                        totalPages = dto.totalPages,
+                        userRating = dto.userRating
+                    )
+                } ?: emptyList()
             }
-
-            val seriesList = dtoList?.filter { it.id > 0 && it.name.isNotBlank() }?.map { dto ->
-                Series(
-                    id = dto.id,
-                    libraryId = dto.libraryId,
-                    name = dto.name,
-                    localizedName = dto.localizedName,
-                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
-                    summary = dto.summary,
-                    pagesRead = dto.pagesRead,
-                    totalPages = dto.totalPages,
-                    userRating = dto.userRating
-                )
-            } ?: emptyList()
 
             Result.success(seriesList)
         } catch (e: Exception) {
@@ -305,16 +312,6 @@ class ReadingListRepository(
             val resPost = api.getReadingLists(filter = FilterV2Dto())
             if (resPost.isSuccessful && !resPost.body().isNullOrEmpty()) {
                 dtoList = resPost.body()
-            } else {
-                val resGet = api.getReadingListsGet()
-                if (resGet.isSuccessful && !resGet.body().isNullOrEmpty()) {
-                    dtoList = resGet.body()
-                } else {
-                    val resAll = api.getReadingListsAll()
-                    if (resAll.isSuccessful && !resAll.body().isNullOrEmpty()) {
-                        dtoList = resAll.body()
-                    }
-                }
             }
 
             val lists = dtoList?.filter { it.id > 0 && it.title.isNotBlank() }?.map { dto ->
@@ -349,22 +346,9 @@ class ReadingListRepository(
 
     suspend fun hasReadingListProgress(readingListId: Int): Boolean = withContext(Dispatchers.IO) {
         try {
-            var dtoList: List<ReadingListItemDto>? = null
-            val resPath = api.getReadingListItems(readingListId)
-            if (resPath.isSuccessful && !resPath.body().isNullOrEmpty()) {
-                dtoList = resPath.body()
-            } else {
-                val resQuery1 = api.getReadingListItemsQuery(readingListId)
-                if (resQuery1.isSuccessful && !resQuery1.body().isNullOrEmpty()) {
-                    dtoList = resQuery1.body()
-                } else {
-                    val resQuery2 = api.getReadingListItemsReadingListId(readingListId)
-                    if (resQuery2.isSuccessful && !resQuery2.body().isNullOrEmpty()) {
-                        dtoList = resQuery2.body()
-                    }
-                }
-            }
-            return@withContext dtoList?.any { it.pagesRead > 0 || it.isRead } == true
+            val res = api.getReadingListItems(readingListId)
+            val dtoList = if (res.isSuccessful) res.body() else null
+            return@withContext dtoList?.any { it.pagesRead > 0 } == true
         } catch (_: Exception) {
             false
         }
@@ -375,19 +359,9 @@ class ReadingListRepository(
             val config = preferencesRepository.serverConfigFlow.first()
             var dtoList: List<ReadingListItemDto>? = null
 
-            val resPath = api.getReadingListItems(readingListId)
-            if (resPath.isSuccessful && !resPath.body().isNullOrEmpty()) {
-                dtoList = resPath.body()
-            } else {
-                val resQuery1 = api.getReadingListItemsQuery(readingListId)
-                if (resQuery1.isSuccessful && !resQuery1.body().isNullOrEmpty()) {
-                    dtoList = resQuery1.body()
-                } else {
-                    val resQuery2 = api.getReadingListItemsReadingListId(readingListId)
-                    if (resQuery2.isSuccessful && !resQuery2.body().isNullOrEmpty()) {
-                        dtoList = resQuery2.body()
-                    }
-                }
+            val res = api.getReadingListItems(readingListId)
+            if (res.isSuccessful && !res.body().isNullOrEmpty()) {
+                dtoList = res.body()
             }
 
             if (dtoList.isNullOrEmpty()) {
@@ -398,12 +372,12 @@ class ReadingListRepository(
 
             val itemsDeferred = validDtos.map { dto ->
                 async {
-                    var pages = dto.pages
+                    var pages = if (dto.pagesTotal > 0) dto.pagesTotal else dto.pages
                     var pagesRead = dto.pagesRead
-                    var isRead = dto.isRead
+                    var isRead = pages > 0 && pagesRead >= pages
 
                     var resolvedTitle = dto.title
-                    if (dto.chapterId != null && dto.chapterId > 0) {
+                    if (dto.chapterId > 0) {
                         val cachedChapter = database.chapterDao().getChapterById(dto.chapterId)
                         if (cachedChapter != null) {
                             if (pages <= 0) pages = cachedChapter.pages
@@ -417,20 +391,20 @@ class ReadingListRepository(
                                     val cBody = cRes.body()!!
                                     if (pages <= 0) pages = cBody.pages
                                     if (pagesRead <= 0) pagesRead = cBody.pagesRead
-                                    isRead = isRead || cBody.isRead || (cBody.pages > 0 && cBody.pagesRead >= cBody.pages)
+                                    isRead = isRead || (cBody.pages > 0 && cBody.pagesRead >= cBody.pages)
                                     resolvedTitle = formatChapterDisplayTitle(cBody.titleName ?: cBody.title, cBody.number)
                                 }
                             } catch (_: Exception) {}
                         }
                     } else {
-                        isRead = dto.isRead || (pages > 0 && pagesRead >= pages)
+                        isRead = pages > 0 && pagesRead >= pages
                     }
 
                     if (resolvedTitle.isBlank() || resolvedTitle.startsWith("Issue", ignoreCase = true)) {
                         resolvedTitle = formatChapterDisplayTitle(dto.title, "")
                     }
 
-                    val coverUrl = if (dto.chapterId != null && dto.chapterId > 0) {
+                    val coverUrl = if (dto.chapterId > 0) {
                         "${config.serverUrl}/api/image/chapter-cover?chapterId=${dto.chapterId}&apiKey=${config.apiKey}"
                     } else {
                         "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}"
@@ -582,15 +556,16 @@ class SeriesRepository(
             val res = api.getSeriesVolumes(seriesId)
             if (res.isSuccessful) {
                 val volumes = res.body()?.map { vDto ->
+                    val resolvedVolSeriesId = if (vDto.seriesId > 0) vDto.seriesId else seriesId
                     Volume(
                         id = vDto.id,
-                        seriesId = vDto.seriesId,
+                        seriesId = resolvedVolSeriesId,
                         name = vDto.name,
                         number = vDto.number,
                         pagesRead = vDto.pagesRead,
-                        totalPages = vDto.totalPages,
+                        totalPages = vDto.pages,
                         chapters = vDto.chapters.map { cDto ->
-                            val isChapterRead = cDto.isRead || (cDto.pages > 0 && cDto.pagesRead >= cDto.pages)
+                            val isChapterRead = cDto.pages > 0 && cDto.pagesRead >= cDto.pages
                             val titleNameVal = cDto.titleName?.trim() ?: ""
                             val titleVal = cDto.title.trim()
                             val numVal = cDto.number.trim()
@@ -606,7 +581,7 @@ class SeriesRepository(
                             Chapter(
                                 id = cDto.id,
                                 volumeId = cDto.volumeId,
-                                seriesId = cDto.seriesId,
+                                seriesId = resolvedVolSeriesId,
                                 chapterNumber = resolvedNumber,
                                 title = resolvedTitle,
                                 pages = cDto.pages,
@@ -813,7 +788,6 @@ class ReaderRepository(
                 val cRes = api.getChapterById(chapterId)
                 if (cRes.isSuccessful && cRes.body() != null) {
                     val cDto = cRes.body()!!
-                    if (resolvedSeriesId <= 0) resolvedSeriesId = cDto.seriesId
                     if (resolvedVolumeId <= 0) resolvedVolumeId = cDto.volumeId
                 }
             } catch (_: Exception) {}
@@ -822,18 +796,16 @@ class ReaderRepository(
         // Only resolve libraryId from network if caller didn't provide it
         if (libraryId <= 0 && resolvedSeriesId > 0) {
             try {
-                val sRes = api.getSeriesDetail(resolvedSeriesId)
+                val sRes = api.getSeriesById(resolvedSeriesId)
                 if (sRes.isSuccessful && sRes.body() != null) {
                     libraryId = sRes.body()!!.libraryId
-                }
-            } catch (_: Exception) {
-                try {
-                    val sRes2 = api.getSeriesById(resolvedSeriesId)
+                } else {
+                    val sRes2 = api.getSeriesDetail(resolvedSeriesId)
                     if (sRes2.isSuccessful && sRes2.body() != null) {
                         libraryId = sRes2.body()!!.libraryId
                     }
-                } catch (_: Exception) {}
-            }
+                }
+            } catch (_: Exception) {}
         }
 
         if (libraryId <= 0) {

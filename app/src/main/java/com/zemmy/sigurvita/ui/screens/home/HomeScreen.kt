@@ -229,13 +229,13 @@ fun HomeScreen(
                     }
                     Spacer(modifier = Modifier.height(24.dp))
                 } else {
-                    if (state.filteredOnDeckSeries.isNotEmpty()) {
+                    if (state.onDeckSeries.isNotEmpty()) {
                         SectionHeader(title = stringResource(R.string.on_deck_title))
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            items(state.filteredOnDeckSeries, key = { it.id }) { series ->
+                            items(state.onDeckSeries, key = { it.id }) { series ->
                                 SeriesCard(
                                     series = series,
                                     onClick = { onSeriesClick(series.id) },
@@ -246,13 +246,13 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(20.dp))
                     }
 
-                    if (state.filteredRecentlyUpdatedSeries.isNotEmpty()) {
+                    if (state.recentlyUpdatedSeries.isNotEmpty()) {
                         SectionHeader(title = stringResource(R.string.recently_updated_title))
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            items(state.filteredRecentlyUpdatedSeries, key = { it.id }) { series ->
+                            items(state.recentlyUpdatedSeries, key = { it.id }) { series ->
                                 SeriesCard(
                                     series = series,
                                     onClick = { onSeriesClick(series.id) },
@@ -263,13 +263,13 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(20.dp))
                     }
 
-                    if (state.filteredNewlyAddedSeries.isNotEmpty()) {
+                    if (state.newlyAddedSeries.isNotEmpty()) {
                         SectionHeader(title = "Newly Added")
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            items(state.filteredNewlyAddedSeries, key = { it.id }) { series ->
+                            items(state.newlyAddedSeries, key = { it.id }) { series ->
                                 SeriesCard(
                                     series = series,
                                     onClick = { onSeriesClick(series.id) },
