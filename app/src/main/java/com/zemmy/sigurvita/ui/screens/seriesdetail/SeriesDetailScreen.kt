@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -170,6 +171,7 @@ private fun IntegratedReadingListBadge(
 @Composable
 fun SeriesDetailScreen(
     seriesId: Int,
+    onBackClick: () -> Unit = {},
     onChapterClick: (chapterId: Int, totalPages: Int, volumeId: Int) -> Unit,
     onLibraryClick: (libraryId: Int) -> Unit = {},
     onReadingListClick: (readingListId: Int) -> Unit = {},
@@ -237,7 +239,25 @@ fun SeriesDetailScreen(
         )
     }
 
-    Scaffold { innerPadding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = state.series?.name ?: "Series Detail",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
+    ) { innerPadding ->
         if (state.isLoading) {
             LoadingState(modifier = Modifier.padding(innerPadding))
         } else if (state.errorMessage != null) {
@@ -276,66 +296,65 @@ fun SeriesDetailScreen(
                                 .height(145.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
+                        var summaryExpanded by remember(series.id) { mutableStateOf(false) }
                         Column(
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .then(if (summaryExpanded) Modifier.wrapContentHeight() else Modifier.height(145.dp)),
+                            verticalArrangement = if (summaryExpanded) Arrangement.Top else Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                text = series.name,
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            if (series.summary?.isNotBlank() == true) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                var summaryExpanded by remember(series.id) { mutableStateOf(false) }
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { summaryExpanded = !summaryExpanded }
-                                ) {
-                                    Text(
-                                        text = series.summary,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = if (summaryExpanded) Int.MAX_VALUE else 3,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = if (summaryExpanded) "Read less" else "Read more...",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                if (series.summary?.isNotBlank() == true) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { summaryExpanded = !summaryExpanded }
+                                    ) {
+                                        Text(
+                                            text = series.summary,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = if (summaryExpanded) Int.MAX_VALUE else 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = if (summaryExpanded) "Read less" else "Read more...",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                }
+                                Text(
+                                    text = if (state.isMangaLibrary) "${state.chaptersRead} / ${state.totalChapters} chapters read" else "${state.chaptersRead} / ${state.totalChapters} issues read",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "(${state.pagesRead} / ${state.totalPages} pages)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (state.libraryName.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        shape = MaterialTheme.shapes.extraSmall,
+                                        modifier = Modifier.clickable { onLibraryClick(state.libraryId) }
+                                    ) {
+                                        Text(
+                                            text = "Library: ${state.libraryName}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
                                 }
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = if (state.isMangaLibrary) "${state.chaptersRead} / ${state.totalChapters} chapters read" else "${state.chaptersRead} / ${state.totalChapters} issues read",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "(${state.pagesRead} / ${state.totalPages} pages)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            if (state.libraryName.isNotBlank()) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Surface(
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                    shape = MaterialTheme.shapes.extraSmall,
-                                    modifier = Modifier.clickable { onLibraryClick(state.libraryId) }
-                                ) {
-                                    Text(
-                                        text = "Library: ${state.libraryName}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = if (summaryExpanded) 8.dp else 0.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {

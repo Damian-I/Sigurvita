@@ -571,6 +571,7 @@ fun SigurvitaNavGraph(
                 val seriesId = backStackEntry.arguments?.getInt("seriesId") ?: 0
                 SeriesDetailScreen(
                     seriesId = seriesId,
+                    onBackClick = { navController.popBackStack() },
                     onChapterClick = { chapterId, totalPages, volumeId ->
                         navController.navigate(
                             Screen.Reader.createRoute(
