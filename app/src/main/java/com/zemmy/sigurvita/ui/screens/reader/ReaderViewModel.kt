@@ -217,9 +217,10 @@ class ReaderViewModel : ViewModel() {
             val hasSavedProgress = savedPageNum > 1 && pageList.isNotEmpty()
 
             if (hasSavedProgress) {
+                val resumeIdx = if (savedPageNum - 1 in pageList.indices) savedPageNum - 1 else 0
                 _uiState.value = _uiState.value.copy(
                     pages = pageList,
-                    currentPageIndex = 0,
+                    currentPageIndex = resumeIdx,
                     isLoading = false,
                     showResumePrompt = true,
                     promptPageNum = savedPageNum
@@ -272,7 +273,8 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun onPageChanged(index: Int) {
-        if (index in 0 until _uiState.value.pages.size) {
+        if (_uiState.value.showResumePrompt) return
+        if (index in _uiState.value.pages.indices) {
             _uiState.value = _uiState.value.copy(currentPageIndex = index)
             progressSaveFlow.tryEmit(
                 ProgressEvent(
