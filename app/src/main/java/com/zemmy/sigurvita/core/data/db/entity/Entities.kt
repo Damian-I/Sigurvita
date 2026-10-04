@@ -61,3 +61,17 @@ data class DownloadTaskEntity(
     val localPath: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "marked_pages")
+data class MarkedPageEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val chapterId: Int,
+    val seriesId: Int = 0,
+    val volumeId: Int = 0,
+    val pageIndex: Int,
+    val totalPages: Int = 0,
+    val seriesName: String = "",
+    val chapterTitle: String = "",
+    val imageUrl: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)

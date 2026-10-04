@@ -122,6 +122,7 @@ com.zemmy.sigurvita/
 - **RTL Reading & Progress Support**: Automatically mirrors page progression (`HorizontalPager` reverseLayout) and reader control overlays/sliders (`LayoutDirection.Rtl`) for manga and RTL reading modes.
 - **On-The-Go (OTG) Reader Options**: Features an in-reader settings sheet (`Icons.Default.Tune`) allowing users to dynamically switch between reading modes (`Right to Left (Manga)`, `Left to Right (Comic)`, `Webtoon (Vertical)`), adjust `FitMode` scaling (`Fit Width`, `Fit Height`, `Fit Screen`), and toggle touch edge navigation or screen timeout on the fly while reading. Displays a `"Library Default"` indicator under the default mode. All labels utilize localized string resources (`strings.xml`).
 - **Fluid Webtoon Reading & Finger Swiping**: Webtoon mode renders panels as a continuous vertical scroll (`wrapContentHeight()`), bypassing transform gesture interception when unzoomed so single-finger vertical swipes/drags pass directly to `LazyColumn` for natural, fluid finger scrolling. Hardware volume navigation continues to function seamlessly.
+- **Page Review Marking**: Readers can mark/flag specific pages for review (e.g. noting pages with advertisements, promotions, or extra content to delete). Toggling the bookmark icon in the top control overlay toggles mark state saved locally to Room DB (`MarkedPageEntity`).
 
 ### 4.5 Offline Downloads (`core.download.DownloadWorker`)
 - Background work managed via `WorkManager`.
@@ -150,8 +151,10 @@ com.zemmy.sigurvita/
 - **Sliding Panel / Navigation Drawer (`SigurvitaNavGraph`)**: Triggered by tapping the "Sigurvita" text in the top bar OR swiping left-to-right. Contains:
     - Home (main screen)
     - Libraries (All Libraries + individual libraries, reorderable via drag gestures on hamburger handles with custom order saved in DataStore).
-    - Reading Lists (showing **ONLY in-progress reading lists by default**, grouped into a **collapsible era folder tree view** categorized by major eras using `extractEraInfo`, sorted alphanumerically within each era using `naturalCompare` and `cleanReadingListTitle`. Manual reordering for reading lists has been removed in favor of automatic alphanumeric sorting). Pin state is synchronized in real-time with `ReadingListScreen` via DataStore (`chosenReadingListIdsFlow`).
-    - Downloads & Settings
+    - Reading Lists (grouped into collapsible era tree view).
+    - Downloads
+    - **Page Review** (located directly underneath Downloads and above Settings, displaying all marked pages with sequential CBZ filename formatting `{comic_title} p{idx:03d}{ext}`, image thumbnails, click-to-enlarge modal previews, reader jumping, and search filtering).
+    - Settings
 - **Dedicated Library Browsing (`LibraryScreen`)**: Dedicated view and ViewModel for browsing all libraries or specific library series grids.
 - **High-Performance Reading List Optimizations**: Series detail chapter indicators and sidebar in-progress evaluations utilize Kavita's direct endpoints (`/api/ReadingList/lists-for-series`, `hasReadingListProgress`) combined with concurrent parallel coroutine execution (`async`/`awaitAll`) to eliminate sequential N+1 query overhead and load in milliseconds.
 

@@ -54,6 +54,10 @@ class SigurvitaApp : Application(), ImageLoaderFactory {
         DownloadRepository(database, this, userPreferencesRepository)
     }
 
+    val markedPageRepository: com.zemmy.sigurvita.core.data.repository.MarkedPageRepository by lazy {
+        com.zemmy.sigurvita.core.data.repository.MarkedPageRepository(database)
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this

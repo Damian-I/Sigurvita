@@ -31,7 +31,10 @@ data class ReaderUiState(
     val readingListId: Int = 0,
     val libraryDefaultMode: ReadingMode = ReadingMode.LTR,
     val showResumePrompt: Boolean = false,
-    val promptPageNum: Int = 0
+    val promptPageNum: Int = 0,
+    val markedPageIndices: Set<Int> = emptySet(),
+    val chapterTitle: String = "",
+    val seriesName: String = ""
 )
 
 class ReaderViewModel : ViewModel() {
@@ -102,11 +105,20 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
+    private var markedPageJob: Job? = null
+
     fun loadChapter(chapterId: Int, totalPages: Int, seriesId: Int, volumeId: Int, readingListId: Int = 0) {
         // Flush progress for the previous chapter before loading a new one
         flushProgress()
         // Reset cached library ID for new chapter context
         cachedLibraryId = 0
+
+        markedPageJob?.cancel()
+        markedPageJob = viewModelScope.launch {
+            app.markedPageRepository.getMarkedPageIndicesForChapter(chapterId).collect { indices ->
+                _uiState.value = _uiState.value.copy(markedPageIndices = indices.toSet())
+            }
+        }
 
         viewModelScope.launch {
             val userSettings = preferencesRepository.readerSettingsFlow.first()
@@ -130,6 +142,29 @@ class ReaderViewModel : ViewModel() {
                 }
             } catch (_: Exception) {}
 
+            var fetchedChapterTitle = ""
+            var fetchedSeriesName = ""
+            try {
+                val cachedChapter = app.database.chapterDao().getChapterById(chapterId)
+                if (cachedChapter != null) {
+                    fetchedChapterTitle = cachedChapter.title
+                } else {
+                    val cRes = app.kavitaApi.getChapterById(chapterId)
+                    if (cRes.isSuccessful && cRes.body() != null) {
+                        fetchedChapterTitle = cRes.body()!!.title
+                    }
+                }
+                val cachedSeries = app.database.seriesDao().getSeriesById(seriesId)
+                if (cachedSeries != null) {
+                    fetchedSeriesName = cachedSeries.name
+                } else if (seriesId > 0) {
+                    val sRes = app.kavitaApi.getSeriesById(seriesId)
+                    if (sRes.isSuccessful && sRes.body() != null) {
+                        fetchedSeriesName = sRes.body()!!.name
+                    }
+                }
+            } catch (_: Exception) {}
+
             val effectiveSettings = userSettings.copy(readingMode = effectiveReadingMode)
 
             _uiState.value = _uiState.value.copy(
@@ -140,7 +175,9 @@ class ReaderViewModel : ViewModel() {
                 seriesId = seriesId,
                 volumeId = volumeId,
                 readingListId = readingListId,
-                showResumePrompt = false
+                showResumePrompt = false,
+                chapterTitle = fetchedChapterTitle,
+                seriesName = fetchedSeriesName
             )
 
             val pageList = readerRepository.getPages(chapterId, totalPages)
@@ -165,6 +202,29 @@ class ReaderViewModel : ViewModel() {
                     promptPageNum = 0
                 )
             }
+        }
+    }
+
+    fun toggleMarkCurrentPage() {
+        val state = _uiState.value
+        val pageIdx = state.currentPageIndex
+        if (state.chapterId <= 0 || pageIdx !in state.pages.indices) return
+
+        val imageUrl = state.pages[pageIdx].imageUrl
+        val chapterTitle = state.chapterTitle.ifBlank { "Chapter ${state.chapterId}" }
+        val seriesName = state.seriesName.ifBlank { "Series ${state.seriesId}" }
+
+        viewModelScope.launch {
+            app.markedPageRepository.toggleMarkPage(
+                chapterId = state.chapterId,
+                seriesId = state.seriesId,
+                volumeId = state.volumeId,
+                pageIndex = pageIdx,
+                totalPages = state.pages.size,
+                seriesName = seriesName,
+                chapterTitle = chapterTitle,
+                imageUrl = imageUrl
+            )
         }
     }
 

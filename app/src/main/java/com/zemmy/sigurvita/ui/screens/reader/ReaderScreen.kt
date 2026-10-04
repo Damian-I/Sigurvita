@@ -21,8 +21,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -215,6 +217,14 @@ fun ReaderScreen(
                         }
                     },
                     actions = {
+                        val isCurrentPageMarked = state.currentPageIndex in state.markedPageIndices
+                        IconButton(onClick = { viewModel.toggleMarkCurrentPage() }) {
+                            Icon(
+                                imageVector = if (isCurrentPageMarked) Icons.Default.Bookmark else Icons.Outlined.Bookmark,
+                                contentDescription = if (isCurrentPageMarked) "Remove Page Mark" else "Mark Page for Review",
+                                tint = if (isCurrentPageMarked) MaterialTheme.colorScheme.primary else Color.White
+                            )
+                        }
                         IconButton(onClick = { showOptionsBottomSheet = true }) {
                             Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.reader_options_cd), tint = Color.White)
                         }

@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -73,6 +74,7 @@ import com.zemmy.sigurvita.ui.screens.auth.AuthScreen
 import com.zemmy.sigurvita.ui.screens.downloads.DownloadQueueScreen
 import com.zemmy.sigurvita.ui.screens.home.HomeScreen
 import com.zemmy.sigurvita.ui.screens.library.LibraryScreen
+import com.zemmy.sigurvita.ui.screens.markedpages.MarkedPagesScreen
 import com.zemmy.sigurvita.ui.screens.reader.ReaderScreen
 import com.zemmy.sigurvita.ui.screens.readinglist.ReadingListScreen
 import com.zemmy.sigurvita.ui.screens.seriesdetail.SeriesDetailScreen
@@ -442,6 +444,20 @@ fun SigurvitaNavGraph(
                         )
                     }
 
+                    // Page Review
+                    item {
+                        NavigationDrawerItem(
+                            icon = { Icon(Icons.Default.BookmarkBorder, contentDescription = null) },
+                            label = { Text("Page Review") },
+                            selected = currentRoute == Screen.MarkedPages.route,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                navController.navigate(Screen.MarkedPages.route)
+                            },
+                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                        )
+                    }
+
                     // Settings
                     item {
                         NavigationDrawerItem(
@@ -606,6 +622,22 @@ fun SigurvitaNavGraph(
             composable(Screen.Downloads.route) {
                 DownloadQueueScreen(
                     onBackClick = { navController.popBackStack() }
+                )
+            }
+
+            composable(Screen.MarkedPages.route) {
+                MarkedPagesScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onOpenReader = { chapterId, totalPages, seriesId, volumeId ->
+                        navController.navigate(
+                            Screen.Reader.createRoute(
+                                chapterId = chapterId,
+                                totalPages = totalPages,
+                                seriesId = seriesId,
+                                volumeId = volumeId
+                            )
+                        )
+                    }
                 )
             }
 

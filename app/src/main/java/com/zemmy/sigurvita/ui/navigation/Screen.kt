@@ -20,5 +20,6 @@ sealed class Screen(val route: String) {
             "reader/$chapterId/$totalPages?seriesId=$seriesId&volumeId=$volumeId&readingListId=$readingListId"
     }
     object Downloads : Screen("downloads")
+    object MarkedPages : Screen("marked_pages")
     object Settings : Screen("settings")
 }

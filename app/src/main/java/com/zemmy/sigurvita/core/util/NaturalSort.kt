@@ -119,6 +119,8 @@ fun cleanReadingListTitle(title: String): String {
     return result.ifBlank { title }
 }
 
+
+
 data class EraCategory(
     val name: String,
     val years: String? = null

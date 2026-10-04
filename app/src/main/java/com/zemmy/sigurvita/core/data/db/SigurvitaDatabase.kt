@@ -6,21 +6,24 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.zemmy.sigurvita.core.data.db.dao.ChapterDao
 import com.zemmy.sigurvita.core.data.db.dao.DownloadDao
+import com.zemmy.sigurvita.core.data.db.dao.MarkedPageDao
 import com.zemmy.sigurvita.core.data.db.dao.ReadingListDao
 import com.zemmy.sigurvita.core.data.db.dao.SeriesDao
 import com.zemmy.sigurvita.core.data.db.entity.CachedChapterEntity
 import com.zemmy.sigurvita.core.data.db.entity.CachedReadingListEntity
 import com.zemmy.sigurvita.core.data.db.entity.CachedSeriesEntity
 import com.zemmy.sigurvita.core.data.db.entity.DownloadTaskEntity
+import com.zemmy.sigurvita.core.data.db.entity.MarkedPageEntity
 
 @Database(
     entities = [
         CachedSeriesEntity::class,
         CachedChapterEntity::class,
         CachedReadingListEntity::class,
-        DownloadTaskEntity::class
+        DownloadTaskEntity::class,
+        MarkedPageEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class SigurvitaDatabase : RoomDatabase() {
@@ -29,6 +32,7 @@ abstract class SigurvitaDatabase : RoomDatabase() {
     abstract fun chapterDao(): ChapterDao
     abstract fun readingListDao(): ReadingListDao
     abstract fun downloadDao(): DownloadDao
+    abstract fun markedPageDao(): MarkedPageDao
 
     companion object {
         @Volatile
