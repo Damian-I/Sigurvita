@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
@@ -479,7 +480,16 @@ fun ReadingListScreen(
                 }
             } else if (state.filteredReadingLists.isNotEmpty()) {
                 val lists = state.filteredReadingLists
+                val overviewListState = rememberLazyListState()
+
+                LaunchedEffect(state.sortOption) {
+                    if (overviewListState.firstVisibleItemIndex == 0) {
+                        overviewListState.scrollToItem(0, 0)
+                    }
+                }
+
                 LazyColumn(
+                    state = overviewListState,
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize()

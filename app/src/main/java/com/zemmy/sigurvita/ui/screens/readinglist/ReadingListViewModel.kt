@@ -63,9 +63,9 @@ data class ReadingListUiState(
 
             return when (sortOption) {
                 ReadingListSortOption.TITLE_NATURAL_ASC ->
-                    filtered.sortedWith { l1, l2 -> naturalCompare(l1.title, l2.title) }
+                    filtered.sortedWith { l1, l2 -> naturalCompare(cleanReadingListTitle(l1.title), cleanReadingListTitle(l2.title)) }
                 ReadingListSortOption.TITLE_NATURAL_DESC ->
-                    filtered.sortedWith { l2, l1 -> naturalCompare(l2.title, l1.title) }
+                    filtered.sortedWith { l2, l1 -> naturalCompare(cleanReadingListTitle(l2.title), cleanReadingListTitle(l1.title)) }
                 ReadingListSortOption.ITEM_COUNT_DESC ->
                     filtered.sortedByDescending { it.itemCount }
                 ReadingListSortOption.ITEM_COUNT_ASC ->
@@ -127,6 +127,7 @@ class ReadingListViewModel : ViewModel() {
             selectedListId = null,
             selectedListItems = emptyList(),
             selectedListTitle = null,
+            selectedEraName = "All",
             searchQuery = "",
             isLoading = true,
             errorMessage = null

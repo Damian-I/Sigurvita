@@ -194,7 +194,7 @@ class LibraryRepository(
                         coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
                         summary = dto.summary,
                         pagesRead = dto.pagesRead,
-                        totalPages = dto.totalPages,
+                        totalPages = dto.pages,
                         userRating = dto.userRating
                     )
                 } ?: emptyList()
@@ -231,7 +231,7 @@ class LibraryRepository(
                     coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
                     summary = dto.summary,
                     pagesRead = dto.pagesRead,
-                    totalPages = dto.totalPages,
+                    totalPages = dto.pages,
                     userRating = dto.userRating
                 )
             } ?: emptyList()
@@ -287,7 +287,7 @@ class LibraryRepository(
                     coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
                     summary = dto.summary,
                     pagesRead = dto.pagesRead,
-                    totalPages = dto.totalPages,
+                    totalPages = dto.pages,
                     userRating = dto.userRating
                 )
             } ?: emptyList()
@@ -507,7 +507,7 @@ class SeriesRepository(
                     coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
                     summary = dto.summary,
                     pagesRead = dto.pagesRead,
-                    totalPages = dto.totalPages,
+                    totalPages = dto.pages,
                     userRating = dto.userRating
                 )
             } else {
@@ -521,7 +521,7 @@ class SeriesRepository(
                         coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
                         summary = dto.summary,
                         pagesRead = dto.pagesRead,
-                        totalPages = dto.totalPages,
+                        totalPages = dto.pages,
                         isCompleted = dto.isCompleted
                     )
                 }

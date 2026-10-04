@@ -45,9 +45,7 @@ data class SeriesDto(
     val pages: Int = 0,
     val format: Int = 0,
     val userRating: Float = 0f
-) {
-    val totalPages: Int get() = pages
-}
+)
 
 @Serializable
 data class SeriesDetailDto(
@@ -59,9 +57,7 @@ data class SeriesDetailDto(
     val isCompleted: Boolean = false,
     val pages: Int = 0,
     val pagesRead: Int = 0
-) {
-    val totalPages: Int get() = pages
-}
+)
 
 @Serializable
 data class VolumeDto(
@@ -74,9 +70,7 @@ data class VolumeDto(
     val pagesRead: Int = 0,
     val pages: Int = 0,
     val chapters: List<ChapterDto> = emptyList()
-) {
-    val totalPages: Int get() = pages
-}
+)
 
 @Serializable
 data class ChapterDto(
