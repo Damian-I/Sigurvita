@@ -8,6 +8,7 @@ import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
+import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -53,6 +54,7 @@ class ReaderViewModel : ViewModel() {
     private val progressSaveFlow = MutableSharedFlow<ProgressEvent>(extraBufferCapacity = 1)
     private var cachedLibraryId: Int = 0
     private var progressJob: Job? = null
+    private var sessionReadingModeOverride: ReadingMode? = null
 
     private data class ProgressEvent(
         val seriesId: Int,
@@ -123,57 +125,86 @@ class ReaderViewModel : ViewModel() {
         viewModelScope.launch {
             val userSettings = preferencesRepository.readerSettingsFlow.first()
 
-            var effectiveReadingMode = userSettings.readingMode
+            var targetSeriesId = seriesId
+            var targetVolumeId = volumeId
+            var fetchedSeriesName = ""
+            var fetchedChapterTitle = ""
+            var isManga = false
             var defaultMode = ReadingMode.LTR
+
+            // 1. Resolve targetSeriesId if not provided in arguments
+            if (targetSeriesId <= 0) {
+                try {
+                    val cachedChapter = app.database.chapterDao().getChapterById(chapterId)
+                    if (cachedChapter != null && cachedChapter.seriesId > 0) {
+                        targetSeriesId = cachedChapter.seriesId
+                        if (targetVolumeId <= 0) targetVolumeId = cachedChapter.volumeId
+                    } else {
+                        val cRes = app.kavitaApi.getChapterById(chapterId)
+                        if (cRes.isSuccessful && cRes.body() != null) {
+                            val cDto = cRes.body()!!
+                            if (targetVolumeId <= 0) targetVolumeId = cDto.volumeId
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // 2. Fetch Series and Volume/Chapter using the exact same implementation as SeriesDetailViewModel
             try {
-                if (seriesId > 0) {
-                    val seriesRes = seriesRepository.getSeriesDetail(seriesId)
-                    if (seriesRes.isSuccess) {
-                        val series = seriesRes.getOrNull()
+                if (targetSeriesId > 0) {
+                    val seriesRes = seriesRepository.getSeriesDetail(targetSeriesId)
+                    if (seriesRes.isSuccess && seriesRes.getOrNull() != null) {
+                        val series = seriesRes.getOrNull()!!
+                        fetchedSeriesName = series.name
+
                         val libraryRes = libraryRepository.getLibraries()
-                        val library = libraryRes.getOrNull()?.find { it.id == series?.libraryId }
+                        val library = libraryRes.getOrNull()?.find { it.id == series.libraryId }
                         if (library != null) {
                             cachedLibraryId = library.id
-                            val isManga = library.type == 0 || library.name.lowercase().contains("manga")
+                            isManga = library.type == 0 || library.name.lowercase().contains("manga")
                             defaultMode = if (isManga) ReadingMode.RTL else ReadingMode.LTR
-                            effectiveReadingMode = defaultMode
+                        }
+                    }
+
+                    val volumesRes = seriesRepository.getSeriesVolumes(targetSeriesId)
+                    if (volumesRes.isSuccess && volumesRes.getOrNull() != null) {
+                        val volumes = volumesRes.getOrNull()!!
+                        val matchingChapter = volumes.flatMap { it.chapters }.find { it.id == chapterId }
+                        if (matchingChapter != null) {
+                            fetchedChapterTitle = formatChapterDisplayTitle(matchingChapter.title, matchingChapter.chapterNumber, isManga = isManga)
                         }
                     }
                 }
             } catch (_: Exception) {}
 
-            var fetchedChapterTitle = ""
-            var fetchedSeriesName = ""
-            try {
-                val cachedChapter = app.database.chapterDao().getChapterById(chapterId)
-                if (cachedChapter != null) {
-                    fetchedChapterTitle = cachedChapter.title
-                } else {
-                    val cRes = app.kavitaApi.getChapterById(chapterId)
-                    if (cRes.isSuccessful && cRes.body() != null) {
-                        fetchedChapterTitle = cRes.body()!!.title
+            if (fetchedChapterTitle.isBlank()) {
+                try {
+                    val cachedChapter = app.database.chapterDao().getChapterById(chapterId)
+                    if (cachedChapter != null) {
+                        fetchedChapterTitle = formatChapterDisplayTitle(cachedChapter.title, cachedChapter.chapterNumber, isManga = isManga)
+                    } else {
+                        val cRes = app.kavitaApi.getChapterById(chapterId)
+                        if (cRes.isSuccessful && cRes.body() != null) {
+                            val cDto = cRes.body()!!
+                            fetchedChapterTitle = formatChapterDisplayTitle(cDto.titleName ?: cDto.title, cDto.number, isManga = isManga)
+                        }
                     }
-                }
-                val cachedSeries = app.database.seriesDao().getSeriesById(seriesId)
-                if (cachedSeries != null) {
-                    fetchedSeriesName = cachedSeries.name
-                } else if (seriesId > 0) {
-                    val sRes = app.kavitaApi.getSeriesById(seriesId)
-                    if (sRes.isSuccessful && sRes.body() != null) {
-                        fetchedSeriesName = sRes.body()!!.name
-                    }
-                }
-            } catch (_: Exception) {}
+                } catch (_: Exception) {}
+            }
 
-            val effectiveSettings = userSettings.copy(readingMode = effectiveReadingMode)
+            val activeReadingMode = sessionReadingModeOverride ?: defaultMode
+            val effectiveSettings = userSettings.copy(
+                readingMode = activeReadingMode,
+                isIncognitoMode = userSettings.isIncognitoMode
+            )
 
             _uiState.value = _uiState.value.copy(
                 isLoading = true,
                 settings = effectiveSettings,
                 libraryDefaultMode = defaultMode,
                 chapterId = chapterId,
-                seriesId = seriesId,
-                volumeId = volumeId,
+                seriesId = targetSeriesId,
+                volumeId = targetVolumeId,
                 readingListId = readingListId,
                 showResumePrompt = false,
                 chapterTitle = fetchedChapterTitle,
@@ -364,11 +395,9 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun updateReadingMode(mode: ReadingMode) {
+        sessionReadingModeOverride = mode
         val currentSettings = _uiState.value.settings
         _uiState.value = _uiState.value.copy(settings = currentSettings.copy(readingMode = mode))
-        viewModelScope.launch {
-            preferencesRepository.updateReadingMode(mode)
-        }
     }
 
     fun updateFitMode(mode: FitMode) {

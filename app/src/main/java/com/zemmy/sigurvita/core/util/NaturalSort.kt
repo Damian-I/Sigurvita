@@ -63,11 +63,13 @@ fun extractChapterNumber(number: String, title: String): String {
 /**
  * Formats a chapter/issue title and chapter number into clean "#X - Title" or "#X" display string.
  */
-fun formatChapterDisplayTitle(title: String, chapterNumber: String): String {
+fun formatChapterDisplayTitle(title: String, chapterNumber: String, isManga: Boolean = false): String {
     val chNum = extractChapterNumber(chapterNumber, title)
     val isSentinelNumber = chNum.contains("100000") || (chNum.toIntOrNull()?.let { kotlin.math.abs(it) >= 10000 } == true)
 
-    val cleanNumber = if (!isSentinelNumber && chNum.isNotBlank() && chNum != "0") "#$chNum" else ""
+    val cleanNumber = if (!isSentinelNumber && chNum.isNotBlank() && chNum != "0") {
+        if (isManga) "Chapter #$chNum" else "#$chNum"
+    } else ""
 
     var cleanTitle = title.trim()
     if (chNum.isNotBlank()) {
@@ -91,7 +93,7 @@ fun formatChapterDisplayTitle(title: String, chapterNumber: String): String {
         cleanNumber.isNotBlank() && cleanTitle.isNotBlank() -> "$cleanNumber - $cleanTitle"
         cleanTitle.isNotBlank() -> cleanTitle
         cleanNumber.isNotBlank() -> cleanNumber
-        else -> "Issue"
+        else -> if (isManga) "Chapter" else "Issue"
     }
 }
 

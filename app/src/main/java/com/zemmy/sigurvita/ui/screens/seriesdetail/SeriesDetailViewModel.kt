@@ -75,7 +75,7 @@ sealed class SeriesItem {
         override val isDownloaded: Boolean = chapter.isDownloaded,
         override val pages: Int = chapter.pages,
         override val pagesRead: Int = chapter.pagesRead,
-        override val title: String = formatChapterDisplayTitle(chapter.title, chapter.chapterNumber),
+        override val title: String = formatChapterDisplayTitle(chapter.title, chapter.chapterNumber, isManga = isManga),
         override val subtitle: String? = null
     ) : SeriesItem()
 }

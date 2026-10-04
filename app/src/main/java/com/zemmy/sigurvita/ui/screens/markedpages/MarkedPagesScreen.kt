@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -263,16 +262,6 @@ fun MarkedPagesScreen(
 
                                     // Action Buttons Row
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        IconButton(
-                                            onClick = { viewModel.setPreviewPage(page) },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.ZoomIn,
-                                                contentDescription = "Enlarge Preview",
-                                                tint = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
                                         IconButton(
                                             onClick = {
                                                 onOpenReader(page.chapterId, page.totalPages, page.seriesId, page.volumeId)
