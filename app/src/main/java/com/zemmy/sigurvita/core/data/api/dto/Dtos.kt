@@ -173,6 +173,12 @@ data class ProgressDto(
 typealias ReaderProgressDto = ProgressDto
 
 @Serializable
+data class SeriesMetadataDto(
+    val id: Int = 0,
+    val summary: String? = null
+)
+
+@Serializable
 data class MarkReadDto(
     val seriesId: Int = 0,
     val generateReadingSession: Boolean = false

@@ -11,6 +11,7 @@ import com.zemmy.sigurvita.core.data.api.dto.ReadingListDto
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListItemDto
 import com.zemmy.sigurvita.core.data.api.dto.SeriesDetailDto
 import com.zemmy.sigurvita.core.data.api.dto.SeriesDto
+import com.zemmy.sigurvita.core.data.api.dto.SeriesMetadataDto
 import com.zemmy.sigurvita.core.data.api.dto.UserDto
 import com.zemmy.sigurvita.core.data.api.dto.VolumeDto
 import retrofit2.Response
@@ -65,6 +66,11 @@ interface KavitaApi {
     suspend fun getSeriesDetail(
         @Query("seriesId") seriesId: Int
     ): Response<SeriesDetailDto>
+
+    @GET("api/Series/metadata")
+    suspend fun getSeriesMetadata(
+        @Query("seriesId") seriesId: Int
+    ): Response<SeriesMetadataDto>
 
     @GET("api/Series/{seriesId}")
     suspend fun getSeriesById(

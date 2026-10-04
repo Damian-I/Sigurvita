@@ -502,6 +502,9 @@ class SeriesRepository(
             val config = preferencesRepository.serverConfigFlow.first()
             var series: Series? = null
 
+            val metadataRes = api.getSeriesMetadata(seriesId)
+            val summary = if (metadataRes.isSuccessful) metadataRes.body()?.summary else null
+
             val resById = api.getSeriesById(seriesId)
             if (resById.isSuccessful && resById.body() != null) {
                 val dto = resById.body()!!
@@ -511,7 +514,7 @@ class SeriesRepository(
                     name = dto.name,
                     localizedName = dto.localizedName,
                     coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
-                    summary = dto.summary,
+                    summary = summary?.takeIf { it.isNotBlank() } ?: dto.summary,
                     pagesRead = dto.pagesRead,
                     totalPages = dto.pages,
                     userRating = dto.userRating
@@ -525,7 +528,7 @@ class SeriesRepository(
                         libraryId = dto.libraryId,
                         name = dto.name,
                         coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
-                        summary = dto.summary,
+                        summary = summary?.takeIf { it.isNotBlank() } ?: dto.summary,
                         pagesRead = dto.pagesRead,
                         totalPages = dto.pages,
                         isCompleted = dto.isCompleted
@@ -538,7 +541,8 @@ class SeriesRepository(
                     id = seriesId,
                     libraryId = 0,
                     name = "Series Details",
-                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${seriesId}&apiKey=${config.apiKey}"
+                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${seriesId}&apiKey=${config.apiKey}",
+                    summary = summary
                 )
             }
 
