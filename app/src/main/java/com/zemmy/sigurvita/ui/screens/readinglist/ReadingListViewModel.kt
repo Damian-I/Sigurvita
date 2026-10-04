@@ -88,6 +88,7 @@ class ReadingListViewModel : ViewModel() {
 
     private val app = SigurvitaApp.instance
     private val repository = app.readingListRepository
+    private val seriesRepository = app.seriesRepository
     private val downloadRepository = app.downloadRepository
     private val preferencesRepository = app.userPreferencesRepository
 
@@ -221,6 +222,23 @@ class ReadingListViewModel : ViewModel() {
 
     fun selectSortOption(option: ReadingListSortOption) {
         _uiState.value = _uiState.value.copy(sortOption = option)
+    }
+
+    fun toggleItemRead(item: ReadingListItem) {
+        val chapterId = item.chapterId ?: return
+        if (chapterId <= 0) return
+        viewModelScope.launch {
+            if (!item.isRead) {
+                seriesRepository.markChapterRead(chapterId, item.seriesId)
+            } else {
+                seriesRepository.markChapterUnread(chapterId, item.seriesId)
+            }
+            val listId = _uiState.value.selectedListId
+            val title = _uiState.value.selectedListTitle
+            if (listId != null && title != null) {
+                loadListDetail(listId, title)
+            }
+        }
     }
 
     fun downloadChapter(item: ReadingListItem) {

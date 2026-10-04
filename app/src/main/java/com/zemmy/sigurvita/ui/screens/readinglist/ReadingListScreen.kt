@@ -28,11 +28,13 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import com.zemmy.sigurvita.R
 import com.zemmy.sigurvita.core.util.extractEraInfo
 import androidx.compose.material3.Button
@@ -44,11 +46,13 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -308,17 +312,19 @@ fun ReadingListScreen(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         ) {
-                            Row(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                    .padding(16.dp)
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Text(
                                         text = "${state.issuesRead} / ${state.totalIssues} issues read",
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                     Text(
@@ -327,21 +333,65 @@ fun ReadingListScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
+
                                 val nextItem = if (nextUnreadIndex in itemsList.indices) itemsList[nextUnreadIndex] else itemsList.firstOrNull()
                                 if (nextItem?.chapterId != null && nextItem.chapterId > 0) {
-                                    Button(
-                                        onClick = {
-                                            onChapterClick(nextItem.chapterId, nextItem.seriesId, nextItem.volumeId ?: 0, nextItem.readingListId)
-                                        },
-                                        colors = if (state.isIncognitoMode) {
-                                            ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-                                        } else {
-                                            ButtonDefaults.buttonColors()
-                                        }
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Resume")
+                                        CoverImage(
+                                            url = nextItem.coverUrl,
+                                            modifier = Modifier
+                                                .width(50.dp)
+                                                .height(75.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "▶ Next to Resume",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = nextItem.seriesName.ifBlank { nextItem.title },
+                                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = nextItem.title,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "${nextItem.pages} pages" + if (nextItem.pagesRead > 0) " (${nextItem.pagesRead} read)" else "",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Button(
+                                            onClick = {
+                                                onChapterClick(nextItem.chapterId, nextItem.seriesId, nextItem.volumeId ?: 0, nextItem.readingListId)
+                                            },
+                                            colors = if (state.isIncognitoMode) {
+                                                ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                                            } else {
+                                                ButtonDefaults.buttonColors()
+                                            }
+                                        ) {
+                                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Resume")
+                                        }
                                     }
                                 }
                             }
@@ -390,7 +440,10 @@ fun ReadingListScreen(
                                         modifier = Modifier.clickable { onSeriesClick(item.seriesId) }
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.clickable { viewModel.toggleItemRead(item) }
+                                    ) {
                                         val showProgress = item.pages > 0 && item.pagesRead > 0 && item.pagesRead < item.pages && !item.isRead
                                         if (showProgress) {
                                             Text(
@@ -400,24 +453,27 @@ fun ReadingListScreen(
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
                                         }
-                                        if (item.isRead) {
-                                            Text(
-                                                text = "• Read",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        } else if (isNextUp) {
-                                            Text(
-                                                text = "▶ Next to Read",
-                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                                color = MaterialTheme.colorScheme.tertiary
-                                            )
-                                        } else {
-                                            Text(
-                                                text = "• Unread",
-                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
+                                        Surface(
+                                            color = if (item.isRead) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer,
+                                            shape = MaterialTheme.shapes.extraSmall
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (item.isRead) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                                    contentDescription = null,
+                                                    tint = if (item.isRead) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onPrimaryContainer,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = if (item.isRead) "Read" else if (isNextUp) "▶ Next to Read" else "Unread",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = if (item.isRead) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer
+                                                )
+                                            }
                                         }
                                     }
                                 }
