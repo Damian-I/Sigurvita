@@ -277,7 +277,7 @@ class DownloadWorker(
                     return Result.retry()
                 }
 
-                val formattedName = "$title p${String.format(Locale.ROOT, "%03d", pageIdx)}.jpg"
+                val formattedName = "$title p${String.format(Locale.ROOT, "%03d", pageIdx)}.webp"
                 var pageFile = File(pageTargetDir, formattedName)
 
                 // Use localhost URL — AuthInterceptor rewrites to real server

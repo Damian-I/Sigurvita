@@ -680,7 +680,7 @@ class ReaderRepository(
                             .toList()
 
                         entries.forEachIndexed { idx, entry ->
-                            val pageFile = File(cacheDir, "page_$idx.jpg")
+                            val pageFile = File(cacheDir, "page_$idx.webp")
                             if (!pageFile.exists() || pageFile.length() <= 0L) {
                                 zip.getInputStream(entry).use { input ->
                                     FileOutputStream(pageFile).use { output ->
