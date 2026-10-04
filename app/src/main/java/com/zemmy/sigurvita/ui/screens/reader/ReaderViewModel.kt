@@ -186,7 +186,7 @@ class ReaderViewModel : ViewModel() {
                         val cRes = app.kavitaApi.getChapterById(chapterId)
                         if (cRes.isSuccessful && cRes.body() != null) {
                             val cDto = cRes.body()!!
-                            fetchedChapterTitle = formatChapterDisplayTitle(cDto.titleName ?: cDto.title, cDto.number, isManga = isManga)
+                            fetchedChapterTitle = formatChapterDisplayTitle(cDto.titleName ?: cDto.title ?: "", cDto.number ?: "", isManga = isManga)
                         }
                     }
                 } catch (_: Exception) {}

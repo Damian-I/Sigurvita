@@ -12,9 +12,9 @@ import com.zemmy.sigurvita.core.data.api.KavitaApi
 import com.zemmy.sigurvita.core.data.api.dto.FilterStatementDto
 import com.zemmy.sigurvita.core.data.api.dto.FilterV2Dto
 import com.zemmy.sigurvita.core.data.api.dto.LibraryDto
-import com.zemmy.sigurvita.core.data.api.dto.MarkMultipleDto
-import com.zemmy.sigurvita.core.data.api.dto.MarkSeriesDto
-import com.zemmy.sigurvita.core.data.api.dto.ReaderProgressDto
+import com.zemmy.sigurvita.core.data.api.dto.MarkReadDto
+import com.zemmy.sigurvita.core.data.api.dto.MarkVolumesReadDto
+import com.zemmy.sigurvita.core.data.api.dto.ProgressDto
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListDto
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListItemDto
 import com.zemmy.sigurvita.core.data.api.dto.SeriesDto
@@ -126,7 +126,7 @@ class LibraryRepository(
             var dtoList = if (onDeckRes.isSuccessful) onDeckRes.body() else null
 
             if (dtoList.isNullOrEmpty()) {
-                val fallbackRes = api.getSeriesV2(libraryId = 0, filter = FilterV2Dto(), pageNumber = 1, pageSize = 20)
+                val fallbackRes = api.getSeriesV2(filter = FilterV2Dto(), pageNumber = 1, pageSize = 20)
                 if (fallbackRes.isSuccessful) {
                     dtoList = fallbackRes.body()
                 }
@@ -184,7 +184,7 @@ class LibraryRepository(
                     )
                 }
             } else {
-                val fallbackList = api.getSeriesV2(libraryId = 0, filter = FilterV2Dto(), pageNumber = 1, pageSize = 20).body()
+                val fallbackList = api.getSeriesV2(filter = FilterV2Dto(), pageNumber = 1, pageSize = 20).body()
                 fallbackList?.filter { it.id > 0 && it.name.isNotBlank() }?.map { dto ->
                     Series(
                         id = dto.id,
@@ -216,7 +216,7 @@ class LibraryRepository(
             var dtoList = if (res.isSuccessful && !res.body().isNullOrEmpty()) res.body() else null
 
             if (dtoList.isNullOrEmpty()) {
-                val fallbackRes = api.getSeriesV2(libraryId = 0, filter = filter, pageNumber = 1, pageSize = 20)
+                val fallbackRes = api.getSeriesV2(filter = filter, pageNumber = 1, pageSize = 20)
                 if (fallbackRes.isSuccessful) {
                     dtoList = fallbackRes.body()
                 }
@@ -252,22 +252,27 @@ class LibraryRepository(
                     statements = listOf(
                         FilterStatementDto(field = 19, comparison = 0, value = libraryId.toString())
                     ),
-                    combination = 1
+                    combination = 0
                 )
-                val resWithFilter = api.getSeriesV2(libraryId = libraryId, filter = filter, pageNumber = 1, pageSize = 5000)
+                val resWithFilter = api.getSeriesV2(filter = filter, pageNumber = 1, pageSize = 5000)
                 if (resWithFilter.isSuccessful && !resWithFilter.body().isNullOrEmpty()) {
                     dtoList = resWithFilter.body()
                 } else {
-                    val resQuery = api.getSeriesV2(libraryId = libraryId, filter = FilterV2Dto(), pageNumber = 1, pageSize = 5000)
+                    val resQuery = api.getSeriesV2(filter = FilterV2Dto(), pageNumber = 1, pageSize = 5000)
                     if (resQuery.isSuccessful && !resQuery.body().isNullOrEmpty()) {
                         dtoList = resQuery.body()
                     }
+                }
+            } else {
+                val resAll = api.getSeriesV2(filter = FilterV2Dto(), pageNumber = 1, pageSize = 5000)
+                if (resAll.isSuccessful) {
+                    dtoList = resAll.body()
                 }
             }
 
             // Fallback: If dtoList is null, fetch all series and filter client-side by libraryId
             if (dtoList == null) {
-                val resAll = api.getSeriesV2(libraryId = 0, filter = FilterV2Dto(), pageNumber = 1, pageSize = 5000)
+                val resAll = api.getSeriesV2(filter = FilterV2Dto(), pageNumber = 1, pageSize = 5000)
                 if (resAll.isSuccessful) {
                     val allSeries = resAll.body() ?: emptyList()
                     dtoList = if (libraryId > 0) {
@@ -309,15 +314,15 @@ class ReadingListRepository(
             val config = preferencesRepository.serverConfigFlow.first()
             var dtoList: List<ReadingListDto>? = null
 
-            val resPost = api.getReadingLists(filter = FilterV2Dto())
+            val resPost = api.getReadingLists()
             if (resPost.isSuccessful && !resPost.body().isNullOrEmpty()) {
                 dtoList = resPost.body()
             }
 
-            val lists = dtoList?.filter { it.id > 0 && it.title.isNotBlank() }?.map { dto ->
+            val lists = dtoList?.filter { it.id > 0 && !it.title.isNullOrBlank() }?.map { dto ->
                 ReadingList(
                     id = dto.id,
-                    title = dto.title,
+                    title = dto.title ?: "",
                     summary = dto.summary,
                     itemCount = dto.itemCount,
                     coverUrl = dto.coverImage?.let { "${config.serverUrl}/$it" },
@@ -376,7 +381,7 @@ class ReadingListRepository(
                     var pagesRead = dto.pagesRead
                     var isRead = pages > 0 && pagesRead >= pages
 
-                    var resolvedTitle = dto.title
+                    var resolvedTitle = dto.title ?: ""
                     if (dto.chapterId > 0) {
                         val cachedChapter = database.chapterDao().getChapterById(dto.chapterId)
                         if (cachedChapter != null) {
@@ -392,7 +397,7 @@ class ReadingListRepository(
                                     if (pages <= 0) pages = cBody.pages
                                     if (pagesRead <= 0) pagesRead = cBody.pagesRead
                                     isRead = isRead || (cBody.pages > 0 && cBody.pagesRead >= cBody.pages)
-                                    resolvedTitle = formatChapterDisplayTitle(cBody.titleName ?: cBody.title, cBody.number)
+                                    resolvedTitle = formatChapterDisplayTitle(cBody.titleName ?: cBody.title ?: "", cBody.number ?: "")
                                 }
                             } catch (_: Exception) {}
                         }
@@ -401,7 +406,7 @@ class ReadingListRepository(
                     }
 
                     if (resolvedTitle.isBlank() || resolvedTitle.startsWith("Issue", ignoreCase = true)) {
-                        resolvedTitle = formatChapterDisplayTitle(dto.title, "")
+                        resolvedTitle = formatChapterDisplayTitle(dto.title ?: "", "")
                     }
 
                     val coverUrl = if (dto.chapterId > 0) {
@@ -410,8 +415,9 @@ class ReadingListRepository(
                         "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}"
                     }
 
-                    val resolvedSeriesName = if (dto.seriesName.isNotBlank()) {
-                        dto.seriesName
+                    val rawSeriesName = dto.seriesName ?: ""
+                    val resolvedSeriesName = if (rawSeriesName.isNotBlank()) {
+                        rawSeriesName
                     } else if (dto.seriesId > 0) {
                         val cachedSeries = database.seriesDao().getSeriesById(dto.seriesId)
                         if (cachedSeries != null && cachedSeries.name.isNotBlank()) {
@@ -455,7 +461,7 @@ class ReadingListRepository(
             var listsToFetch: List<Pair<Int, String>> = emptyList()
 
             if (directRes.isSuccessful && !directRes.body().isNullOrEmpty()) {
-                listsToFetch = directRes.body()!!.map { Pair(it.id, it.title) }
+                listsToFetch = directRes.body()!!.filter { !it.title.isNullOrBlank() }.map { Pair(it.id, it.title!!) }
             } else {
                 // Fallback if endpoint returns empty/unavailable
                 val listsRes = getReadingLists()
@@ -557,18 +563,19 @@ class SeriesRepository(
             if (res.isSuccessful) {
                 val volumes = res.body()?.map { vDto ->
                     val resolvedVolSeriesId = if (vDto.seriesId > 0) vDto.seriesId else seriesId
+                    val volNumber = if (vDto.minNumber > 0f) vDto.minNumber else vDto.number.toFloat()
                     Volume(
                         id = vDto.id,
                         seriesId = resolvedVolSeriesId,
-                        name = vDto.name,
-                        number = vDto.number,
+                        name = vDto.name ?: "",
+                        number = volNumber,
                         pagesRead = vDto.pagesRead,
                         totalPages = vDto.pages,
                         chapters = vDto.chapters.map { cDto ->
                             val isChapterRead = cDto.pages > 0 && cDto.pagesRead >= cDto.pages
-                            val titleNameVal = cDto.titleName?.trim() ?: ""
-                            val titleVal = cDto.title.trim()
-                            val numVal = cDto.number.trim()
+                            val titleNameVal = (cDto.titleName ?: "").trim()
+                            val titleVal = (cDto.title ?: "").trim()
+                            val numVal = (cDto.number ?: if (cDto.minNumber > 0f) cDto.minNumber.toString() else "").trim()
 
                             val resolvedNumber = extractChapterNumber(numVal, titleVal.ifBlank { titleNameVal })
 
@@ -606,7 +613,7 @@ class SeriesRepository(
             return@withContext Result.success(true)
         }
         try {
-            val res = api.markMultipleRead(MarkMultipleDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
+            val res = api.markMultipleRead(MarkVolumesReadDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
             if (res.isSuccessful) Result.success(true)
             else Result.failure(Exception("Failed to mark chapter read"))
         } catch (e: Exception) {
@@ -619,7 +626,7 @@ class SeriesRepository(
             return@withContext Result.success(true)
         }
         try {
-            val res = api.markMultipleUnread(MarkMultipleDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
+            val res = api.markMultipleUnread(MarkVolumesReadDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
             if (res.isSuccessful) Result.success(true)
             else Result.failure(Exception("Failed to mark chapter unread"))
         } catch (e: Exception) {
@@ -632,7 +639,7 @@ class SeriesRepository(
             return@withContext Result.success(true)
         }
         try {
-            val res = api.markSeriesRead(MarkSeriesDto(seriesId = seriesId))
+            val res = api.markSeriesRead(MarkReadDto(seriesId = seriesId))
             if (res.isSuccessful) Result.success(true)
             else Result.failure(Exception("Failed to mark as read"))
         } catch (e: Exception) {
@@ -645,7 +652,7 @@ class SeriesRepository(
             return@withContext Result.success(true)
         }
         try {
-            val res = api.markSeriesUnread(MarkSeriesDto(seriesId = seriesId))
+            val res = api.markSeriesUnread(MarkReadDto(seriesId = seriesId))
             if (res.isSuccessful) Result.success(true)
             else Result.failure(Exception("Failed to mark as unread"))
         } catch (e: Exception) {
@@ -821,7 +828,7 @@ class ReaderRepository(
         val isFinished = totalPages > 0 && pageNum >= totalPages
         val nowIso = Instant.now().toString()
         try {
-            val progressDto = ReaderProgressDto(
+            val progressDto = ProgressDto(
                 volumeId = resolvedVolumeId,
                 chapterId = chapterId,
                 pageNum = pageNum,
@@ -836,7 +843,7 @@ class ReaderRepository(
             }
 
             if (isFinished) {
-                api.markMultipleRead(MarkMultipleDto(seriesId = resolvedSeriesId, chapterIds = listOf(chapterId)))
+                api.markMultipleRead(MarkVolumesReadDto(seriesId = resolvedSeriesId, chapterIds = listOf(chapterId)))
             }
         } catch (e: Exception) {
             Log.e("ReaderRepository", "Exception syncing progress", e)

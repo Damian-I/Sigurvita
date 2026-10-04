@@ -9,7 +9,9 @@ data class UserDto(
     val email: String? = null,
     val apiKey: String? = null,
     val token: String? = null,
-    val refreshToken: String? = null
+    val refreshToken: String? = null,
+    val roles: List<String>? = null,
+    val kavitaVersion: String? = null
 )
 
 @Serializable
@@ -21,7 +23,9 @@ data class GroupedSeriesDto(
     val libraryType: Int = 0,
     val id: Int = 0,
     val format: Int = 0,
-    val count: Int = 0
+    val count: Int = 0,
+    val chapterId: Int = 0,
+    val volumeId: Int = 0
 )
 
 @Serializable
@@ -38,13 +42,17 @@ data class SeriesDto(
     val id: Int = 0,
     val libraryId: Int = 0,
     val name: String = "",
+    val originalName: String? = null,
     val localizedName: String? = null,
+    val sortName: String? = null,
     val coverImage: String? = null,
     val summary: String? = null,
     val pagesRead: Int = 0,
     val pages: Int = 0,
     val format: Int = 0,
-    val userRating: Float = 0f
+    val userRating: Float = 0f,
+    val libraryName: String? = null,
+    val isStandAlone: Boolean = false
 )
 
 @Serializable
@@ -56,15 +64,21 @@ data class SeriesDetailDto(
     val libraryId: Int = 0,
     val isCompleted: Boolean = false,
     val pages: Int = 0,
-    val pagesRead: Int = 0
+    val pagesRead: Int = 0,
+    val libraryType: Int = 0,
+    val unreadCount: Int = 0,
+    val totalCount: Int = 0,
+    val chapters: List<ChapterDto>? = null,
+    val volumes: List<VolumeDto>? = null,
+    val specials: List<ChapterDto>? = null
 )
 
 @Serializable
 data class VolumeDto(
     val id: Int = 0,
     val seriesId: Int = 0,
-    val name: String = "",
-    val number: Float = 0f,
+    val name: String? = null,
+    val number: Int = 0,
     val minNumber: Float = 0f,
     val maxNumber: Float = 0f,
     val pagesRead: Int = 0,
@@ -76,21 +90,30 @@ data class VolumeDto(
 data class ChapterDto(
     val id: Int = 0,
     val volumeId: Int = 0,
-    val number: String = "",
-    val title: String = "",
+    val range: String? = null,
+    val number: String? = null,
+    val minNumber: Float = 0f,
+    val maxNumber: Float = 0f,
+    val sortOrder: Float = 0f,
+    val title: String? = null,
     val titleName: String? = null,
     val pages: Int = 0,
-    val pagesRead: Int = 0
+    val pagesRead: Int = 0,
+    val isSpecial: Boolean = false
 )
 
 @Serializable
 data class ReadingListDto(
     val id: Int = 0,
-    val title: String = "",
+    val title: String? = null,
     val summary: String? = null,
     val itemCount: Int = 0,
     val coverImage: String? = null,
-    val promoted: Boolean = false
+    val promoted: Boolean = false,
+    val startingYear: Int = 0,
+    val endingYear: Int = 0,
+    val ageRating: Int = 0,
+    val ownerUserName: String? = null
 )
 
 @Serializable
@@ -98,27 +121,36 @@ data class ReadingListItemDto(
     val id: Int = 0,
     val readingListId: Int = 0,
     val seriesId: Int = 0,
-    val seriesName: String = "",
+    val seriesName: String? = null,
     val volumeId: Int = 0,
     val chapterId: Int = 0,
-    val title: String = "",
+    val title: String? = null,
+    val chapterTitleName: String? = null,
+    val chapterNumber: String? = null,
+    val volumeNumber: String? = null,
     val pages: Int = 0,
     val pagesTotal: Int = 0,
-    val pagesRead: Int = 0
+    val pagesRead: Int = 0,
+    val order: Int = 0,
+    val libraryId: Int = 0,
+    val libraryName: String? = null
 )
 
 @Serializable
 data class FilterV2Dto(
+    val id: Int = 0,
+    val name: String? = null,
     val statements: List<FilterStatementDto> = emptyList(),
     val combination: Int = 0,
-    val sortOptions: SortOptionsDto? = null
+    val sortOptions: SortOptionsDto? = null,
+    val limitTo: Int = 0
 )
 
 @Serializable
 data class FilterStatementDto(
     val field: Int = 0,
     val comparison: Int = 0,
-    val value: String = ""
+    val value: String? = null
 )
 
 @Serializable
@@ -128,7 +160,7 @@ data class SortOptionsDto(
 )
 
 @Serializable
-data class ReaderProgressDto(
+data class ProgressDto(
     val volumeId: Int = 0,
     val chapterId: Int = 0,
     val pageNum: Int = 0,
@@ -138,13 +170,29 @@ data class ReaderProgressDto(
     val lastModifiedUtc: String? = null
 )
 
+typealias ReaderProgressDto = ProgressDto
+
 @Serializable
-data class MarkSeriesDto(
-    val seriesId: Int = 0
+data class MarkReadDto(
+    val seriesId: Int = 0,
+    val generateReadingSession: Boolean = false
+)
+
+typealias MarkSeriesDto = MarkReadDto
+
+@Serializable
+data class MarkVolumeReadDto(
+    val seriesId: Int = 0,
+    val volumeId: Int = 0,
+    val generateReadingSession: Boolean = false
 )
 
 @Serializable
-data class MarkMultipleDto(
+data class MarkVolumesReadDto(
     val seriesId: Int = 0,
-    val chapterIds: List<Int> = emptyList()
+    val volumeIds: List<Int>? = null,
+    val chapterIds: List<Int>? = null,
+    val generateReadingSession: Boolean = false
 )
+
+typealias MarkMultipleDto = MarkVolumesReadDto

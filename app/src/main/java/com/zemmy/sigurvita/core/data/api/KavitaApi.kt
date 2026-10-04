@@ -4,9 +4,9 @@ import com.zemmy.sigurvita.core.data.api.dto.ChapterDto
 import com.zemmy.sigurvita.core.data.api.dto.FilterV2Dto
 import com.zemmy.sigurvita.core.data.api.dto.GroupedSeriesDto
 import com.zemmy.sigurvita.core.data.api.dto.LibraryDto
-import com.zemmy.sigurvita.core.data.api.dto.MarkMultipleDto
-import com.zemmy.sigurvita.core.data.api.dto.MarkSeriesDto
-import com.zemmy.sigurvita.core.data.api.dto.ReaderProgressDto
+import com.zemmy.sigurvita.core.data.api.dto.MarkReadDto
+import com.zemmy.sigurvita.core.data.api.dto.MarkVolumesReadDto
+import com.zemmy.sigurvita.core.data.api.dto.ProgressDto
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListDto
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListItemDto
 import com.zemmy.sigurvita.core.data.api.dto.SeriesDetailDto
@@ -36,7 +36,6 @@ interface KavitaApi {
 
     @POST("api/Series/v2")
     suspend fun getSeriesV2(
-        @Query("libraryId") libraryId: Int = 0,
         @Body filter: FilterV2Dto = FilterV2Dto(),
         @Query("PageNumber") pageNumber: Int = 1,
         @Query("PageSize") pageSize: Int = 5000
@@ -84,7 +83,6 @@ interface KavitaApi {
 
     @POST("api/ReadingList/lists")
     suspend fun getReadingLists(
-        @Body filter: FilterV2Dto = FilterV2Dto(),
         @Query("includePromoted") includePromoted: Boolean = true,
         @Query("sortByLastModified") sortByLastModified: Boolean = true,
         @Query("PageNumber") pageNumber: Int = 1,
@@ -109,7 +107,7 @@ interface KavitaApi {
     @GET("api/Reader/get-progress")
     suspend fun getReaderProgress(
         @Query("chapterId") chapterId: Int
-    ): Response<ReaderProgressDto>
+    ): Response<ProgressDto>
 
     @GET("api/Reader/continue-point")
     suspend fun getContinuePoint(
@@ -118,26 +116,26 @@ interface KavitaApi {
 
     @POST("api/Reader/progress")
     suspend fun setReaderProgress(
-        @Body body: ReaderProgressDto
+        @Body body: ProgressDto
     ): Response<Unit>
 
     @POST("api/Reader/mark-multiple-read")
     suspend fun markMultipleRead(
-        @Body body: MarkMultipleDto
+        @Body body: MarkVolumesReadDto
     ): Response<Unit>
 
     @POST("api/Reader/mark-multiple-unread")
     suspend fun markMultipleUnread(
-        @Body body: MarkMultipleDto
+        @Body body: MarkVolumesReadDto
     ): Response<Unit>
 
     @POST("api/Reader/mark-read")
     suspend fun markSeriesRead(
-        @Body body: MarkSeriesDto
+        @Body body: MarkReadDto
     ): Response<Unit>
 
     @POST("api/Reader/mark-unread")
     suspend fun markSeriesUnread(
-        @Body body: MarkSeriesDto
+        @Body body: MarkReadDto
     ): Response<Unit>
 }

@@ -90,26 +90,30 @@ com.zemmy.sigurvita/
 - `MainActivity` observes server configuration state to determine whether to start at `Screen.Auth` or `Screen.Home`.
 
 ### 4.3 Data Layer & Repositories (`core.data`)
-- **API (`KavitaApi`)**: Exposes Retrofit endpoints for authentication, library listing, series details, chapter lists, chapter pages, and downloads matching the official Kavita API specification (v0.9.1.6).
+- **API (`KavitaApi`)**: Exposes Retrofit endpoints strictly aligned with the official Kavita OpenAPI v0.9.1.6 specification (`api.json`).
     - **Official Kavita API Reference**: [Kavita API Documentation](https://www.kavitareader.com/docs/api/#/)
-    - **Endpoint Cleanup & Fixes**:
-        - `authenticatePlugin()` returns `Response<UserDto>` containing embedded `token` and server API keys.
-        - `getLibraries()` maps to `/api/Library/libraries` (returns `List<LibraryDto>` of all server libraries).
-        - `getRecentlyUpdatedSeries()` returns `Response<List<GroupedSeriesDto>>` matching Kavita's grouped series schema.
-        - `getReadingListItems()` cleanly queries `/api/ReadingList/items?readingListId=X`.
-        - Added `/api/Reader/continue-point?seriesId=X` (`getContinuePoint`) returning `ChapterDto` for resume capabilities.
-        - Removed legacy / duplicate fallback methods (`getLibrariesFilter`, `getReadingListsGet`, `getReadingListsAll`, `getReadingListItemsQuery`, `getReadingListItemsReadingListId`).
-- **DTOs & API Schemas (`dto/Dtos.kt`)**: Re-aligned all Data Transfer Objects with Kavita API v0.9.1.6 specs:
-    - `SeriesDto`, `VolumeDto`, `SeriesDetailDto`: Mapped `pages` property (replacing mismatched `totalPages` field).
-    - `VolumeDto`: Added `minNumber` / `maxNumber` float fields for multi-issue volumes.
-    - `LibraryDto`: Fixed `folders` list field name.
-    - `ReadingListItemDto`: Mapped `pagesTotal` / `pages` fields and updated non-nullable `volumeId` and `chapterId`.
+    - **Strict Specification Alignment**:
+        - `authenticatePlugin()` maps to `POST /api/Plugin/authenticate` (returns `Response<UserDto>`).
+        - `getLibraries()` maps to `GET /api/Library/libraries` (returns `List<LibraryDto>`).
+        - `getSeriesV2()` maps to `POST /api/Series/v2` with `FilterV2Dto` in the request body (`field = 19` for library filtering; query parameter `libraryId` removed as per `api.json`).
+        - `getReadingLists()` maps to `POST /api/ReadingList/lists` with query parameters (`includePromoted`, `sortByLastModified`, `PageNumber`, `PageSize`) and NO request body as defined in `api.json`.
+        - `markSeriesRead` / `markSeriesUnread` map to `POST /api/Reader/mark-read` and `POST /api/Reader/mark-unread` using `MarkReadDto` (`seriesId`, `generateReadingSession`).
+        - `markMultipleRead` / `markMultipleUnread` map to `POST /api/Reader/mark-multiple-read` and `POST /api/Reader/mark-multiple-unread` using `MarkVolumesReadDto` (`seriesId`, `volumeIds`, `chapterIds`, `generateReadingSession`).
+        - `getReaderProgress` & `setReaderProgress` map to `GET /api/Reader/get-progress` and `POST /api/Reader/progress` using `ProgressDto` (aliased to `ReaderProgressDto`).
+- **DTOs & API Schemas (`dto/Dtos.kt`)**: Fully synchronized with `api.json` v0.9.1.6 schemas:
+    - `MarkReadDto`: Schema for `/api/Reader/mark-read` (`seriesId: Int`, `generateReadingSession: Boolean = false`).
+    - `MarkVolumesReadDto`: Schema for `/api/Reader/mark-multiple-read` (`seriesId: Int`, `volumeIds: List<Int>?`, `chapterIds: List<Int>?`, `generateReadingSession: Boolean = false`).
+    - `ProgressDto`: Required integer IDs for `volumeId`, `chapterId`, `pageNum`, `seriesId`, `libraryId`.
+    - `VolumeDto`: Deprecated integer `number`, float `minNumber` and `maxNumber`.
+    - `ChapterDto`: Supported `range`, `number` (nullable/deprecated string), `minNumber`, `maxNumber`, `sortOrder`, `isSpecial`.
+    - `ReadingListDto`: Supported `startingYear`, `endingYear`, `ageRating`, `ownerUserName`.
+    - `ReadingListItemDto`: Supported `order`, `libraryId`, `libraryName`.
 - **Database (`SigurvitaDatabase`, `Daos`, `Entities`)**: Provides local offline caching for series, chapters, pages, and download queue items.
 - **Repositories (`Repositories.kt`)**: Implements single-source-of-truth or offline-first patterns by coordinating between `KavitaApi` and Room DAOs.
-    - **Single Endpoint Cleanups**: Streamlined `getReadingLists()`, `getReadingListItems()`, and `hasReadingListProgress()` to execute direct primary API calls instead of 3-level fallback chains.
+    - **Library Filtering**: `LibraryRepository.getSeriesForLibrary(libraryId)` filters by passing `FilterV2Dto` with statement `field = 19` to `getSeriesV2`.
+    - **No-Body Reading Lists**: `ReadingListRepository.getReadingLists()` invokes `api.getReadingLists()` without passing a body.
     - **DTO Mapping & Read Computation**: Resolved `isRead` states directly via `pagesRead >= pagesTotal` / `pagesRead >= pages` calculations across Chapter and Reading List mappings.
     - **Context Propagation**: Preserves `seriesId` through Volume context when mapping chapters.
-    - **Direct Resolution**: Uses `getSeriesById()` in `ReaderRepository.saveProgress()` as primary lookup for `libraryId`.
 
 ### 4.4 Reader Experience (`ui.screens.reader`)
 - `ReaderScreen` and `ImageReader` provide a high-performance reading interface for pages, utilizing **image prefetching** (caching the next 3 pages into memory) and zoom state keying for seamless swiping.
