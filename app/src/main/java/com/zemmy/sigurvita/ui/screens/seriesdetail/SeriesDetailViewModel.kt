@@ -97,7 +97,9 @@ data class SeriesDetailUiState(
     val isSearchActive: Boolean = false,
     val isGridView: Boolean = false,
     val isIncognitoMode: Boolean = false,
+    val isOffline: Boolean = false,
     val isLoading: Boolean = false,
+    val metadata: com.zemmy.sigurvita.core.data.api.dto.SeriesMetadataDto? = null,
     val errorMessage: String? = null
 ) {
     val displayMangaItems: List<SeriesItem>
@@ -218,14 +220,17 @@ class SeriesDetailViewModel : ViewModel() {
             val seriesDeferred = async { seriesRepository.getSeriesDetail(seriesId) }
             val volumesDeferred = async { seriesRepository.getSeriesVolumes(seriesId) }
             val librariesDeferred = async { libraryRepository.getLibraries() }
+            val metadataDeferred = async { seriesRepository.getSeriesMetadataDetails(seriesId) }
 
             val seriesRes = seriesDeferred.await()
             val volumesRes = volumesDeferred.await()
             val libraryRes = librariesDeferred.await()
+            val metadataRes = metadataDeferred.await()
 
             if (seriesRes.isSuccess) {
                 val fetchedSeries = seriesRes.getOrNull()
                 var volumes = volumesRes.getOrDefault(emptyList())
+                val metadata = metadataRes.getOrNull()
 
                 val library = libraryRes.getOrNull()?.find { it.id == fetchedSeries?.libraryId }
                 val resolvedLibraryId = library?.id ?: fetchedSeries?.libraryId ?: 0
@@ -266,9 +271,12 @@ class SeriesDetailViewModel : ViewModel() {
                     pagesRead = calculatedPagesRead
                 )
 
+                val isOfflineMode = libraryRes.isFailure || metadataRes.isFailure
+
                 _uiState.value = _uiState.value.copy(
                     series = updatedSeries,
                     volumes = volumes,
+                    metadata = metadata,
                     libraryName = resolvedLibraryName,
                     libraryId = resolvedLibraryId,
                     isMangaLibrary = isManga,
@@ -276,6 +284,7 @@ class SeriesDetailViewModel : ViewModel() {
                     chaptersRead = computedChaptersRead,
                     totalPages = calculatedTotalPages,
                     pagesRead = calculatedPagesRead,
+                    isOffline = isOfflineMode,
                     isLoading = false
                 )
 

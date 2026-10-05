@@ -87,6 +87,16 @@ data class VolumeDto(
 )
 
 @Serializable
+data class MangaFileDto(
+    val id: Int = 0,
+    val filePath: String? = null,
+    val pages: Int = 0,
+    val bytes: Long = 0L,
+    val format: Int = 0,
+    val extension: String? = null
+)
+
+@Serializable
 data class ChapterDto(
     val id: Int = 0,
     val volumeId: Int = 0,
@@ -99,7 +109,8 @@ data class ChapterDto(
     val titleName: String? = null,
     val pages: Int = 0,
     val pagesRead: Int = 0,
-    val isSpecial: Boolean = false
+    val isSpecial: Boolean = false,
+    val files: List<MangaFileDto>? = null
 )
 
 @Serializable
@@ -173,9 +184,46 @@ data class ProgressDto(
 typealias ReaderProgressDto = ProgressDto
 
 @Serializable
+data class PersonDto(
+    val id: Int = 0,
+    val name: String = "",
+    val role: Int = 0
+)
+
+@Serializable
+data class GenreTagDto(
+    val id: Int = 0,
+    val title: String = ""
+)
+
+@Serializable
+data class TagDto(
+    val id: Int = 0,
+    val title: String = ""
+)
+
+@Serializable
 data class SeriesMetadataDto(
     val id: Int = 0,
-    val summary: String? = null
+    val summary: String? = null,
+    val writers: List<PersonDto>? = null,
+    val coverArtists: List<PersonDto>? = null,
+    val publishers: List<PersonDto>? = null,
+    val characters: List<PersonDto>? = null,
+    val pencillers: List<PersonDto>? = null,
+    val inkers: List<PersonDto>? = null,
+    val colorists: List<PersonDto>? = null,
+    val letterers: List<PersonDto>? = null,
+    val editors: List<PersonDto>? = null,
+    val imprints: List<PersonDto>? = null,
+    val teams: List<PersonDto>? = null,
+    val locations: List<PersonDto>? = null,
+    val genres: List<GenreTagDto>? = null,
+    val tags: List<TagDto>? = null,
+    val releaseYear: Int? = null,
+    val ageRating: Int? = null,
+    val publicationStatus: Int? = null,
+    val language: String? = null
 )
 
 @Serializable

@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -158,6 +159,32 @@ fun HomeScreen(
                     .padding(innerPadding)
                     .verticalScroll(rememberScrollState())
             ) {
+                if (state.isOffline) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.CloudOff,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "Offline Mode: Connection to Kavita failed. Showing cached & downloaded content.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+
                 if (state.isIncognitoMode) {
                     Card(
                         modifier = Modifier
@@ -229,6 +256,7 @@ fun HomeScreen(
                     }
                     Spacer(modifier = Modifier.height(24.dp))
                 } else {
+
                     if (state.onDeckSeries.isNotEmpty()) {
                         SectionHeader(title = stringResource(R.string.on_deck_title))
                         LazyRow(
@@ -278,6 +306,23 @@ fun HomeScreen(
                             }
                         }
                         Spacer(modifier = Modifier.height(24.dp))
+                    }
+
+                    if (state.downloadedSeries.isNotEmpty()) {
+                        SectionHeader(title = "Downloaded")
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(state.downloadedSeries, key = { "dl_${it.id}" }) { series ->
+                                SeriesCard(
+                                    series = series,
+                                    onClick = { onSeriesClick(series.id) },
+                                    modifier = Modifier.width(110.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
                     }
                 }
             }

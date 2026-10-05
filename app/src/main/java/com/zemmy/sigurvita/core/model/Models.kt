@@ -80,6 +80,15 @@ data class Volume(
     val chapters: List<Chapter> = emptyList()
 )
 
+data class MangaFile(
+    val id: Int = 0,
+    val filePath: String? = null,
+    val pages: Int = 0,
+    val bytes: Long = 0L,
+    val format: Int = 0,
+    val extension: String? = null
+)
+
 data class Chapter(
     val id: Int,
     val volumeId: Int,
@@ -91,7 +100,8 @@ data class Chapter(
     val isRead: Boolean = false,
     val isDownloaded: Boolean = false,
     val localPath: String? = null,
-    val coverUrl: String? = null
+    val coverUrl: String? = null,
+    val files: List<MangaFile> = emptyList()
 )
 
 data class ReadingList(
@@ -112,6 +122,7 @@ data class ReadingListItem(
     val readingListId: Int,
     val seriesId: Int,
     val seriesName: String,
+    val libraryName: String? = null,
     val volumeId: Int? = null,
     val chapterId: Int? = null,
     val title: String,

@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 
 data class HomeUiState(
     val libraries: List<Library> = emptyList(),
+    val downloadedSeries: List<Series> = emptyList(),
     val onDeckSeries: List<Series> = emptyList(),
     val recentlyUpdatedSeries: List<Series> = emptyList(),
     val newlyAddedSeries: List<Series> = emptyList(),
@@ -20,6 +21,7 @@ data class HomeUiState(
     val searchQuery: String = "",
     val isSearchActive: Boolean = false,
     val isIncognitoMode: Boolean = false,
+    val isOffline: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
 ) {
@@ -34,6 +36,7 @@ class HomeViewModel : ViewModel() {
     private val app = SigurvitaApp.instance
     private val preferencesRepository = app.userPreferencesRepository
     private val libraryRepository = app.libraryRepository
+    private val downloadRepository = app.downloadRepository
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -43,6 +46,13 @@ class HomeViewModel : ViewModel() {
             preferencesRepository.readerSettingsFlow.collect { settings ->
                 _uiState.value = _uiState.value.copy(
                     isIncognitoMode = settings.isIncognitoMode
+                )
+            }
+        }
+        viewModelScope.launch {
+            downloadRepository.downloadedSeriesFlow.collect { downloaded ->
+                _uiState.value = _uiState.value.copy(
+                    downloadedSeries = downloaded
                 )
             }
         }
@@ -64,18 +74,29 @@ class HomeViewModel : ViewModel() {
             val newlyAddedRes = newlyAddedDeferred.await()
             val allSeriesRes = allSeriesDeferred.await()
 
-            if (librariesRes.isSuccess || onDeckRes.isSuccess || recentlyUpdatedRes.isSuccess || newlyAddedRes.isSuccess || allSeriesRes.isSuccess) {
+            val isAnyNetworkSuccess = librariesRes.isSuccess && onDeckRes.isSuccess && recentlyUpdatedRes.isSuccess && newlyAddedRes.isSuccess && allSeriesRes.isSuccess
+            val onDeck = onDeckRes.getOrDefault(emptyList())
+            val recentlyUpdated = recentlyUpdatedRes.getOrDefault(emptyList())
+            val newlyAdded = newlyAddedRes.getOrDefault(emptyList())
+            val allSeries = allSeriesRes.getOrDefault(emptyList())
+            val libraries = librariesRes.getOrDefault(emptyList())
+
+            val hasAnyData = onDeck.isNotEmpty() || recentlyUpdated.isNotEmpty() || newlyAdded.isNotEmpty() || allSeries.isNotEmpty() || _uiState.value.downloadedSeries.isNotEmpty()
+
+            if (hasAnyData) {
                 _uiState.value = _uiState.value.copy(
-                    libraries = librariesRes.getOrDefault(emptyList()),
-                    onDeckSeries = onDeckRes.getOrDefault(emptyList()),
-                    recentlyUpdatedSeries = recentlyUpdatedRes.getOrDefault(emptyList()),
-                    newlyAddedSeries = newlyAddedRes.getOrDefault(emptyList()),
-                    allSeries = allSeriesRes.getOrDefault(emptyList()),
+                    libraries = libraries,
+                    onDeckSeries = onDeck,
+                    recentlyUpdatedSeries = recentlyUpdated,
+                    newlyAddedSeries = newlyAdded,
+                    allSeries = allSeries,
+                    isOffline = !isAnyNetworkSuccess,
                     isLoading = false
                 )
             } else {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
+                    isOffline = true,
                     errorMessage = "Failed to load content from Kavita"
                 )
             }

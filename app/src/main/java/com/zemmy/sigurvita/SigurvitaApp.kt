@@ -39,7 +39,7 @@ class SigurvitaApp : Application(), ImageLoaderFactory {
     }
 
     val seriesRepository: SeriesRepository by lazy {
-        SeriesRepository(kavitaApi, userPreferencesRepository)
+        SeriesRepository(kavitaApi, database, userPreferencesRepository)
     }
 
     val readingListRepository: ReadingListRepository by lazy {

@@ -17,6 +17,9 @@ interface SeriesDao {
     @Query("SELECT * FROM cached_series ORDER BY name ASC")
     fun getAllSeries(): Flow<List<CachedSeriesEntity>>
 
+    @Query("SELECT * FROM cached_series ORDER BY name ASC")
+    fun getAllSeriesList(): List<CachedSeriesEntity>
+
     @Query("SELECT * FROM cached_series WHERE id = :seriesId")
     fun getSeriesById(seriesId: Int): CachedSeriesEntity?
 
@@ -58,6 +61,12 @@ interface DownloadDao {
 
     @Query("SELECT * FROM download_tasks WHERE chapterId = :chapterId")
     fun getDownloadByChapterId(chapterId: Int): DownloadTaskEntity?
+
+    @Query("SELECT * FROM download_tasks WHERE seriesId = :seriesId AND status = 'COMPLETED'")
+    fun getCompletedDownloadsForSeries(seriesId: Int): List<DownloadTaskEntity>
+
+    @Query("SELECT * FROM download_tasks WHERE status = 'COMPLETED'")
+    fun getAllCompletedDownloads(): List<DownloadTaskEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertDownloadTask(task: DownloadTaskEntity)

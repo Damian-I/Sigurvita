@@ -243,6 +243,7 @@ class ReadingListViewModel : ViewModel() {
 
     fun downloadChapter(item: ReadingListItem) {
         val chapterId = item.chapterId ?: return
+        val targetLibrary = item.libraryName?.takeIf { it.isNotBlank() } ?: "Comics"
         viewModelScope.launch {
             downloadRepository.enqueueDownload(
                 chapterId = chapterId,
@@ -251,7 +252,7 @@ class ReadingListViewModel : ViewModel() {
                 title = "${item.seriesName} - ${item.title}",
                 coverUrl = item.coverUrl,
                 totalPages = item.pages,
-                libraryName = "Reading Lists",
+                libraryName = targetLibrary,
                 seriesName = item.seriesName
             )
         }
@@ -281,6 +282,7 @@ class ReadingListViewModel : ViewModel() {
 
         viewModelScope.launch {
             itemsToDownload.forEach { item ->
+                val targetLibrary = item.libraryName?.takeIf { it.isNotBlank() } ?: "Comics"
                 downloadRepository.enqueueDownload(
                     chapterId = item.chapterId!!,
                     seriesId = item.seriesId,
@@ -288,7 +290,7 @@ class ReadingListViewModel : ViewModel() {
                     title = "${item.seriesName} - ${item.title}",
                     coverUrl = item.coverUrl,
                     totalPages = item.pages,
-                    libraryName = "Reading Lists",
+                    libraryName = targetLibrary,
                     seriesName = item.seriesName
                 )
             }

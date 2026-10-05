@@ -622,7 +622,17 @@ fun SigurvitaNavGraph(
 
             composable(Screen.Downloads.route) {
                 DownloadQueueScreen(
-                    onBackClick = { navController.popBackStack() }
+                    onBackClick = { navController.popBackStack() },
+                    onChapterClick = { chapterId, totalPages, seriesId, volumeId ->
+                        navController.navigate(
+                            Screen.Reader.createRoute(
+                                chapterId = chapterId,
+                                totalPages = totalPages,
+                                seriesId = seriesId,
+                                volumeId = volumeId
+                            )
+                        )
+                    }
                 )
             }
 

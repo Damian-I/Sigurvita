@@ -115,8 +115,51 @@ class LibraryRepository(
 
             Result.success(libraries)
         } catch (e: Exception) {
-            Result.failure(e)
+            val cachedSeries = database.seriesDao().getAllSeriesList()
+            if (cachedSeries.isNotEmpty()) {
+                val distinctLibs = cachedSeries.groupBy { it.libraryId }.map { (libId, _) ->
+                    Library(id = libId, name = if (libId == 0) "All" else "Library $libId", type = 1)
+                }
+                Result.success(distinctLibs)
+            } else {
+                Result.failure(e)
+            }
         }
+    }
+
+    private fun getOfflineSeriesFallback(libraryId: Int = 0): List<Series> {
+        val cachedList = database.seriesDao().getAllSeriesList().map { entity ->
+            Series(
+                id = entity.id,
+                libraryId = entity.libraryId,
+                name = entity.name,
+                localizedName = entity.localizedName,
+                coverUrl = entity.coverUrl,
+                summary = entity.summary,
+                pagesRead = entity.pagesRead,
+                totalPages = entity.totalPages,
+                isCompleted = entity.isCompleted,
+                userRating = entity.userRating
+            )
+        }
+        val filtered = if (libraryId > 0) cachedList.filter { it.libraryId == libraryId } else cachedList
+        if (filtered.isNotEmpty()) return filtered
+
+        // If Room cached series is empty, derive from downloaded tasks
+        val downloadedTasks = database.downloadDao().getAllCompletedDownloads()
+        return downloadedTasks.filter { it.seriesId > 0 }
+            .groupBy { it.seriesId }
+            .map { (seriesId, tasks) ->
+                val first = tasks.first()
+                Series(
+                    id = seriesId,
+                    libraryId = if (libraryId > 0) libraryId else 1,
+                    name = first.seriesName.ifBlank { first.title },
+                    coverUrl = first.coverUrl,
+                    totalPages = tasks.sumOf { it.totalPages },
+                    pagesRead = tasks.sumOf { it.downloadedPages }
+                )
+            }
     }
 
     suspend fun getOnDeckSeries(): Result<List<Series>> = withContext(Dispatchers.IO) {
@@ -165,7 +208,8 @@ class LibraryRepository(
 
             Result.success(seriesList)
         } catch (e: Exception) {
-            Result.failure(e)
+            val fallback = getOfflineSeriesFallback()
+            if (fallback.isNotEmpty()) Result.success(fallback) else Result.failure(e)
         }
     }
 
@@ -202,7 +246,8 @@ class LibraryRepository(
 
             Result.success(seriesList)
         } catch (e: Exception) {
-            Result.failure(e)
+            val fallback = getOfflineSeriesFallback()
+            if (fallback.isNotEmpty()) Result.success(fallback) else Result.failure(e)
         }
     }
 
@@ -238,7 +283,8 @@ class LibraryRepository(
 
             Result.success(seriesList)
         } catch (e: Exception) {
-            Result.failure(e)
+            val fallback = getOfflineSeriesFallback()
+            if (fallback.isNotEmpty()) Result.success(fallback) else Result.failure(e)
         }
     }
 
@@ -297,9 +343,27 @@ class LibraryRepository(
                 )
             } ?: emptyList()
 
+            if (seriesList.isNotEmpty()) {
+                database.seriesDao().insertSeries(seriesList.map {
+                    CachedSeriesEntity(
+                        id = it.id,
+                        libraryId = it.libraryId,
+                        name = it.name,
+                        localizedName = it.localizedName,
+                        coverUrl = it.coverUrl,
+                        summary = it.summary,
+                        pagesRead = it.pagesRead,
+                        totalPages = it.totalPages,
+                        isCompleted = it.isCompleted,
+                        userRating = it.userRating
+                    )
+                })
+            }
+
             Result.success(seriesList)
         } catch (e: Exception) {
-            Result.failure(e)
+            val fallback = getOfflineSeriesFallback(libraryId)
+            if (fallback.isNotEmpty()) Result.success(fallback) else Result.failure(e)
         }
     }
 }
@@ -416,6 +480,7 @@ class ReadingListRepository(
                     }
 
                     val rawSeriesName = dto.seriesName ?: ""
+                    var resolvedLibraryName: String? = null
                     val resolvedSeriesName = if (rawSeriesName.isNotBlank()) {
                         rawSeriesName
                     } else if (dto.seriesId > 0) {
@@ -425,16 +490,39 @@ class ReadingListRepository(
                         } else {
                             try {
                                 val sRes = api.getSeriesById(dto.seriesId)
-                                sRes.body()?.name ?: ""
+                                val sDto = sRes.body()
+                                if (sDto != null && sDto.libraryId > 0) {
+                                    val libRes = api.getLibraries()
+                                    resolvedLibraryName = libRes.body()?.find { it.id == sDto.libraryId }?.name
+                                }
+                                sDto?.name ?: ""
                             } catch (_: Exception) { "" }
                         }
                     } else ""
+
+                    if (resolvedLibraryName.isNullOrBlank() && dto.seriesId > 0) {
+                        try {
+                            val cachedSeries = database.seriesDao().getSeriesById(dto.seriesId)
+                            if (cachedSeries != null && cachedSeries.libraryId > 0) {
+                                val libRes = api.getLibraries()
+                                resolvedLibraryName = libRes.body()?.find { it.id == cachedSeries.libraryId }?.name
+                            } else {
+                                val sRes = api.getSeriesById(dto.seriesId)
+                                val sDto = sRes.body()
+                                if (sDto != null && sDto.libraryId > 0) {
+                                    val libRes = api.getLibraries()
+                                    resolvedLibraryName = libRes.body()?.find { it.id == sDto.libraryId }?.name
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
 
                     ReadingListItem(
                         id = dto.id,
                         readingListId = dto.readingListId,
                         seriesId = dto.seriesId,
                         seriesName = resolvedSeriesName,
+                        libraryName = resolvedLibraryName,
                         volumeId = dto.volumeId,
                         chapterId = dto.chapterId,
                         title = resolvedTitle,
@@ -495,6 +583,7 @@ class ReadingListRepository(
 
 class SeriesRepository(
     private val api: KavitaApi,
+    private val database: SigurvitaDatabase,
     private val preferencesRepository: UserPreferencesRepository
 ) {
     suspend fun getSeriesDetail(seriesId: Int): Result<Series> = withContext(Dispatchers.IO) {
@@ -536,26 +625,106 @@ class SeriesRepository(
                 }
             }
 
-            if (series == null) {
-                series = Series(
-                    id = seriesId,
-                    libraryId = 0,
-                    name = "Series Details",
-                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${seriesId}&apiKey=${config.apiKey}",
-                    summary = summary
+            if (series != null) {
+                database.seriesDao().insertSeries(listOf(
+                    CachedSeriesEntity(
+                        id = series.id,
+                        libraryId = series.libraryId,
+                        name = series.name,
+                        localizedName = series.localizedName,
+                        coverUrl = series.coverUrl,
+                        summary = series.summary,
+                        pagesRead = series.pagesRead,
+                        totalPages = series.totalPages,
+                        isCompleted = series.isCompleted,
+                        userRating = series.userRating
+                    )
+                ))
+                Result.success(series)
+            } else {
+                val cached = database.seriesDao().getSeriesById(seriesId)
+                if (cached != null) {
+                    Result.success(
+                        Series(
+                            id = cached.id,
+                            libraryId = cached.libraryId,
+                            name = cached.name,
+                            localizedName = cached.localizedName,
+                            coverUrl = cached.coverUrl,
+                            summary = cached.summary,
+                            pagesRead = cached.pagesRead,
+                            totalPages = cached.totalPages,
+                            isCompleted = cached.isCompleted,
+                            userRating = cached.userRating
+                        )
+                    )
+                } else {
+                    Result.failure(Exception("Series not found"))
+                }
+            }
+        } catch (e: Exception) {
+            val cached = database.seriesDao().getSeriesById(seriesId)
+            if (cached != null) {
+                Result.success(
+                    Series(
+                        id = cached.id,
+                        libraryId = cached.libraryId,
+                        name = cached.name,
+                        localizedName = cached.localizedName,
+                        coverUrl = cached.coverUrl,
+                        summary = cached.summary,
+                        pagesRead = cached.pagesRead,
+                        totalPages = cached.totalPages,
+                        isCompleted = cached.isCompleted,
+                        userRating = cached.userRating
+                    )
+                )
+            } else {
+                val completedTasks = database.downloadDao().getCompletedDownloadsForSeries(seriesId)
+                if (completedTasks.isNotEmpty()) {
+                    val first = completedTasks.first()
+                    Result.success(
+                        Series(
+                            id = seriesId,
+                            libraryId = 1,
+                            name = first.seriesName.ifBlank { first.title },
+                            coverUrl = first.coverUrl,
+                            totalPages = completedTasks.sumOf { it.totalPages },
+                            pagesRead = completedTasks.sumOf { it.downloadedPages }
+                        )
+                    )
+                } else {
+                    Result.failure(e)
+                }
+            }
+        }
+    }
+
+    private fun buildVolumesFromDownloads(seriesId: Int, tasks: List<com.zemmy.sigurvita.core.data.db.entity.DownloadTaskEntity>): List<Volume> {
+        return tasks.groupBy { it.volumeId }.map { (volId, taskGroup) ->
+            val chapters = taskGroup.map { task ->
+                Chapter(
+                    id = task.chapterId,
+                    volumeId = task.volumeId,
+                    seriesId = task.seriesId,
+                    chapterNumber = task.chapterNumber.ifBlank { "1" },
+                    title = task.title,
+                    pages = task.totalPages,
+                    pagesRead = task.downloadedPages,
+                    isRead = false,
+                    isDownloaded = true,
+                    localPath = task.localPath,
+                    coverUrl = task.coverUrl
                 )
             }
-
-            Result.success(series)
-        } catch (e: Exception) {
-            val config = preferencesRepository.serverConfigFlow.first()
-            Result.success(
-                Series(
-                    id = seriesId,
-                    libraryId = 0,
-                    name = "Series Details",
-                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${seriesId}&apiKey=${config.apiKey}"
-                )
+            Volume(
+                id = if (volId > 0) volId else 1,
+                seriesId = seriesId,
+                name = if (volId > 0) "Volume $volId" else "Downloaded Issues",
+                number = volId.toFloat(),
+                pagesRead = chapters.sumOf { it.pagesRead },
+                totalPages = chapters.sumOf { it.pages },
+                chapters = chapters
             )
         }
     }
@@ -564,8 +733,8 @@ class SeriesRepository(
         try {
             val config = preferencesRepository.serverConfigFlow.first()
             val res = api.getSeriesVolumes(seriesId)
-            if (res.isSuccessful) {
-                val volumes = res.body()?.map { vDto ->
+            if (res.isSuccessful && res.body() != null) {
+                val volumes = res.body()!!.map { vDto ->
                     val resolvedVolSeriesId = if (vDto.seriesId > 0) vDto.seriesId else seriesId
                     val volNumber = if (vDto.minNumber > 0f) vDto.minNumber else vDto.number.toFloat()
                     Volume(
@@ -589,6 +758,17 @@ class SeriesRepository(
                                 titleNameVal.isNotBlank() -> titleNameVal
                                 else -> titleVal
                             }
+                            val mappedFiles = cDto.files?.map { fDto ->
+                                com.zemmy.sigurvita.core.model.MangaFile(
+                                    id = fDto.id,
+                                    filePath = fDto.filePath,
+                                    pages = fDto.pages,
+                                    bytes = fDto.bytes,
+                                    format = fDto.format,
+                                    extension = fDto.extension
+                                )
+                            } ?: emptyList()
+
                             Chapter(
                                 id = cDto.id,
                                 volumeId = cDto.volumeId,
@@ -598,14 +778,38 @@ class SeriesRepository(
                                 pages = cDto.pages,
                                 pagesRead = cDto.pagesRead,
                                 isRead = isChapterRead,
-                                coverUrl = "${config.serverUrl}/api/image/chapter-cover?chapterId=${cDto.id}&apiKey=${config.apiKey}"
+                                coverUrl = "${config.serverUrl}/api/image/chapter-cover?chapterId=${cDto.id}&apiKey=${config.apiKey}",
+                                files = mappedFiles
                             )
                         }
                     )
-                } ?: emptyList()
+                }
                 Result.success(volumes)
             } else {
-                Result.failure(Exception("Failed to fetch volumes"))
+                val completedTasks = database.downloadDao().getCompletedDownloadsForSeries(seriesId)
+                if (completedTasks.isNotEmpty()) {
+                    Result.success(buildVolumesFromDownloads(seriesId, completedTasks))
+                } else {
+                    Result.failure(Exception("Failed to fetch volumes"))
+                }
+            }
+        } catch (e: Exception) {
+            val completedTasks = database.downloadDao().getCompletedDownloadsForSeries(seriesId)
+            if (completedTasks.isNotEmpty()) {
+                Result.success(buildVolumesFromDownloads(seriesId, completedTasks))
+            } else {
+                Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun getSeriesMetadataDetails(seriesId: Int): Result<com.zemmy.sigurvita.core.data.api.dto.SeriesMetadataDto> = withContext(Dispatchers.IO) {
+        try {
+            val res = api.getSeriesMetadata(seriesId)
+            if (res.isSuccessful && res.body() != null) {
+                Result.success(res.body()!!)
+            } else {
+                Result.failure(Exception("Failed to fetch series metadata"))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -676,18 +880,32 @@ class ReaderRepository(
         val downloadTask = database.downloadDao().getDownloadByChapterId(chapterId)
         val localPath = downloadTask?.localPath ?: database.chapterDao().getChapterById(chapterId)?.localPath
 
-        // Case 1: Downloaded CBZ File
-        if (localPath != null && localPath.endsWith(".cbz", ignoreCase = true)) {
-            val cbzFile = File(localPath)
-            if (cbzFile.exists() && cbzFile.length() > 0L) {
+        fun isSupportedImage(filename: String): Boolean {
+            val lower = filename.lowercase()
+            return lower.endsWith(".jpg") || lower.endsWith(".jpeg") ||
+                   lower.endsWith(".png") || lower.endsWith(".webp") ||
+                   lower.endsWith(".gif") || lower.endsWith(".bmp")
+        }
+
+        // Case 1: Downloaded Archive File (.cbz, .zip, etc.)
+        if (localPath != null) {
+            val archiveFile = File(localPath)
+            if (archiveFile.exists() && archiveFile.isFile && archiveFile.length() > 0L) {
                 try {
                     val cacheDir = File(context.cacheDir, "cbz_extracted/$chapterId").apply { mkdirs() }
                     val extractedFiles = mutableListOf<ReaderPage>()
 
-                    ZipFile(cbzFile).use { zip ->
+                    ZipFile(archiveFile).use { zip ->
                         val entries = zip.entries().asSequence()
-                            .filter { !it.isDirectory && (it.name.endsWith(".jpg", true) || it.name.endsWith(".jpeg", true) || it.name.endsWith(".png", true) || it.name.endsWith(".webp", true)) }
-                            .sortedWith { e1, e2 -> naturalCompare(e1.name, e2.name) }
+                            .filter { entry ->
+                                !entry.isDirectory &&
+                                !entry.name.contains("__MACOSX") &&
+                                !File(entry.name).name.startsWith(".") &&
+                                isSupportedImage(entry.name)
+                            }
+                            .sortedWith { e1, e2 ->
+                                naturalCompare(File(e1.name).name, File(e2.name).name)
+                            }
                             .toList()
 
                         entries.forEachIndexed { idx, entry ->
@@ -699,7 +917,7 @@ class ReaderRepository(
                                     }
                                 }
                             }
-                            if (pageFile.exists()) {
+                            if (pageFile.exists() && pageFile.length() > 0L) {
                                 extractedFiles.add(
                                     ReaderPage(
                                         index = idx,
@@ -715,7 +933,9 @@ class ReaderRepository(
                     if (extractedFiles.isNotEmpty()) {
                         return@withContext extractedFiles
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.w("ReaderRepository", "Failed to extract archive at $localPath: ${e.message}")
+                }
             }
         }
 
@@ -723,10 +943,14 @@ class ReaderRepository(
         if (localPath != null) {
             val localFolder = File(localPath)
             if (localFolder.exists() && localFolder.isDirectory) {
-                val imageFiles = localFolder.listFiles()
-                    ?.filter { it.isFile && (it.name.endsWith(".jpg", true) || it.name.endsWith(".jpeg", true) || it.name.endsWith(".png", true) || it.name.endsWith(".webp", true)) }
-                    ?.sortedWith { f1, f2 -> naturalCompare(f1.name, f2.name) }
-                    ?: emptyList()
+                val imageFiles = localFolder.walkTopDown()
+                    .filter { file ->
+                        file.isFile &&
+                        !file.name.startsWith(".") &&
+                        isSupportedImage(file.name)
+                    }
+                    .sortedWith { f1, f2 -> naturalCompare(f1.name, f2.name) }
+                    .toList()
 
                 if (imageFiles.isNotEmpty()) {
                     return@withContext imageFiles.mapIndexed { idx, file ->
@@ -860,6 +1084,24 @@ class DownloadRepository(
     private val context: Context,
     private val preferencesRepository: UserPreferencesRepository = com.zemmy.sigurvita.SigurvitaApp.instance.userPreferencesRepository
 ) {
+    val downloadedSeriesFlow: Flow<List<Series>> = database.downloadDao().getAllDownloads().map { entities ->
+        entities.filter { it.status == DownloadStatus.COMPLETED && it.seriesId > 0 }
+            .groupBy { it.seriesId }
+            .map { (seriesId, tasks) ->
+                val firstTask = tasks.first()
+                val totalPages = tasks.sumOf { it.totalPages }
+                val pagesRead = tasks.sumOf { it.downloadedPages }
+                Series(
+                    id = seriesId,
+                    libraryId = 0,
+                    name = firstTask.seriesName.ifBlank { firstTask.title },
+                    coverUrl = firstTask.coverUrl,
+                    totalPages = totalPages,
+                    pagesRead = pagesRead
+                )
+            }
+    }
+
     val downloadsFlow: Flow<List<DownloadTask>> = database.downloadDao().getAllDownloads().map { entities ->
         entities.map { entity ->
             DownloadTask(

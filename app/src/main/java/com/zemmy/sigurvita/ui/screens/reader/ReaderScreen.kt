@@ -55,9 +55,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -252,10 +258,67 @@ fun ReaderScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color.Black.copy(alpha = 0.8f))
+                            .background(Color.Black.copy(alpha = 0.85f))
                             .padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        // Multi-Thumbnail Timeline Preview Strip
+                        if (state.pages.isNotEmpty()) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 8.dp)
+                            ) {
+                                for (offset in -2..2) {
+                                    val targetIdx = state.currentPageIndex + offset
+                                    val page = state.pages.getOrNull(targetIdx)
+                                    val absOffset = kotlin.math.abs(offset)
+
+                                    val (itemWidth, itemHeight, alpha) = when (absOffset) {
+                                        0 -> Triple(80.dp, 112.dp, 1.0f)
+                                        1 -> Triple(60.dp, 84.dp, 0.75f)
+                                        else -> Triple(45.dp, 63.dp, 0.45f)
+                                    }
+
+                                    if (page != null) {
+                                        Surface(
+                                            shape = MaterialTheme.shapes.small,
+                                            color = Color(0xFF222222),
+                                            shadowElevation = if (absOffset == 0) 6.dp else 2.dp,
+                                            border = if (absOffset == 0) BorderStroke(1.5.dp, Color.White) else null,
+                                            modifier = Modifier
+                                                .graphicsLayer { this.alpha = alpha }
+                                                .clickable { viewModel.onPageChanged(targetIdx) }
+                                        ) {
+                                            AsyncImage(
+                                                model = ImageRequest.Builder(LocalContext.current)
+                                                    .data(page.imageUrl)
+                                                    .crossfade(true)
+                                                    .build(),
+                                                contentDescription = "Page ${page.pageNumber}",
+                                                modifier = Modifier
+                                                    .width(itemWidth)
+                                                    .height(itemHeight),
+                                                contentScale = ContentScale.Fit
+                                            )
+                                        }
+                                    } else {
+                                        Spacer(modifier = Modifier.width(itemWidth))
+                                    }
+                                }
+                            }
+
+                            Text(
+                                text = "Page ${state.currentPageIndex + 1} of ${state.pages.size}",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        }
+
+                        // Live Scrolling Slider
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
@@ -268,7 +331,9 @@ fun ReaderScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Slider(
                                 value = state.currentPageIndex.toFloat(),
-                                onValueChange = { viewModel.onPageChanged(it.toInt()) },
+                                onValueChange = {
+                                    viewModel.onPageChanged(it.toInt())
+                                },
                                 valueRange = 0f..(if (state.pages.isNotEmpty()) (state.pages.size - 1).toFloat() else 0f),
                                 modifier = Modifier.weight(1f)
                             )

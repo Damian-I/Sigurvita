@@ -29,9 +29,11 @@ import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
@@ -181,6 +183,7 @@ fun SeriesDetailScreen(
     val state by viewModel.uiState.collectAsState()
     var showMassDownloadDialog by remember { mutableStateOf(false) }
     var showMarkReadConfirmDialog by remember { mutableStateOf(false) }
+    var showSeriesInfoSheet by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(state.isSearchActive) {
@@ -239,6 +242,16 @@ fun SeriesDetailScreen(
         )
     }
 
+    if (showSeriesInfoSheet) {
+        com.zemmy.sigurvita.ui.components.SeriesInfoBottomSheet(
+            series = state.series,
+            metadata = state.metadata,
+            volumes = state.volumes,
+            libraryName = state.libraryName,
+            onDismissRequest = { showSeriesInfoSheet = false }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -253,6 +266,11 @@ fun SeriesDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showSeriesInfoSheet = true }) {
+                        Icon(Icons.Default.Info, contentDescription = "Series Info")
                     }
                 }
             )
@@ -279,6 +297,32 @@ fun SeriesDetailScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
+                if (state.isOffline) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.CloudOff,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Offline Mode: Showing cached & downloaded content.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+
                 // FIXED PINNED TOP SECTION
                 Column(
                     modifier = Modifier
@@ -406,6 +450,17 @@ fun SeriesDetailScreen(
                                             imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                             contentDescription = "Toggle Incognito Mode",
                                             tint = if (state.isIncognitoMode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { showMassDownloadDialog = true },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Download,
+                                            contentDescription = "Bulk Download",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }

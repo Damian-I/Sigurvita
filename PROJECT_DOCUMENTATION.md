@@ -80,7 +80,8 @@ app/src/main/java/com/zemmy/sigurvita/
     ├── components/
     │   ├── Components.kt            # CoverImage, SeriesCard, LoadingState, ErrorState
     │   ├── FolderPickerDialog.kt    # java.io.File based folder browser
-    │   └── MassDownloadDialog.kt    # Bulk-download count/unread-only dialog
+    │   ├── MassDownloadDialog.kt    # Bulk-download count/unread-only dialog
+    │   └── SeriesInfoBottomSheet.kt # Detailed series metadata & file info bottom sheet
     ├── navigation/
     │   ├── NavGraph.kt              # NavHost, navigation drawer, drawer data loading
     │   └── Screen.kt                # Route definitions
@@ -272,7 +273,8 @@ Series grid (3 columns, `SeriesCard`) for one library or all libraries, with fil
 ### 5.5 Series detail (`SeriesDetailScreen` / `SeriesDetailViewModel`)
 
 - Loads series, volumes and libraries concurrently, then loads the chapter to reading-list map in a separate background coroutine. Reloads on every `ON_RESUME` (and when a local chapter is deleted).
-- **Pinned header** (does not scroll): cover, expandable summary ("Read more..." toggle), `X / Y issues|chapters read` and `(pagesRead / totalPages pages)`, a clickable `Library: <name>` chip (opens that library), a **Resume** button (first unread chapter in API order, else the first chapter; tinted tertiary and with a hidden-eye icon in Incognito), a **Mark read/unread** icon (confirmation dialog, then `markSeriesRead/Unread` with an optimistic UI update), and an **Incognito** toggle.
+- **Pinned header** (does not scroll): cover, expandable summary ("Read more..." toggle), `X / Y issues|chapters read` and `(pagesRead / totalPages pages)`, a clickable `Library: <name>` chip (opens that library), a **Resume** button (first unread chapter in API order, else the first chapter; tinted tertiary and with a hidden-eye icon in Incognito), a **Mark read/unread** icon (confirmation dialog, then `markSeriesRead/Unread` with an optimistic UI update), an **Incognito** toggle, and a **Bulk Download** icon button (opens `MassDownloadDialog` to enqueue multiple chapters for offline reading).
+- **Top App Bar**: includes a **Series / File Info** `(i)` button that opens `SeriesInfoBottomSheet` displaying detailed Kavita metadata (writers, characters, pencillers, inkers, colorists, publishers, release year, age rating, genres, tags) as well as file details (total file size in MB/GB, formats, page counts, sample file path).
 - **Toolbar row** (fixed height, so the layout does not jump): in manga libraries it shows the filter chips `Both` / `Only Volumes` / `Only Chapters`; in other libraries it shows the volume header text; plus an inline search field (not in the top app bar) and a **grid/list toggle** (3-column grid with `aspectRatio(0.7f)` covers, or list rows).
 - **Comic/book libraries**: volumes are grouped with a header per volume when there is more than one (`Issues` for sentinel volume numbers). Chapter titles come from `formatChapterTitle` (`#X - Title`).
 - **Manga libraries** (library type 0, or name containing "manga"): volumes and chapters are shown in one continuous list/grid with no volume headers. `isVolumeFile` classifies a Kavita volume entry as a volume file (`V12`-style) or a chapter file (`c123`-style); volume items come first (sorted by number), then chapters (natural sort by chapter number), titled `Volume N` / `Chapter #N`.
@@ -295,7 +297,7 @@ Reading modes and layout (`ImageReader`):
 - **Zoom/pan**: pinch zoom 1x to 4x with pan, keyed per page (`remember(page.pageNumber)`). In webtoon mode, transform-gesture handling is skipped while unzoomed (scale <= 1.01) so single-finger scrolling passes through to the list.
 - **Edge-tap navigation** (when enabled, not in webtoon, scale <= 1.05): left 30% / right 30% of the width turn pages, direction-aware for RTL; the center area toggles the control overlays. In webtoon mode (or with edge navigation disabled), any tap toggles the overlays.
 - **Prefetch**: when the current page changes, the next 3 pages are enqueued into Coil's memory cache.
-- **Overlays**: top bar shows `Page X of N` (plus an "Incognito" chip), back button, the **page-mark bookmark** toggle and the options (`Tune`) button; the bottom bar has a page slider (mirrored in RTL via `LayoutDirection.Rtl`).
+- **Overlays**: top bar shows `Page X of N` (plus an "Incognito" chip), back button, the **page-mark bookmark** toggle and the options (`Tune`) button; the bottom bar has a live-scrolling page slider that updates the main reader view in real-time as dragged, accompanied by a multi-thumbnail preview strip above the slider showing the current page (larger, highlighted) alongside neighboring page thumbnails (`-2..+2`) with scaled sizes and tap-to-jump.
 
 Reading mode resolution:
 
@@ -320,7 +322,7 @@ Progress & read state:
 
 ### 5.8 Downloads (`DownloadQueueScreen`)
 
-Lists all `download_tasks` (newest first): cover, title, `<library> • <series>`, `STATUS (downloaded/total)` text, error message, linear progress. Per task: pause (while `QUEUED/DOWNLOADING`) or resume (`PAUSED/FAILED`), and a cancel/delete button. Top bar: pause all / resume all, and "clear completed". Tapping a card does nothing.
+Tasks are grouped by series into expandable cards with summary metrics (`library • X/Y downloaded`). Each series group has a "Retry Failed" button if any task failed. Expanding a group shows individual chapter cards with cover, title, status text, error details, and linear progress. Controls: pause/resume/retry per task, cancel/delete per task, and top-bar actions to pause all, resume all, or clear completed rows. Tapping a completed chapter card opens the issue directly in the reader (`Screen.Reader`).
 
 ### 5.9 Page Review (`MarkedPagesScreen`)
 
@@ -401,10 +403,10 @@ These are accurate as of this documentation; fix them or keep this list in sync 
 3. **Network-first, mostly.** Series/chapter/list browsing needs the server. Room tables `cached_chapters` and `cached_reading_lists` are effectively unused (see 4.4). Offline reading works only for downloaded chapters; offline progress sync fails silently.
 4. **Reading lists are capped at 100** (`PageSize = 100`, single page). Series lists are capped at 5000, On Deck/Recently Updated/Newly Added at 20.
 5. **Reading-list item loading issues one chapter request per item** (parallelized, not batched), and the drawer additionally fetches the items of every reading list on launch to compute in-progress status.
-6. **Mass Download is only reachable from reading-list detail.** Series detail contains the dialog and `downloadBulk`, but nothing opens it.
+6. **Mass Download** is available from both reading-list detail and series detail (via the Bulk Download icon button beside Incognito/Mark Read).
 7. **Download-state UI differs by layout.** Only the comic list layout shows progress/cancel/retry/delete states. In the manga layouts and the comic grid the control is a plain download/check icon, and for manga items `Chapter.isDownloaded` is never populated (it is not set when mapping API data), so the icon never shows the downloaded state.
 8. **"Clear completed" removes database rows only.** The downloaded files stay on disk, but the reader finds local files only through `download_tasks.localPath`, so those chapters are read via streaming again until re-downloaded.
-9. **Pause/resume restarts a download from the beginning**; `Downloads` cards are not tappable.
+9. **Pause/resume restarts a download from the beginning.** Downloads page groups tasks by series with expandable cards, provides a "Retry Failed" action, and completed cards can be tapped to start reading directly in the reader.
 10. **Reading mode is not persisted.** The `reading_mode` DataStore key and `updateReadingMode` exist but the reader ignores them (library default, plus a session-only override).
 11. **Incognito optimistic UI.** In Incognito, toggling read state updates the screen immediately but the server write is skipped, so the next reload shows the server's state again.
 12. **Marked pages store `imageUrl` at mark time.** For downloaded chapters that is a path inside `cacheDir/cbz_extracted/<chapterId>/`; deleting the chapter (manually or via auto-delete) removes it and the Page Review thumbnail/preview will no longer load. For streamed pages the stored URL contains the API key.
