@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -33,7 +32,6 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
@@ -75,11 +73,13 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.zemmy.sigurvita.core.model.Chapter
 import com.zemmy.sigurvita.core.model.DownloadStatus
 import com.zemmy.sigurvita.core.util.cleanReadingListTitle
 import com.zemmy.sigurvita.core.util.extractEraInfo
 import com.zemmy.sigurvita.ui.components.CoverImage
 import com.zemmy.sigurvita.ui.components.ErrorState
+import com.zemmy.sigurvita.ui.components.IssueDetailBottomSheet
 import com.zemmy.sigurvita.ui.components.LoadingState
 import com.zemmy.sigurvita.ui.components.MassDownloadDialog
 import com.zemmy.sigurvita.ui.components.ReadStatusBadge
@@ -185,6 +185,7 @@ fun SeriesDetailScreen(
     var showMassDownloadDialog by remember { mutableStateOf(false) }
     var showMarkReadConfirmDialog by remember { mutableStateOf(false) }
     var showSeriesInfoSheet by remember { mutableStateOf(false) }
+    var selectedChapterForDetail by remember { mutableStateOf<Chapter?>(null) }
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(state.isSearchActive) {
@@ -253,6 +254,29 @@ fun SeriesDetailScreen(
         )
     }
 
+    selectedChapterForDetail?.let { chapter ->
+        IssueDetailBottomSheet(
+            chapter = chapter,
+            seriesName = state.series?.name ?: "",
+            seriesCoverUrl = state.series?.coverUrl,
+            metadata = state.metadata,
+            onReadClick = { chapterId, totalPages, volumeId ->
+                selectedChapterForDetail = null
+                onChapterClick(chapterId, totalPages, volumeId)
+            },
+            onToggleRead = { targetChapter ->
+                viewModel.toggleChapterRead(targetChapter)
+            },
+            onDownloadClick = { targetChapter ->
+                viewModel.downloadChapter(targetChapter)
+            },
+            onDeleteDownloadClick = { chapterId ->
+                viewModel.deleteLocalChapter(chapterId)
+            },
+            onDismissRequest = { selectedChapterForDetail = null }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -267,11 +291,6 @@ fun SeriesDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showSeriesInfoSheet = true }) {
-                        Icon(Icons.Default.Info, contentDescription = "Series Info")
                     }
                 }
             )
@@ -341,35 +360,34 @@ fun SeriesDetailScreen(
                                 .height(145.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
-                        var summaryExpanded by remember(series.id) { mutableStateOf(false) }
                         Column(
                             modifier = Modifier
                                 .weight(1f)
-                                .then(if (summaryExpanded) Modifier.wrapContentHeight() else Modifier.height(145.dp)),
-                            verticalArrangement = if (summaryExpanded) Arrangement.Top else Arrangement.SpaceBetween
+                                .height(145.dp),
+                            verticalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(modifier = Modifier.fillMaxWidth()) {
-                                if (series.summary?.isNotBlank() == true) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { summaryExpanded = !summaryExpanded }
-                                    ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { showSeriesInfoSheet = true }
+                                ) {
+                                    if (series.summary?.isNotBlank() == true) {
                                         Text(
                                             text = series.summary,
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = if (summaryExpanded) Int.MAX_VALUE else 2,
+                                            maxLines = 2,
                                             overflow = TextOverflow.Ellipsis
                                         )
-                                        Text(
-                                            text = if (summaryExpanded) "Read less" else "Read more...",
-                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
                                     }
-                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Read more...",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
                                 }
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = if (state.isMangaLibrary) "${state.chaptersRead} / ${state.totalChapters} chapters read" else "${state.chaptersRead} / ${state.totalChapters} issues read",
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
@@ -398,8 +416,7 @@ fun SeriesDetailScreen(
                             }
                             Row(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = if (summaryExpanded) 8.dp else 0.dp),
+                                    .fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -734,7 +751,15 @@ fun SeriesDetailScreen(
                                                 text = item.title,
                                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                                 maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.clickable {
+                                                    when (item) {
+                                                        is SeriesItem.ChapterItem -> selectedChapterForDetail = item.chapter
+                                                        is SeriesItem.VolumeItem -> {
+                                                            item.volume.chapters.firstOrNull()?.let { selectedChapterForDetail = it }
+                                                        }
+                                                    }
+                                                }
                                             )
                                             if (!item.subtitle.isNullOrBlank()) {
                                                 Spacer(modifier = Modifier.height(2.dp))
@@ -985,7 +1010,8 @@ fun SeriesDetailScreen(
                                                     text = formatChapterTitle(chapter.title, chapter.chapterNumber),
                                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                                     maxLines = 2,
-                                                    overflow = TextOverflow.Ellipsis
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.clickable { selectedChapterForDetail = chapter }
                                                 )
                                                 if (!readingLists.isNullOrEmpty()) {
                                                     Spacer(modifier = Modifier.height(2.dp))

@@ -33,9 +33,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.zemmy.sigurvita.R
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.zemmy.sigurvita.core.model.Series
 
@@ -46,16 +48,60 @@ fun CoverImage(
     contentDescription: String? = null
 ) {
     val context = LocalContext.current
-    AsyncImage(
-        model = ImageRequest.Builder(context)
-            .data(url)
-            .crossfade(true)
-            .build(),
-        contentDescription = contentDescription,
+    if (!url.isNullOrBlank()) {
+        SubcomposeAsyncImage(
+            model = ImageRequest.Builder(context)
+                .data(url)
+                .crossfade(true)
+                .build(),
+            contentDescription = contentDescription,
+            modifier = modifier
+                .clip(RoundedCornerShape(8.dp)),
+            contentScale = ContentScale.Crop,
+            error = {
+                CoverPlaceholder(title = contentDescription)
+            }
+        )
+    } else {
+        CoverPlaceholder(title = contentDescription, modifier = modifier)
+    }
+}
+
+@Composable
+fun CoverPlaceholder(
+    title: String?,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(8.dp),
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp)),
-        contentScale = ContentScale.Crop
-    )
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.padding(8.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(28.dp)
+                )
+                if (!title.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

@@ -775,6 +775,7 @@ class SeriesRepository(
                                 seriesId = resolvedVolSeriesId,
                                 chapterNumber = resolvedNumber,
                                 title = resolvedTitle,
+                                summary = cDto.summary,
                                 pages = cDto.pages,
                                 pagesRead = cDto.pagesRead,
                                 isRead = isChapterRead,

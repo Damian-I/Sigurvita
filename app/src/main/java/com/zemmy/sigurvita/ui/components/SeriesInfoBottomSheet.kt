@@ -1,6 +1,7 @@
 package com.zemmy.sigurvita.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -9,29 +10,44 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
+import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.data.api.dto.PersonDto
 import com.zemmy.sigurvita.core.data.api.dto.SeriesMetadataDto
+import com.zemmy.sigurvita.core.model.ServerConfig
 import com.zemmy.sigurvita.core.model.Series
 import com.zemmy.sigurvita.core.model.Volume
 import java.util.Locale
@@ -46,6 +62,9 @@ fun SeriesInfoBottomSheet(
     onDismissRequest: () -> Unit,
     sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 ) {
+    val prefs = SigurvitaApp.instance.userPreferencesRepository
+    val config by prefs.serverConfigFlow.collectAsState(initial = ServerConfig())
+
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState
@@ -121,17 +140,35 @@ fun SeriesInfoBottomSheet(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // People / Credits
+            // Characters & People Cards
             metadata?.let { meta ->
-                PersonSection(title = "Writers", people = meta.writers)
-                PersonSection(title = "Characters", people = meta.characters)
-                PersonSection(title = "Cover Artists", people = meta.coverArtists)
-                PersonSection(title = "Pencillers", people = meta.pencillers)
-                PersonSection(title = "Inkers", people = meta.inkers)
-                PersonSection(title = "Colorists", people = meta.colorists)
-                PersonSection(title = "Publishers", people = meta.publishers)
-                PersonSection(title = "Teams", people = meta.teams)
-                PersonSection(title = "Locations", people = meta.locations)
+                PersonRowSection(
+                    title = "Characters",
+                    people = meta.characters,
+                    serverUrl = config.serverUrl,
+                    apiKey = config.apiKey
+                )
+
+                PersonRowSection(
+                    title = "Writers",
+                    people = meta.writers,
+                    serverUrl = config.serverUrl,
+                    apiKey = config.apiKey
+                )
+
+                PersonRowSection(
+                    title = "Artists (Pencillers / Inkers / Colorists)",
+                    people = (meta.pencillers.orEmpty() + meta.inkers.orEmpty() + meta.colorists.orEmpty() + meta.coverArtists.orEmpty()).distinctBy { it.name },
+                    serverUrl = config.serverUrl,
+                    apiKey = config.apiKey
+                )
+
+                PersonRowSection(
+                    title = "Publishers & Teams",
+                    people = (meta.publishers.orEmpty() + meta.teams.orEmpty()).distinctBy { it.name },
+                    serverUrl = config.serverUrl,
+                    apiKey = config.apiKey
+                )
 
                 // Genres & Tags
                 val genres = meta.genres?.map { it.title }?.filter { it.isNotBlank() } ?: emptyList()
@@ -230,13 +267,94 @@ fun SeriesInfoBottomSheet(
 }
 
 @Composable
-private fun PersonSection(title: String, people: List<PersonDto>?) {
-    val names = people?.map { it.name }?.filter { it.isNotBlank() } ?: emptyList()
-    if (names.isNotEmpty()) {
-        Spacer(modifier = Modifier.height(6.dp))
+fun PersonRowSection(
+    title: String,
+    people: List<PersonDto>?,
+    serverUrl: String,
+    apiKey: String
+) {
+    val validPeople = people?.filter { it.name.isNotBlank() } ?: emptyList()
+    if (validPeople.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "$title: ${names.joinToString(", ")}",
-            style = MaterialTheme.typography.bodyMedium
+            text = title,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.primary
         )
+        Spacer(modifier = Modifier.height(6.dp))
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(validPeople, key = { "person_${it.id}_${it.name}" }) { person ->
+                PersonCard(
+                    person = person,
+                    serverUrl = serverUrl,
+                    apiKey = apiKey
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun PersonCard(
+    person: PersonDto,
+    serverUrl: String,
+    apiKey: String
+) {
+    val imageUrl = if (person.id > 0 && serverUrl.isNotBlank()) {
+        "$serverUrl/api/Image/person-cover?personId=${person.id}&apiKey=$apiKey"
+    } else null
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.width(72.dp)
+    ) {
+        if (imageUrl != null) {
+            SubcomposeAsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(imageUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = person.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(60.dp)
+                    .clip(CircleShape),
+                error = {
+                    PersonInitialAvatar(name = person.name)
+                }
+            )
+        } else {
+            PersonInitialAvatar(name = person.name)
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = person.name,
+            style = MaterialTheme.typography.labelSmall,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun PersonInitialAvatar(name: String) {
+    val initial = name.trim().take(1).uppercase(Locale.ROOT).ifBlank { "?" }
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        modifier = Modifier.size(60.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = initial,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
     }
 }

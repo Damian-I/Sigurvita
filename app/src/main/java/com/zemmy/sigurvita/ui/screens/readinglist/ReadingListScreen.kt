@@ -36,7 +36,10 @@ import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.zemmy.sigurvita.R
+import com.zemmy.sigurvita.core.model.Chapter
+import com.zemmy.sigurvita.core.model.ReadingListItem
 import com.zemmy.sigurvita.core.util.extractEraInfo
+import com.zemmy.sigurvita.ui.components.IssueDetailBottomSheet
 import com.zemmy.sigurvita.ui.components.ReadStatusBadge
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -109,6 +112,7 @@ fun ReadingListScreen(
     val state by viewModel.uiState.collectAsState()
     var showMassDownloadDialog by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
+    var selectedItemForDetail by remember { mutableStateOf<ReadingListItem?>(null) }
 
     LaunchedEffect(initialReadingListId, initialEraName) {
         if (initialReadingListId > 0) {
@@ -148,6 +152,39 @@ fun ReadingListScreen(
             onConfirmDownload = { count, unreadOnly ->
                 viewModel.downloadBulk(count, unreadOnly)
             }
+        )
+    }
+
+    selectedItemForDetail?.let { item ->
+        val mockChapter = Chapter(
+            id = item.chapterId ?: 0,
+            volumeId = item.volumeId ?: 0,
+            seriesId = item.seriesId,
+            chapterNumber = "1",
+            title = item.title,
+            pages = item.pages,
+            pagesRead = item.pagesRead,
+            isRead = item.isRead,
+            coverUrl = item.coverUrl
+        )
+        IssueDetailBottomSheet(
+            chapter = mockChapter,
+            seriesName = item.seriesName,
+            seriesCoverUrl = item.coverUrl,
+            onReadClick = { chapterId, _, volumeId ->
+                selectedItemForDetail = null
+                onChapterClick(chapterId, item.seriesId, volumeId, item.readingListId)
+            },
+            onToggleRead = {
+                viewModel.toggleItemRead(item)
+            },
+            onDownloadClick = {
+                viewModel.downloadChapter(item)
+            },
+            onDeleteDownloadClick = { chapterId ->
+                viewModel.deleteLocalChapter(chapterId)
+            },
+            onDismissRequest = { selectedItemForDetail = null }
         )
     }
 
@@ -431,7 +468,8 @@ fun ReadingListScreen(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = formatReadingListItemTitle(item.title.ifBlank { item.seriesName }),
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                        modifier = Modifier.clickable { selectedItemForDetail = item }
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(

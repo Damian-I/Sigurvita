@@ -107,6 +107,7 @@ data class ChapterDto(
     val sortOrder: Float = 0f,
     val title: String? = null,
     val titleName: String? = null,
+    val summary: String? = null,
     val pages: Int = 0,
     val pagesRead: Int = 0,
     val isSpecial: Boolean = false,

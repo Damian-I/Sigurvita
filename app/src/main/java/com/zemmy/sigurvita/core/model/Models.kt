@@ -95,6 +95,7 @@ data class Chapter(
     val seriesId: Int,
     val chapterNumber: String,
     val title: String,
+    val summary: String? = null,
     val pages: Int,
     val pagesRead: Int = 0,
     val isRead: Boolean = false,
