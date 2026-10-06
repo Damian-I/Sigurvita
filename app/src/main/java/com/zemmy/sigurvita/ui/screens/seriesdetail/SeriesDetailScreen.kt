@@ -82,6 +82,7 @@ import com.zemmy.sigurvita.ui.components.CoverImage
 import com.zemmy.sigurvita.ui.components.ErrorState
 import com.zemmy.sigurvita.ui.components.LoadingState
 import com.zemmy.sigurvita.ui.components.MassDownloadDialog
+import com.zemmy.sigurvita.ui.components.ReadStatusBadge
 import kotlin.math.abs
 
 private fun formatVolumeHeader(name: String, number: Float): String {
@@ -770,33 +771,26 @@ fun SeriesDetailScreen(
                                             Spacer(modifier = Modifier.height(4.dp))
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 val showProgress = item.pagesRead > 0 && item.pages > 0 && item.pagesRead < item.pages && !item.isRead
-                                                Text(
-                                                    text = if (showProgress) "${item.pagesRead} / ${item.pages} pages" else "${item.pages} pages",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                                if (item.isRead) {
-                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                if (showProgress) {
                                                     Text(
-                                                        text = "• Read",
+                                                        text = "${item.pagesRead} / ${item.pages} pages",
                                                         style = MaterialTheme.typography.bodySmall,
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
-                                                } else if (isNextUp) {
                                                     Spacer(modifier = Modifier.width(8.dp))
-                                                    Text(
-                                                        text = "▶ Next to Read",
-                                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                                        color = MaterialTheme.colorScheme.tertiary
-                                                    )
-                                                } else {
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Text(
-                                                        text = "• Unread",
-                                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                                        color = MaterialTheme.colorScheme.primary
-                                                    )
                                                 }
+                                                ReadStatusBadge(
+                                                    isRead = item.isRead,
+                                                    isNextUp = isNextUp,
+                                                    onClick = {
+                                                        when (item) {
+                                                            is SeriesItem.ChapterItem -> viewModel.toggleChapterRead(item.chapter)
+                                                            is SeriesItem.VolumeItem -> {
+                                                                item.volume.chapters.firstOrNull()?.let { viewModel.toggleChapterRead(it) }
+                                                            }
+                                                        }
+                                                    }
+                                                )
                                             }
                                         }
 
@@ -1020,36 +1014,19 @@ fun SeriesDetailScreen(
                                                 Spacer(modifier = Modifier.height(4.dp))
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     val showProgress = chapter.pagesRead > 0 && chapter.pages > 0 && chapter.pagesRead < chapter.pages && !chapter.isRead
-                                                    Text(
-                                                        text = if (showProgress) "${chapter.pagesRead} / ${chapter.pages} pages" else "${chapter.pages} pages",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                    if (chapter.isRead) {
-                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                    if (showProgress) {
                                                         Text(
-                                                            text = "• Read",
+                                                            text = "${chapter.pagesRead} / ${chapter.pages} pages",
                                                             style = MaterialTheme.typography.bodySmall,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            modifier = Modifier.clickable { viewModel.toggleChapterRead(chapter) }
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                                         )
-                                                    } else if (isNextUp) {
                                                         Spacer(modifier = Modifier.width(8.dp))
-                                                        Text(
-                                                            text = "▶ Next to Read",
-                                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                                            color = MaterialTheme.colorScheme.tertiary,
-                                                            modifier = Modifier.clickable { viewModel.toggleChapterRead(chapter) }
-                                                        )
-                                                    } else {
-                                                        Spacer(modifier = Modifier.width(8.dp))
-                                                        Text(
-                                                            text = "• Unread",
-                                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                                            color = MaterialTheme.colorScheme.primary,
-                                                            modifier = Modifier.clickable { viewModel.toggleChapterRead(chapter) }
-                                                        )
                                                     }
+                                                    ReadStatusBadge(
+                                                        isRead = chapter.isRead,
+                                                        isNextUp = isNextUp,
+                                                        onClick = { viewModel.toggleChapterRead(chapter) }
+                                                    )
                                                 }
                                             }
 

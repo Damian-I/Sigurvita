@@ -338,8 +338,9 @@ Shows every page flagged from the reader's bookmark toggle (stored in `marked_pa
 
 ### 5.11 Shared components (`ui.components`)
 
-- `CoverImage` (Coil `AsyncImage`, crossfade, rounded 8 dp, `ContentScale.Crop`), `SeriesCard` (0.7 cover aspect ratio, name, `read / total pgs`), `LoadingState`, `ErrorState` (message + optional Retry).
-- `MassDownloadDialog`: "Unread only" switch plus preset count chips (1, 3, 5, 10, 15, 20, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000, and "All") filtered to the available count; confirms with `onConfirmDownload(count, unreadOnly)`.
+- `CoverImage` (Coil `AsyncImage`, crossfade, rounded 8 dp, `ContentScale.Crop`), `SeriesCard` (0.7 cover aspect ratio, name, `read / total pgs`), `LoadingState`, `ErrorState` (message + optional Retry), `ReadStatusBadge` (unified pill badge with check/unchecked icon and read/unread status label).
+- `MassDownloadDialog`: "Unread only" switch plus preset count chips filtered to available count; confirms with `onConfirmDownload(count, unreadOnly)`.
+- `SeriesInfoBottomSheet`: displays detailed Kavita metadata (writers, characters, pencillers, inkers, colorists, publishers, release year, age rating, genres, tags) and archive file details (size, formats, counts, sample path).
 - `FolderPickerDialog`: described in 5.10.
 
 ---

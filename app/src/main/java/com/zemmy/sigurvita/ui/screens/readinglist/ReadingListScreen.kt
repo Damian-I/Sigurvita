@@ -37,6 +37,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.zemmy.sigurvita.R
 import com.zemmy.sigurvita.core.util.extractEraInfo
+import com.zemmy.sigurvita.ui.components.ReadStatusBadge
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -453,28 +454,11 @@ fun ReadingListScreen(
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
                                         }
-                                        Surface(
-                                            color = if (item.isRead) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer,
-                                            shape = MaterialTheme.shapes.extraSmall
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (item.isRead) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                                                    contentDescription = null,
-                                                    tint = if (item.isRead) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onPrimaryContainer,
-                                                    modifier = Modifier.size(12.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(
-                                                    text = if (item.isRead) "Read" else if (isNextUp) "▶ Next to Read" else "Unread",
-                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                                    color = if (item.isRead) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer
-                                                )
-                                            }
-                                        }
+                                        ReadStatusBadge(
+                                            isRead = item.isRead,
+                                            isNextUp = isNextUp,
+                                            onClick = { viewModel.toggleItemRead(item) }
+                                        )
                                     }
                                 }
 
