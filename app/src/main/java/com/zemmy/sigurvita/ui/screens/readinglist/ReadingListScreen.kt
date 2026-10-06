@@ -292,9 +292,9 @@ fun ReadingListScreen(
                 }
             }
 
-            if (state.isLoading) {
+            if (state.isLoading && state.readingLists.isEmpty() && state.selectedListItems.isEmpty()) {
                 LoadingState()
-            } else if (state.errorMessage != null) {
+            } else if (state.errorMessage != null && state.readingLists.isEmpty() && state.selectedListItems.isEmpty()) {
                 ErrorState(
                     message = state.errorMessage!!,
                     onRetry = { viewModel.loadReadingLists() }

@@ -215,7 +215,10 @@ class SeriesDetailViewModel : ViewModel() {
     }
 
     fun loadSeriesDetail(seriesId: Int) {
-        _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+        val isInitialLoad = _uiState.value.series == null
+        if (isInitialLoad) {
+            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+        }
         viewModelScope.launch {
             val seriesDeferred = async { seriesRepository.getSeriesDetail(seriesId) }
             val volumesDeferred = async { seriesRepository.getSeriesVolumes(seriesId) }

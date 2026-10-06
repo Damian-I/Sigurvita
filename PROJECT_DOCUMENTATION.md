@@ -392,7 +392,7 @@ DTO notes (`dto/Dtos.kt`): `ProgressDto` (aliased as `ReaderProgressDto`), `Mark
 - ViewModels expose `StateFlow<UiState>` (mutated with `_uiState.value = _uiState.value.copy(...)`), launched from `viewModelScope`.
 - Independent network calls on a screen load are run concurrently with `async`/`await` (Home, Series detail, Library, drawer data, reading-list item resolution).
 - Repository methods switch to `Dispatchers.IO`. Room DAOs are non-suspending and must only be called from IO contexts.
-- Screens that show server data reload in a `Lifecycle.Event.ON_RESUME` observer: Home, Library, Series detail, Reading list.
+- Screens that show server data reload in a `Lifecycle.Event.ON_RESUME` observer (Home, Library, Series detail, Reading list) in the background without setting `isLoading = true` when content is already present, preserving scroll position and preventing full-screen re-renders.
 
 ---
 

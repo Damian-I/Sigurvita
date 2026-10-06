@@ -161,13 +161,22 @@ class ReadingListViewModel : ViewModel() {
     }
 
     fun loadListDetail(listId: Int, title: String) {
-        _uiState.value = _uiState.value.copy(
-            isLoading = true,
-            selectedListId = listId,
-            selectedListTitle = title,
-            searchQuery = "",
-            errorMessage = null
-        )
+        val isInitialForList = _uiState.value.selectedListId != listId || _uiState.value.selectedListItems.isEmpty()
+        if (isInitialForList) {
+            _uiState.value = _uiState.value.copy(
+                isLoading = true,
+                selectedListId = listId,
+                selectedListTitle = title,
+                searchQuery = "",
+                errorMessage = null
+            )
+        } else {
+            _uiState.value = _uiState.value.copy(
+                selectedListId = listId,
+                selectedListTitle = title,
+                errorMessage = null
+            )
+        }
         viewModelScope.launch {
             val result = repository.getReadingListItems(listId)
             if (result.isSuccess) {
@@ -227,16 +236,39 @@ class ReadingListViewModel : ViewModel() {
     fun toggleItemRead(item: ReadingListItem) {
         val chapterId = item.chapterId ?: return
         if (chapterId <= 0) return
+
+        val newReadState = !item.isRead
+        val updatedItems = _uiState.value.selectedListItems.map {
+            if (it.id == item.id) it.copy(isRead = newReadState, pagesRead = if (newReadState) it.pages else 0) else it
+        }
+        val newIssuesRead = updatedItems.count { it.isRead }
+        val newPagesRead = updatedItems.sumOf { if (it.isRead) it.pages else it.pagesRead }
+
+        _uiState.value = _uiState.value.copy(
+            selectedListItems = updatedItems,
+            issuesRead = newIssuesRead,
+            pagesRead = newPagesRead
+        )
+
         viewModelScope.launch {
-            if (!item.isRead) {
+            if (newReadState) {
                 seriesRepository.markChapterRead(chapterId, item.seriesId)
             } else {
                 seriesRepository.markChapterUnread(chapterId, item.seriesId)
             }
             val listId = _uiState.value.selectedListId
-            val title = _uiState.value.selectedListTitle
-            if (listId != null && title != null) {
-                loadListDetail(listId, title)
+            if (listId != null) {
+                val result = repository.getReadingListItems(listId)
+                if (result.isSuccess) {
+                    val items = result.getOrNull() ?: emptyList()
+                    _uiState.value = _uiState.value.copy(
+                        selectedListItems = items,
+                        totalIssues = items.size,
+                        issuesRead = items.count { it.isRead },
+                        totalPages = items.sumOf { it.pages },
+                        pagesRead = items.sumOf { it.pagesRead }
+                    )
+                }
             }
         }
     }

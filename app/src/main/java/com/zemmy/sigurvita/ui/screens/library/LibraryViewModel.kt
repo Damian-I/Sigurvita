@@ -48,7 +48,12 @@ class LibraryViewModel : ViewModel() {
     }
 
     fun loadLibrary(libraryId: Int) {
-        _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null, selectedLibraryId = libraryId)
+        val isInitial = _uiState.value.series.isEmpty()
+        if (isInitial) {
+            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null, selectedLibraryId = libraryId)
+        } else {
+            _uiState.value = _uiState.value.copy(selectedLibraryId = libraryId, errorMessage = null)
+        }
         viewModelScope.launch {
             val librariesRes = async { libraryRepository.getLibraries() }
             val seriesRes = async { libraryRepository.getSeriesForLibrary(libraryId) }

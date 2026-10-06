@@ -60,7 +60,13 @@ class HomeViewModel : ViewModel() {
     }
 
     fun loadData() {
-        _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+        val hasContent = _uiState.value.onDeckSeries.isNotEmpty() ||
+                         _uiState.value.recentlyUpdatedSeries.isNotEmpty() ||
+                         _uiState.value.newlyAddedSeries.isNotEmpty() ||
+                         _uiState.value.downloadedSeries.isNotEmpty()
+        if (!hasContent) {
+            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+        }
         viewModelScope.launch {
             val librariesDeferred = async { libraryRepository.getLibraries() }
             val onDeckDeferred = async { libraryRepository.getOnDeckSeries() }

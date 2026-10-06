@@ -277,9 +277,9 @@ fun SeriesDetailScreen(
             )
         }
     ) { innerPadding ->
-        if (state.isLoading) {
+        if (state.isLoading && state.series == null) {
             LoadingState(modifier = Modifier.padding(innerPadding))
-        } else if (state.errorMessage != null) {
+        } else if (state.errorMessage != null && state.series == null) {
             ErrorState(
                 message = state.errorMessage!!,
                 onRetry = { viewModel.loadSeriesDetail(seriesId) },

@@ -144,9 +144,14 @@ fun HomeScreen(
             )
         }
     ) { innerPadding ->
-        if (state.isLoading) {
+        val hasContent = state.onDeckSeries.isNotEmpty() ||
+                         state.recentlyUpdatedSeries.isNotEmpty() ||
+                         state.newlyAddedSeries.isNotEmpty() ||
+                         state.downloadedSeries.isNotEmpty() ||
+                         state.allSeries.isNotEmpty()
+        if (state.isLoading && !hasContent) {
             LoadingState(modifier = Modifier.padding(innerPadding))
-        } else if (state.errorMessage != null) {
+        } else if (state.errorMessage != null && !hasContent) {
             ErrorState(
                 message = state.errorMessage!!,
                 onRetry = { viewModel.loadData() },

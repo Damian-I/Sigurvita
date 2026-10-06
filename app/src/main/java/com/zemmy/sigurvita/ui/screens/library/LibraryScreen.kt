@@ -141,9 +141,9 @@ fun LibraryScreen(
             )
         }
     ) { innerPadding ->
-        if (state.isLoading) {
+        if (state.isLoading && state.series.isEmpty()) {
             LoadingState(modifier = Modifier.padding(innerPadding))
-        } else if (state.errorMessage != null) {
+        } else if (state.errorMessage != null && state.series.isEmpty()) {
             ErrorState(
                 message = state.errorMessage!!,
                 onRetry = { viewModel.loadLibrary(state.selectedLibraryId) },
