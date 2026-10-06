@@ -262,8 +262,9 @@ Libraries and reading lists for the drawer are loaded once when `SigurvitaNavGra
 ### 5.3 Home (`HomeScreen`)
 
 - Loads libraries, On Deck, Recently Updated, Newly Added, and the full series list **concurrently** (`async`/`await`). Reloads on every `ON_RESUME`.
-- Shows three horizontal rows (110 dp cards): **On Deck**, **Recently Updated**, **Newly Added**. (The loaded `libraries` list is not displayed on Home; libraries are reached through the drawer.)
+- Shows horizontal rows (110 dp cards): **Downloaded** (series with offline downloaded chapters), **On Deck**, **Recently Updated**, **Newly Added**.
 - Top bar: tapping the title opens the drawer; the search action turns the title into a focused text field that filters the whole series list **client-side** by name/localized name and shows results in a 3-column grid; an eye icon toggles Incognito mode.
+- Shows an **Offline Mode Warning Banner** when network connection to Kavita fails and cached/downloaded data is displayed.
 - Shows an Incognito banner when Incognito is active.
 
 ### 5.4 Library (`LibraryScreen`)
