@@ -45,6 +45,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -490,17 +491,17 @@ fun ReaderScreen(
                             )
                         }
 
-                        if (state.settings.speechBubblesEnabled) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text("Detection Confidence: ${(state.settings.speechBubbleConfidence * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge, color = Color.White)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Slider(
-                                value = state.settings.speechBubbleConfidence,
-                                onValueChange = { viewModel.updateSpeechBubbleConfidence(it) },
-                                valueRange = 0.02f..0.50f,
-                                steps = 48
-                            )
-                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        var sliderConfidence by remember(state.settings.speechBubbleConfidence) { mutableFloatStateOf(state.settings.speechBubbleConfidence) }
+                        Text("Detection Confidence: ${(sliderConfidence * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Slider(
+                            value = sliderConfidence,
+                            onValueChange = { sliderConfidence = it },
+                            onValueChangeFinished = { viewModel.updateSpeechBubbleConfidence(sliderConfidence) },
+                            valueRange = 0.02f..0.50f,
+                            steps = 48
+                        )
 
                         Spacer(modifier = Modifier.height(24.dp))
                     }

@@ -271,14 +271,17 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun updateSpeechBubbleConfidence(confidence: Float) {
+        bubbleDetectionJobs.values.forEach { it.cancel() }
+        bubbleDetectionJobs.clear()
+
         _uiState.value = _uiState.value.copy(
-            settings = _uiState.value.settings.copy(speechBubbleConfidence = confidence)
+            settings = _uiState.value.settings.copy(speechBubbleConfidence = confidence),
+            bubblesByPage = emptyMap()
         )
         viewModelScope.launch {
             preferencesRepository.updateSpeechBubbleConfidence(confidence)
         }
         app.bubbleRepository.clearChapter(_uiState.value.chapterId)
-        _uiState.value = _uiState.value.copy(bubblesByPage = emptyMap())
         ensureBubbles(_uiState.value.currentPageIndex)
         ensureBubbles(_uiState.value.currentPageIndex + 1)
     }

@@ -32,6 +32,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
@@ -207,17 +208,17 @@ fun SettingsScreen(
                 )
             }
 
-            if (settings.speechBubblesEnabled) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Detection Confidence: ${(settings.speechBubbleConfidence * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge)
-                Spacer(modifier = Modifier.height(4.dp))
-                Slider(
-                    value = settings.speechBubbleConfidence,
-                    onValueChange = { viewModel.updateSpeechBubbleConfidence(it) },
-                    valueRange = 0.02f..0.50f,
-                    steps = 48
-                )
-            }
+            Spacer(modifier = Modifier.height(16.dp))
+            var sliderConfidence by remember(settings.speechBubbleConfidence) { mutableFloatStateOf(settings.speechBubbleConfidence) }
+            Text("Detection Confidence: ${(sliderConfidence * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge)
+            Spacer(modifier = Modifier.height(4.dp))
+            Slider(
+                value = sliderConfidence,
+                onValueChange = { sliderConfidence = it },
+                onValueChangeFinished = { viewModel.updateSpeechBubbleConfidence(sliderConfidence) },
+                valueRange = 0.02f..0.50f,
+                steps = 48
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
 
