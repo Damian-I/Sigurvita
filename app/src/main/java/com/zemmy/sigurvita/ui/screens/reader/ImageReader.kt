@@ -1,5 +1,7 @@
 package com.zemmy.sigurvita.ui.screens.reader
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
@@ -20,17 +22,31 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import com.zemmy.sigurvita.R
 import coil.compose.AsyncImage
 import coil.imageLoader
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.zemmy.sigurvita.core.model.FitMode
+import com.zemmy.sigurvita.core.model.PageBubbles
 import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReadingMode
 
@@ -45,7 +61,10 @@ fun ImageReader(
     onTap: () -> Unit,
     modifier: Modifier = Modifier,
     fitMode: FitMode = FitMode.FIT_WIDTH,
-    touchEdgeNavigationEnabled: Boolean = true
+    touchEdgeNavigationEnabled: Boolean = true,
+    bubblesByPage: Map<Int, PageBubbles> = emptyMap(),
+    speechBubblesEnabled: Boolean = true,
+    onBubbleLongPress: (pageIndex: Int, bubbleId: Int, centerPx: Offset, bubbleSizePx: Size) -> Unit = { _, _, _, _ -> }
 ) {
     if (pages.isEmpty()) return
 
@@ -86,12 +105,15 @@ fun ImageReader(
                 state = listState,
                 modifier = modifier.fillMaxSize()
             ) {
-                itemsIndexed(pages, key = { _, page -> page.pageNumber }) { _, page ->
+                itemsIndexed(pages, key = { _, page -> page.pageNumber }) { idx, page ->
                     ZoomableImage(
                         page = page,
                         fitMode = fitMode,
                         touchEdgeNavigationEnabled = touchEdgeNavigationEnabled,
                         readingMode = readingMode,
+                        bubbles = bubblesByPage[idx],
+                        speechBubblesEnabled = speechBubblesEnabled,
+                        onBubbleLongPress = { bubbleId, centerPx, bubbleSizePx -> onBubbleLongPress(idx, bubbleId, centerPx, bubbleSizePx) },
                         onNextPage = onNextPage,
                         onPreviousPage = onPreviousPage,
                         onTap = onTap,
@@ -130,6 +152,9 @@ fun ImageReader(
                     fitMode = fitMode,
                     touchEdgeNavigationEnabled = touchEdgeNavigationEnabled,
                     readingMode = readingMode,
+                    bubbles = bubblesByPage[pageIdx],
+                    speechBubblesEnabled = speechBubblesEnabled,
+                    onBubbleLongPress = { bubbleId, centerPx, bubbleSizePx -> onBubbleLongPress(pageIdx, bubbleId, centerPx, bubbleSizePx) },
                     onNextPage = onNextPage,
                     onPreviousPage = onPreviousPage,
                     onTap = onTap,
@@ -146,6 +171,9 @@ private fun ZoomableImage(
     fitMode: FitMode,
     touchEdgeNavigationEnabled: Boolean,
     readingMode: ReadingMode,
+    bubbles: PageBubbles? = null,
+    speechBubblesEnabled: Boolean = true,
+    onBubbleLongPress: (bubbleId: Int, centerPx: Offset, bubbleSizePx: Size) -> Unit = { _, _, _ -> },
     onNextPage: () -> Unit,
     onPreviousPage: () -> Unit,
     onTap: () -> Unit,
@@ -218,6 +246,47 @@ private fun ZoomableImage(
                         } else {
                             onTap()
                         }
+                    },
+                    onLongPress = { offset ->
+                        if (speechBubblesEnabled && bubbles != null && bubbles.bubbles.isNotEmpty()) {
+                            val norm = viewportToPageNorm(
+                                tap = offset,
+                                box = size,
+                                pageW = bubbles.pageWidth,
+                                pageH = bubbles.pageHeight,
+                                contentScale = contentScale,
+                                zoom = scale,
+                                pan = Offset(offsetX, offsetY)
+                            )
+                            if (norm != null) {
+                                val hitId = hitBubble(bubbles, norm)
+                                if (hitId != null) {
+                                    val hitBubble = bubbles.bubbles.find { it.id == hitId }
+                                    if (hitBubble != null) {
+                                        val boxW = size.width.toFloat()
+                                        val boxH = size.height.toFloat()
+                                        val pageW = bubbles.pageWidth.toFloat()
+                                        val pageH = bubbles.pageHeight.toFloat()
+                                        val s = when (contentScale) {
+                                            ContentScale.FillWidth -> boxW / pageW
+                                            ContentScale.FillHeight -> boxH / pageH
+                                            else -> minOf(boxW / pageW, boxH / pageH)
+                                        }
+                                        val dispW = pageW * s
+                                        val dispH = pageH * s
+                                        val originX = (boxW - dispW) / 2f
+                                        val originY = (boxH - dispH) / 2f
+
+                                        val centerX = originX + (hitBubble.box.left + hitBubble.box.right) / 2f * dispW
+                                        val centerY = originY + (hitBubble.box.top + hitBubble.box.bottom) / 2f * dispH
+                                        val bw = (hitBubble.box.right - hitBubble.box.left) * dispW
+                                        val bh = (hitBubble.box.bottom - hitBubble.box.top) * dispH
+
+                                        onBubbleLongPress(hitId, Offset(centerX, centerY), Size(bw, bh))
+                                    }
+                                }
+                            }
+                        }
                     }
                 )
             },
@@ -255,5 +324,172 @@ private fun ZoomableImage(
             contentScale = contentScale,
             modifier = imageModifier
         )
+
+        if (speechBubblesEnabled && bubbles != null && bubbles.bubbles.isNotEmpty()) {
+            Canvas(modifier = imageModifier) {
+                val boxW = size.width
+                val boxH = size.height
+                val pageW = bubbles.pageWidth.toFloat()
+                val pageH = bubbles.pageHeight.toFloat()
+
+                if (boxW > 0f && boxH > 0f && pageW > 0f && pageH > 0f) {
+                    val s = when (contentScale) {
+                        ContentScale.FillWidth -> boxW / pageW
+                        ContentScale.FillHeight -> boxH / pageH
+                        else -> minOf(boxW / pageW, boxH / pageH)
+                    }
+                    val dispW = pageW * s
+                    val dispH = pageH * s
+                    val originX = (boxW - dispW) / 2f
+                    val originY = (boxH - dispH) / 2f
+
+                    val vectorPaths = buildBubbleVectorPaths(bubbles, dispW, dispH, originX, originY)
+
+                    vectorPaths.forEach { path ->
+                        // 1. Smooth vector translucent yellow fill
+                        drawPath(
+                            path = path,
+                            color = Color(0x38FFE500),
+                            style = Fill
+                        )
+                        // 2. Smooth vector black outer stroke
+                        drawPath(
+                            path = path,
+                            color = Color.Black,
+                            style = Stroke(
+                                width = 4.5.dp.toPx(),
+                                cap = StrokeCap.Round,
+                                join = StrokeJoin.Round
+                            )
+                        )
+                        // 3. Smooth vector neon yellow inner stroke
+                        drawPath(
+                            path = path,
+                            color = Color(0xFFFFE500),
+                            style = Stroke(
+                                width = 2.5.dp.toPx(),
+                                cap = StrokeCap.Round,
+                                join = StrokeJoin.Round
+                            )
+                        )
+                    }
+                }
+            }
+        }
     }
+}
+
+private fun buildBubbleVectorPaths(
+    bubbles: PageBubbles,
+    dispW: Float,
+    dispH: Float,
+    originX: Float,
+    originY: Float
+): List<Path> {
+    if (bubbles.bubbles.isEmpty()) return emptyList()
+
+    val paths = mutableListOf<Path>()
+    val lb = bubbles.letterbox
+    val lbSize = lb.inputSize.toFloat()
+    val origW = lb.originalWidth.toFloat()
+    val origH = lb.originalHeight.toFloat()
+    val gain = lb.gain
+    val padX = lb.padX
+    val padY = lb.padY
+
+    val numSteps = 48
+
+    for (bubble in bubbles.bubbles) {
+        val mask = bubble.mask
+        val sz = mask.size
+
+        // Calculate center of gravity in mask grid space
+        var sumX = 0f
+        var sumY = 0f
+        var count = 0
+        for (y in 0 until sz) {
+            for (x in 0 until sz) {
+                val prob = mask.probs[y * sz + x].toInt() and 0xFF
+                if (prob >= 120) {
+                    sumX += x
+                    sumY += y
+                    count++
+                }
+            }
+        }
+        if (count == 0) continue
+        val cx = sumX / count
+        val cy = sumY / count
+
+        // Raycast 48 radial steps around center to extract boundary
+        val rawPoints = ArrayList<Offset>(numSteps)
+        for (i in 0 until numSteps) {
+            val angle = i * (2f * Math.PI.toFloat() / numSteps)
+            val dx = Math.cos(angle.toDouble()).toFloat()
+            val dy = Math.sin(angle.toDouble()).toFloat()
+
+            var maxR = 0f
+            var r = 0.5f
+            val maxDist = sz.toFloat()
+
+            while (r < maxDist) {
+                val px = (cx + dx * r).toInt()
+                val py = (cy + dy * r).toInt()
+                if (px !in 0 until sz || py !in 0 until sz) break
+                val prob = mask.probs[py * sz + px].toInt() and 0xFF
+                if (prob >= 120) {
+                    maxR = r
+                }
+                r += 0.5f
+            }
+
+            if (maxR > 0f) {
+                val gridX = cx + dx * maxR
+                val gridY = cy + dy * maxR
+                rawPoints.add(Offset(gridX, gridY))
+            }
+        }
+
+        if (rawPoints.size < 3) continue
+
+        // Smooth points with 3-point moving average to remove micro-jitter
+        val n = rawPoints.size
+        val screenPoints = ArrayList<Offset>(n)
+        val scaleGridToLb = lbSize / sz.toFloat()
+
+        for (i in 0 until n) {
+            val prev = rawPoints[(i - 1 + n) % n]
+            val curr = rawPoints[i]
+            val next = rawPoints[(i + 1) % n]
+
+            val smGridX = prev.x * 0.25f + curr.x * 0.5f + next.x * 0.25f
+            val smGridY = prev.y * 0.25f + curr.y * 0.5f + next.y * 0.25f
+
+            // Map grid coords -> letterbox px -> page norm -> screen px
+            val lbX = smGridX * scaleGridToLb
+            val lbY = smGridY * scaleGridToLb
+
+            val normX = (lbX - padX) / (origW * gain)
+            val normY = (lbY - padY) / (origH * gain)
+
+            val screenX = originX + normX * dispW
+            val screenY = originY + normY * dispH
+            screenPoints.add(Offset(screenX, screenY))
+        }
+
+        // Construct smooth quadratic Bezier Path
+        val path = Path()
+        path.moveTo(screenPoints[0].x, screenPoints[0].y)
+        for (i in 0 until screenPoints.size) {
+            val p0 = screenPoints[i]
+            val p1 = screenPoints[(i + 1) % screenPoints.size]
+            val midX = (p0.x + p1.x) / 2f
+            val midY = (p0.y + p1.y) / 2f
+            path.quadraticTo(p0.x, p0.y, midX, midY)
+        }
+        path.close()
+        paths.add(path)
+    }
+
+    return paths
 }

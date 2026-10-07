@@ -19,9 +19,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Bookmark
@@ -169,13 +171,23 @@ fun ReaderScreen(
                 pages = state.pages,
                 currentPageIndex = state.currentPageIndex,
                 readingMode = state.settings.readingMode,
-                fitMode = state.settings.fitMode,
-                touchEdgeNavigationEnabled = state.settings.touchEdgeNavigationEnabled,
                 onPageChanged = { viewModel.onPageChanged(it) },
                 onNextPage = { viewModel.nextPage() },
                 onPreviousPage = { viewModel.previousPage() },
-                onTap = { viewModel.toggleControls() }
+                onTap = { viewModel.toggleControls() },
+                fitMode = state.settings.fitMode,
+                touchEdgeNavigationEnabled = state.settings.touchEdgeNavigationEnabled,
+                bubblesByPage = state.bubblesByPage,
+                speechBubblesEnabled = state.settings.speechBubblesEnabled,
+                onBubbleLongPress = { pageIdx, bubbleId, centerPx, bubbleSizePx -> viewModel.onBubbleLongPress(pageIdx, bubbleId, centerPx, bubbleSizePx) }
             )
+
+            state.magnifiedBubble?.let { magBubble ->
+                BubbleMagnifierOverlay(
+                    magnifiedBubble = magBubble,
+                    onDismiss = { viewModel.dismissBubble() }
+                )
+            }
 
             // Top Control Overlay
             AnimatedVisibility(
@@ -211,6 +223,31 @@ fun ReaderScreen(
                                             text = "Incognito",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onTertiary
+                                        )
+                                    }
+                                }
+                            }
+                            val currentBubbles = state.bubblesByPage[state.currentPageIndex]
+                            if (state.settings.speechBubblesEnabled && currentBubbles != null) {
+                                Surface(
+                                    color = Color(0xFF333333),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ChatBubble,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFFE500),
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "${currentBubbles.bubbles.size} bubbles",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White
                                         )
                                     }
                                 }
@@ -434,6 +471,34 @@ fun ReaderScreen(
                             Switch(
                                 checked = state.settings.keepScreenOn,
                                 onCheckedChange = { viewModel.updateKeepScreenOn(it) }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Speech Bubble Boxes", style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                                Text("Outline detected speech bubbles on page", style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                            }
+                            Switch(
+                                checked = state.settings.speechBubblesEnabled,
+                                onCheckedChange = { viewModel.updateSpeechBubblesEnabled(it) }
+                            )
+                        }
+
+                        if (state.settings.speechBubblesEnabled) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("Detection Confidence: ${(state.settings.speechBubbleConfidence * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Slider(
+                                value = state.settings.speechBubbleConfidence,
+                                onValueChange = { viewModel.updateSpeechBubbleConfidence(it) },
+                                valueRange = 0.02f..0.50f,
+                                steps = 48
                             )
                         }
 

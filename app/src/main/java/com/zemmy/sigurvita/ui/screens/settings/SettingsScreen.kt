@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -183,6 +184,38 @@ fun SettingsScreen(
                 Switch(
                     checked = settings.keepScreenOn,
                     onCheckedChange = { viewModel.updateKeepScreenOn(it) }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Speech Bubble Boxes", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Outline detected speech bubbles on page",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = settings.speechBubblesEnabled,
+                    onCheckedChange = { viewModel.updateSpeechBubblesEnabled(it) }
+                )
+            }
+
+            if (settings.speechBubblesEnabled) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Detection Confidence: ${(settings.speechBubbleConfidence * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge)
+                Spacer(modifier = Modifier.height(4.dp))
+                Slider(
+                    value = settings.speechBubbleConfidence,
+                    onValueChange = { viewModel.updateSpeechBubbleConfidence(it) },
+                    valueRange = 0.02f..0.50f,
+                    steps = 48
                 )
             }
 
