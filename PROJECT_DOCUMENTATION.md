@@ -384,6 +384,7 @@ Shows every page flagged from the reader's bookmark toggle (stored in `marked_pa
 
 - **Reader Configuration**: fit mode chips; volume-key navigation switch; **invert volume keys** switch (always visible, independent of the previous switch); edge-tap navigation switch; keep-screen-on switch; speech bubble boxes switch (toggles on-device speech bubble detection and the outline overlays), plus a detection confidence slider (2% to 50%) shown while the switch is on.
 - **Offline Downloads**: default storage folder chips (`Documents/Sigurvita` or `Download/Sigurvita`), a custom path text field with a folder picker (`FolderPickerDialog`, a `java.io.File` browser with "create folder" and parent navigation), and auto-delete option chips.
+- **Account & Session**: "Refresh Login" button (`SettingsViewModel.refreshLogin`) to re-test server connectivity and refresh authentication tokens.
 - **Disconnect / Logout** (see 4.3).
 - There is no reading-mode setting in the UI (see 5.6), and no Incognito toggle in Settings (it lives in the Home, Library, Series detail and Reading list top bars).
 

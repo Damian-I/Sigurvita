@@ -11,6 +11,7 @@ import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -95,6 +96,22 @@ class SettingsViewModel : ViewModel() {
     fun logout() {
         viewModelScope.launch {
             preferencesRepository.clearServerConfig()
+        }
+    }
+
+    fun refreshLogin(onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            val config = preferencesRepository.serverConfigFlow.first()
+            if (config.serverUrl.isBlank() || config.apiKey.isBlank()) {
+                onResult(false, "No active server connection configured.")
+                return@launch
+            }
+            val result = app.authRepository.testConnectionAndSave(config.serverUrl, config.apiKey)
+            if (result.isSuccess) {
+                onResult(true, null)
+            } else {
+                onResult(false, result.exceptionOrNull()?.message ?: "Failed to refresh login")
+            }
         }
     }
 }

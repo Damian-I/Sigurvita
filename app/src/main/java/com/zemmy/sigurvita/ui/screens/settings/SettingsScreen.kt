@@ -289,6 +289,35 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            var refreshMessage by remember { mutableStateOf<String?>(null) }
+            var isRefreshing by remember { mutableStateOf(false) }
+
+            OutlinedButton(
+                onClick = {
+                    isRefreshing = true
+                    refreshMessage = null
+                    viewModel.refreshLogin { success, error ->
+                        isRefreshing = false
+                        refreshMessage = if (success) "Login refreshed successfully!" else (error ?: "Refresh failed")
+                    }
+                },
+                enabled = !isRefreshing,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (isRefreshing) "Refreshing Login..." else "Refresh Login")
+            }
+
+            if (refreshMessage != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = refreshMessage!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (refreshMessage!!.contains("successfully")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             OutlinedButton(
                 onClick = {
                     viewModel.logout()

@@ -106,9 +106,23 @@ fun SigurvitaNavGraph(
     var showAddReadingListDialog by remember { mutableStateOf(false) }
 
     // Live dragging state for libraries
-    var draggingLibraryIndex by remember { mutableStateOf<Int?>(null) }
+    var draggingItemId by remember { mutableStateOf<Int?>(null) }
     var libraryDragOffsetY by remember { mutableFloatStateOf(0f) }
     val itemHeightPx = with(LocalDensity.current) { 48.dp.toPx() }
+
+    var drawerLibraries by remember { mutableStateOf<List<Library>>(emptyList()) }
+
+    LaunchedEffect(libraries, libraryOrder) {
+        if (draggingItemId == null) {
+            drawerLibraries = if (libraryOrder.isEmpty()) libraries
+            else {
+                val map = libraries.associateBy { it.id }
+                val sorted = libraryOrder.mapNotNull { map[it] }
+                val remaining = libraries.filter { !libraryOrder.contains(it.id) }
+                sorted + remaining
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         scope.launch {
@@ -136,7 +150,9 @@ fun SigurvitaNavGraph(
 
     LaunchedEffect(Unit) {
         scope.launch {
-            prefsRepo.libraryOrderFlow.collect { libraryOrder = it }
+            prefsRepo.libraryOrderFlow.collect { newOrder ->
+                libraryOrder = newOrder
+            }
         }
     }
 
@@ -191,16 +207,6 @@ fun SigurvitaNavGraph(
                 }
             }
         )
-    }
-
-    val orderedLibraries = remember(libraries, libraryOrder) {
-        if (libraryOrder.isEmpty()) libraries
-        else {
-            val map = libraries.associateBy { it.id }
-            val sorted = libraryOrder.mapNotNull { map[it] }
-            val remaining = libraries.filter { !libraryOrder.contains(it.id) }
-            sorted + remaining
-        }
     }
 
     // Reading lists sorted by era, then alphanumerically inside each era
@@ -263,47 +269,20 @@ fun SigurvitaNavGraph(
                         )
                     }
 
-                    // Individual Libraries (live drag to reorder with fluid surrounding items displacement)
-                    itemsIndexed(orderedLibraries, key = { _, lib -> lib.id }) { index, library ->
-                        val isDragging = (draggingLibraryIndex == index)
-                        val targetIndex = remember(draggingLibraryIndex, libraryDragOffsetY, orderedLibraries.size) {
-                            if (draggingLibraryIndex == null) null
-                            else {
-                                val delta = (libraryDragOffsetY / itemHeightPx).roundToInt()
-                                (draggingLibraryIndex!! + delta).coerceIn(0, orderedLibraries.size - 1)
-                            }
-                        }
-
-                        val shiftPx = remember(index, draggingLibraryIndex, targetIndex) {
-                            if (draggingLibraryIndex == null || targetIndex == null || isDragging) 0f
-                            else {
-                                val startIndex = draggingLibraryIndex!!
-                                if (startIndex < targetIndex && index in (startIndex + 1)..targetIndex) {
-                                    -itemHeightPx
-                                } else if (startIndex > targetIndex && index in targetIndex..<startIndex) {
-                                    itemHeightPx
-                                } else {
-                                    0f
-                                }
-                            }
-                        }
-
-                        val animatedShiftY by animateFloatAsState(
-                            targetValue = shiftPx,
-                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                            label = "itemShift"
-                        )
+                    // Individual Libraries (clean live drag to reorder)
+                    items(drawerLibraries, key = { it.id }) { library ->
+                        val isDragging = (draggingItemId == library.id)
 
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .zIndex(if (isDragging) 10f else 0f)
                                 .graphicsLayer {
-                                    translationY = if (isDragging) libraryDragOffsetY else animatedShiftY
+                                    translationY = if (isDragging) libraryDragOffsetY else 0f
                                     shadowElevation = if (isDragging) 8.dp.toPx() else 0f
                                 }
                                 .clickable {
-                                    if (draggingLibraryIndex == null) {
+                                    if (draggingItemId == null) {
                                         scope.launch { drawerState.close() }
                                         navController.navigate(Screen.Library.createRoute(library.id))
                                     }
@@ -322,27 +301,36 @@ fun SigurvitaNavGraph(
                                     .pointerInput(library.id) {
                                         detectDragGestures(
                                             onDragStart = {
-                                                draggingLibraryIndex = index
+                                                draggingItemId = library.id
                                                 libraryDragOffsetY = 0f
                                             },
                                             onDrag = { change, dragAmount ->
                                                 change.consume()
                                                 libraryDragOffsetY += dragAmount.y
+                                                val currentIdx = drawerLibraries.indexOfFirst { it.id == library.id }
+                                                if (currentIdx != -1 && itemHeightPx > 0f) {
+                                                    val steps = (libraryDragOffsetY / itemHeightPx).toInt()
+                                                    if (steps != 0) {
+                                                        val targetIdx = (currentIdx + steps).coerceIn(0, drawerLibraries.size - 1)
+                                                        if (targetIdx != currentIdx) {
+                                                            val list = drawerLibraries.toMutableList()
+                                                            val item = list.removeAt(currentIdx)
+                                                            list.add(targetIdx, item)
+                                                            drawerLibraries = list
+                                                            libraryDragOffsetY -= (targetIdx - currentIdx) * itemHeightPx
+                                                        }
+                                                    }
+                                                }
                                             },
                                             onDragEnd = {
-                                                val start = draggingLibraryIndex
-                                                val target = targetIndex
-                                                if (start != null && target != null && start != target) {
-                                                    val mutable = orderedLibraries.map { it.id }.toMutableList()
-                                                    val item = mutable.removeAt(start)
-                                                    mutable.add(target, item)
-                                                    scope.launch { prefsRepo.updateLibraryOrder(mutable) }
+                                                scope.launch {
+                                                    prefsRepo.updateLibraryOrder(drawerLibraries.map { it.id })
                                                 }
-                                                draggingLibraryIndex = null
+                                                draggingItemId = null
                                                 libraryDragOffsetY = 0f
                                             },
                                             onDragCancel = {
-                                                draggingLibraryIndex = null
+                                                draggingItemId = null
                                                 libraryDragOffsetY = 0f
                                             }
                                         )
