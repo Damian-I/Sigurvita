@@ -1,6 +1,6 @@
 # Sigurvita Project Documentation
 
-Welcome to **Sigurvita**, an Android client for **Kavita** (the self-hosted digital library server for manga and comics). The primary device for development is the **Samsung Galaxy S25 Ultra 5G** This documentation serves as a comprehensive reference for developers and future AI assistants working on the project.
+Welcome to **Sigurvita**, an Android client for **Kavita** (the self-hosted digital library server for manga and comics). The primary device for development is the **Samsung Galaxy S25 Ultra 5G**. This documentation serves as a comprehensive reference for developers and future AI assistants working on the project.
 
 Everything below describes what is in the code today. Where behavior is surprising or incomplete, it is called out explicitly in [section 9](#9-known-limitations--quirks) rather than described as if it worked ideally.
 
@@ -16,6 +16,7 @@ Sigurvita connects to a user's Kavita server (server URL + API key) and lets the
 - Download chapters for offline reading and manage the download queue.
 - Flag individual pages for later review ("Page Review").
 - Read in **Incognito mode**, which suppresses progress and read-state writes to the server.
+- Detect **speech bubbles** on-device (YOLOv8-seg via TensorFlow Lite), outline them on the page, and long-press one to magnify just that bubble (see [4.9](#49-on-device-speech-bubble-detection)).
 
 Scope note: the reader renders **page images** only (the app requests `/api/Reader/image` or reads image files from a downloaded archive). There is no EPUB/text reader.
 
@@ -36,9 +37,10 @@ Pattern: **MVVM** with Compose screens, one `ViewModel` per screen, and a reposi
 | Preferences | Jetpack DataStore (Preferences) 1.1.2 | `core.datastore` |
 | Background work | WorkManager 2.10.0 | `core.download.DownloadWorker` |
 | Image loading | Coil 2.7.0 (`coil-compose`) | `SigurvitaApp.newImageLoader()` |
+| On-device ML | TensorFlow Lite 2.17.0 (`org.tensorflow:tensorflow-lite`, catalog alias `litert`), YOLOv8m-seg model in `app/src/main/assets/` | `core.ml`, `BubbleRepository` |
 | Tests | JUnit 4, AndroidX test/Espresso, Compose UI test (dependencies declared; `app/src/test` and `app/src/androidTest` exist) | `app/build.gradle.kts` |
 
-Build notes: release builds have `isMinifyEnabled = false`; app version is `1.0` (`versionCode 1`).
+Build notes: release builds have `isMinifyEnabled = false`; app version is `1.0` (`versionCode 1`). `androidResources { noCompress += "tflite" }` keeps the model uncompressed so it can be memory-mapped from assets. The release build type references `proguard-rules.pro`, which does not exist in the repo (harmless while minification is off; see section 9, item 24). `libs.versions.toml` also contains an unused `litert = "2.2.0"` version entry; the TensorFlow Lite dependency pins its own version (2.17.0).
 
 Manifest (`app/src/main/AndroidManifest.xml`):
 
@@ -55,6 +57,10 @@ Localization: user-facing strings live in `res/values/strings.xml` (English only
 ## 3. Project Directory Structure
 
 ```text
+app/src/main/assets/
+└── model.tflite                     # Speech-bubble YOLOv8-seg model (float32, ~104 MiB), stored in Git LFS
+                                     # (.gitattributes); loaded by file name in BubbleDetector, see 4.9
+
 app/src/main/java/com/zemmy/sigurvita/
 ├── MainActivity.kt                  # Single activity: start-destination routing, volume-key interception
 ├── SigurvitaApp.kt                  # Application: DB + DataStore init, lazy singletons, Coil ImageLoader
@@ -71,15 +77,22 @@ app/src/main/java/com/zemmy/sigurvita/
 │   │   │   └── entity/Entities.kt   # 5 entities
 │   │   └── repository/
 │   │       ├── Repositories.kt      # Auth, Library, ReadingList, Series, Reader, Download repositories
+│   │       ├── BubbleRepository.kt  # Per-page detection cache, bubble crop + mask cut-out for the magnifier
 │   │       └── MarkedPageRepository.kt
 │   ├── datastore/UserPreferencesRepository.kt  # Server config, reader/download settings, lists of IDs
 │   ├── download/DownloadWorker.kt   # WorkManager CoroutineWorker
-│   ├── model/Models.kt              # Domain models and enums
+│   ├── ml/
+│   │   ├── BubbleDetector.kt        # TFLite interpreter, letterbox preprocessing, output dequantization
+│   │   ├── BubbleDetectorConfig.kt  # Confidence / IoU / max detections / mask threshold defaults
+│   │   ├── PageBitmapLoader.kt      # Decodes a page (local file or Coil) to a bitmap for inference/crops
+│   │   └── YoloSegDecoder.kt        # Candidate filtering, NMS, mask computation, coordinate mapping
+│   ├── model/Models.kt              # Domain models and enums (incl. bubble/letterbox models)
 │   └── util/NaturalSort.kt          # naturalCompare + chapter-number/title/era parsing helpers
 └── ui/
     ├── components/
     │   ├── Components.kt            # CoverImage, SeriesCard, LoadingState, ErrorState
     │   ├── FolderPickerDialog.kt    # java.io.File based folder browser
+    │   ├── IssueDetailBottomSheet.kt # Per-issue details and read/download/delete actions
     │   ├── MassDownloadDialog.kt    # Bulk-download count/unread-only dialog
     │   └── SeriesInfoBottomSheet.kt # Detailed series metadata & file info bottom sheet
     ├── navigation/
@@ -91,7 +104,8 @@ app/src/main/java/com/zemmy/sigurvita/
     │   ├── home/                    # HomeScreen, HomeViewModel
     │   ├── library/                 # LibraryScreen, LibraryViewModel
     │   ├── markedpages/             # MarkedPagesScreen ("Page Review"), MarkedPagesViewModel
-    │   ├── reader/                  # ReaderScreen, ImageReader, ReaderViewModel
+    │   ├── reader/                  # ReaderScreen, ImageReader, ReaderViewModel,
+    │   │                            # BubbleHitTest (tap -> page coords -> bubble), BubbleMagnifierOverlay
     │   ├── readinglist/             # ReadingListScreen, ReadingListViewModel
     │   ├── seriesdetail/            # SeriesDetailScreen, SeriesDetailViewModel
     │   └── settings/                # SettingsScreen, SettingsViewModel
@@ -105,7 +119,7 @@ app/src/main/java/com/zemmy/sigurvita/
 ### 4.1 Application class & singletons (`SigurvitaApp`)
 
 - `onCreate()` sets `SigurvitaApp.instance`, creates the Room database (`SigurvitaDatabase.getDatabase`) and `UserPreferencesRepository`.
-- Lazily created singletons: `kavitaApi`, `authRepository`, `libraryRepository`, `seriesRepository`, `readingListRepository`, `readerRepository`, `downloadRepository`, `markedPageRepository`. ViewModels fetch these from `SigurvitaApp.instance`; they are not constructor-injected.
+- Lazily created singletons: `kavitaApi`, `authRepository`, `libraryRepository`, `seriesRepository`, `readingListRepository`, `readerRepository`, `downloadRepository`, `markedPageRepository`, `bubbleRepository`. ViewModels fetch these from `SigurvitaApp.instance`; they are not constructor-injected.
 - `SigurvitaApp` implements Coil's `ImageLoaderFactory`: **30% of memory** for the memory cache, a **500 MB disk cache** at `cacheDir/image_cache`, crossfade enabled.
 
 ### 4.2 Networking (`core.data.api`)
@@ -135,6 +149,8 @@ app/src/main/java/com/zemmy/sigurvita/
 | `download_location`, `download_path` | Download root (see 4.7) |
 | `auto_delete_option` | Auto-delete policy for downloads |
 | `incognito_mode` | Incognito toggle (global) |
+| `speech_bubbles_enabled` | Speech-bubble detection and overlays on/off (default `true`) |
+| `speech_bubble_confidence` | Detection confidence threshold (default `0.10`; the UI slider allows 0.02 to 0.50) |
 | `completed_chapter_history` | Comma-separated chapter IDs, used by "After N issues" auto-delete |
 | `library_order` | Comma-separated library IDs (drawer drag-reorder) |
 | `chosen_reading_lists` | Comma-separated reading-list IDs shown in the drawer |
@@ -204,7 +220,7 @@ Queue operations (`DownloadRepository`):
 
 ### 4.8 Domain models & utilities
 
-- `Models.kt`: enums `ReadingMode` (`RTL`, `LTR`, `WEBTOON`), `FitMode` (`FIT_WIDTH`, `FIT_HEIGHT`, `FIT_SCREEN`), `DownloadLocation`, `AutoDeleteOption` (`NEVER`, `IMMEDIATELY`, `AFTER_1_ISSUE`, `AFTER_2_ISSUES`, `AFTER_5_ISSUES`), `DownloadStatus` (`QUEUED`, `DOWNLOADING`, `PAUSED`, `COMPLETED`, `FAILED`); data classes `ServerConfig`, `ReaderSettings`, `Library` (type 0 manga / 1 comic / 2 book), `Series`, `Volume`, `Chapter`, `ReadingList`, `ReadingListItem`, `ReaderPage`, `DownloadTask`.
+- `Models.kt`: enums `ReadingMode` (`RTL`, `LTR`, `WEBTOON`), `FitMode` (`FIT_WIDTH`, `FIT_HEIGHT`, `FIT_SCREEN`), `DownloadLocation`, `AutoDeleteOption` (`NEVER`, `IMMEDIATELY`, `AFTER_1_ISSUE`, `AFTER_2_ISSUES`, `AFTER_5_ISSUES`), `DownloadStatus` (`QUEUED`, `DOWNLOADING`, `PAUSED`, `COMPLETED`, `FAILED`); data classes `ServerConfig`, `ReaderSettings`, `Library` (type 0 manga / 1 comic / 2 book), `Series`, `Volume`, `Chapter`, `ReadingList`, `ReadingListItem`, `ReaderPage`, `DownloadTask`, plus the speech-bubble models `LetterboxParams`, `NormRect`, `BubbleMask`, `DetectedBubble`, `PageBubbles` and `MagnifiedBubble` (see 4.9). `ReaderSettings` also carries `speechBubblesEnabled` and `speechBubbleConfidence`.
 - `NaturalSort.kt` (despite the name) holds all title/number parsing:
   - `naturalCompare(a, b)`: case-insensitive, numeric chunks compared numerically.
   - `extractChapterNumber(number, title)`: if the server's number is blank/`0`/`0.0`, derives it from the title (handles forms like `#8AU`, `5B`, `12.5`, `Chapter 7`).
@@ -224,6 +240,42 @@ Queue operations (`DownloadRepository`):
   | 2015-2018 | ANAD Marvel |
   | 2018-2021 | Fresh Start |
   | 2021-2024 | Timeless |
+
+### 4.9 On-device speech bubble detection
+
+**Model.** A single-class YOLOv8m-seg model ([kitsumed/yolov8m_seg-speech-bubble](https://huggingface.co/kitsumed/yolov8m_seg-speech-bubble) on Hugging Face; the page lists the licence as GPL-3.0, so check what that means for distributing the app). It is bundled as `app/src/main/assets/model.tflite` and run with TensorFlow Lite (`org.tensorflow:tensorflow-lite` 2.17.0) on 4 CPU threads. `BubbleDetector.getInterpreter()` opens the asset by that file name; if you export a new model (see below), keep the name or change it there.
+
+**Git LFS.** The model is a float32 export of about 109 MB (104 MiB), above GitHub's 100 MB limit for normal files, so it is tracked with Git LFS (`.gitattributes`). Cloning needs `git lfs` installed (without it the file is a ~130-byte text pointer and the app will fail to load the model). GitHub's free LFS tier has a monthly storage and bandwidth allowance, and each full clone or CI checkout downloads the model again.
+
+**Exporting the model.** Export from the original `.pt` with Ultralytics, as **float32**:
+
+```python
+from ultralytics import YOLO
+YOLO("model.pt").export(format="tflite", imgsz=640)  # writes e.g. model_saved_model/model_float32.tflite
+```
+
+Do not pass `int8=True`. An int8 export was tried first and gave clearly worse boxes and masks than the Hugging Face web demo. The detection output is a single tensor whose box, score and mask-coefficient channels share one quantization scale, and Ultralytics calibrates on a generic dataset, not manga. `half=True` (fp16) produces a file roughly half the size, which would fit under the 100 MB limit without LFS; compare its results against float32 before switching. `BubbleDetector` can dequantize INT8/UINT8 inputs and outputs and reads the tensor shapes at load time, but `YoloSegDecoder` now expects probabilities and 0-1 box coordinates (as in the float32 export), and the transpose check assumes 8400 anchors (see section 9, item 19).
+
+**Pipeline.**
+
+1. **Trigger** (`ReaderViewModel.ensureBubbles`): runs for the current page and the next page after a chapter loads and on every page change. It does nothing when detection is disabled, in **Webtoon** mode, or when that page already has a result or a job in flight. Jobs and results are cleared when a new chapter loads.
+2. **Cache and decode** (`BubbleRepository.getPageBubbles`): an `LruCache` of 30 pages keyed by (chapter, page index, confidence). The page is decoded by `PageBitmapLoader.decodeForInference`: local files are sub-sampled by powers of two until the longest side is under about 1280 px; streamed pages go through Coil and its caches.
+3. **Preprocess** (`BubbleDetector.detect`): the page is letterboxed into a square of the model's input size (640) with gray (114) padding, converted to RGB, scaled to 0-1 (or quantized if the input is int8), and laid out as NHWC or NCHW depending on the model. Inference runs on a single-thread dispatcher.
+4. **Outputs**: a rank-3 detection tensor `[1, 37, 8400]` (4 box values, 1 class score, 32 mask coefficients per anchor; transposed if the model returns `[1, 8400, 37]`) and a rank-4 prototype tensor (`[1, 160, 160, 32]`, NHWC or NCHW). Quantized outputs are dequantized.
+5. **Decode** (`YoloSegDecoder`): reads class scores as probabilities (no sigmoid) and box coordinates as 0-1 values clamped to that range, keeps anchors above the confidence threshold, runs greedy non-maximum suppression (IoU 0.70, at most 50 detections), then builds each mask as `sigmoid(coefficients x prototypes)` at 160x160, only inside the box. Mask values below 0.5 are stored as 0. Boxes are mapped from letterbox space to page-normalized coordinates with `LetterboxParams`.
+6. **Result**: `PageBubbles(pageIndex, pageWidth, pageHeight, letterbox, bubbles)`, where each `DetectedBubble` has a normalized `NormRect` box, a score and a `BubbleMask`.
+
+`BubbleDetectorConfig` defaults are confidence 0.25, IoU 0.70, 50 detections and mask threshold 0.5 (matching Ultralytics' usual defaults), but `detect()` always overrides the confidence with the user's setting (default 0.10, slider 0.02 to 0.50), so the 0.25 default is never used. IoU 0.70 and the other two values are used as written.
+
+**Overlay** (`ImageReader`): a `Canvas` that shares the page image's `graphicsLayer`, so it follows zoom and pan. For each bubble it takes the center of mass of mask pixels at or above 120/255, casts 48 radial rays to find the outline, smooths the points with a 3-point average and draws a closed quadratic Bezier path: translucent yellow fill, 4.5 dp black stroke and 2.5 dp yellow stroke.
+
+**Long-press magnifier.**
+
+1. `viewportToPageNorm` undoes zoom, pan and the content-scale offset to get page-normalized coordinates. `hitBubble` returns the first bubble whose **bounding box** contains the point (the mask is not used for hit testing).
+2. `ReaderViewModel.onBubbleLongPress` calls `BubbleRepository.cropBubble(app, page, bubble, letterbox)`. It decodes the page at about 2000 px, crops the bubble box with a 5% margin (at least 4 px), then `applyBubbleMask` samples the mask bilinearly for each pixel and fades everything outside the bubble to white with a soft edge, so neighbouring artwork and bubbles are hidden.
+3. `BubbleMagnifierOverlay` shows the result in a white card at twice the bubble's on-screen size, centered on the bubble and kept 16 dp inside the screen, over a 55% black scrim. Tapping anywhere or pressing back dismisses it.
+
+**Settings.** The "Speech Bubble Boxes" switch and the confidence slider appear both in Settings and in the reader's options sheet. The reader's top bar shows a count badge ("N bubbles") for the current page while detection is on and a result exists.
 
 ---
 
@@ -280,7 +332,7 @@ Series grid (3 columns, `SeriesCard`) for one library or all libraries, with fil
 - **Manga libraries** (library type 0, or name containing "manga"): volumes and chapters are shown in one continuous list/grid with no volume headers. `isVolumeFile` classifies a Kavita volume entry as a volume file (`V12`-style) or a chapter file (`c123`-style); volume items come first (sorted by number), then chapters (natural sort by chapter number), titled `Volume N` / `Chapter #N`.
 - **Badges**: the next unread item gets a primary-colored border and "▶ Next to Read"/"▶ Next"; in-progress items (`0 < pagesRead < pages`, not read) show `pagesRead / pages pages`; chapters in reading lists show an **integrated badge**: an era segment (`tertiaryContainer`, hidden for `General`) and a part segment (`secondaryContainer`) inside one border. Tapping the era opens `ReadingListScreen` pre-filtered to that era; tapping the part opens that reading-list detail.
 - **Chapter actions** (comic list view only): tapping the read-status text toggles read/unread (optimistic, then API). The trailing download control shows a progress ring with cancel while `QUEUED/DOWNLOADING`, a retry icon on `FAILED`, a check (tap to delete the local copy) when completed, and a download icon otherwise.
-- `downloadBulk(count, unreadOnly)` and `MassDownloadDialog` exist in this screen, but no UI element currently opens the dialog (see section 9).
+- The **Bulk Download** icon button in the pinned header opens `MassDownloadDialog`, which calls `downloadBulk(count, unreadOnly)` in the ViewModel.
 
 ### 5.6 Reader (`ReaderScreen`, `ImageReader`, `ReaderViewModel`)
 
@@ -303,7 +355,7 @@ Reading mode resolution:
 
 - The reader does **not** use the stored `reading_mode` preference. The default mode is `RTL` for manga libraries (type 0 or name containing "manga") and `LTR` otherwise. Choosing a mode in the in-reader options sheet sets a **session-only override** (kept in the activity-scoped ViewModel, not persisted). The sheet marks the library default with a "Library Default" label.
 
-In-reader options sheet (`ModalBottomSheet`): reading mode chips, fit mode chips (persisted), edge-tap navigation switch (persisted), keep-screen-on switch (persisted; applies `FLAG_KEEP_SCREEN_ON`), speech bubble boxes switch (persisted; toggles on-device YOLOv8-seg float32 speech bubble detection (`model.tflite`) with smooth anti-aliased vector `Path` Bezier curve overlays, Ultralytics default thresholds (`confThreshold = 0.25f`, `iouThreshold = 0.70f`), live detection count badge, and adjustable confidence threshold slider), long-press to magnify individual speech bubbles in-place directly over their page location with 2000px high-resolution crops and elevated cards.
+In-reader options sheet (`ModalBottomSheet`): reading mode chips, fit mode chips (persisted), edge-tap navigation switch (persisted), keep-screen-on switch (persisted; applies `FLAG_KEEP_SCREEN_ON`), speech bubble boxes switch (persisted) and a detection confidence slider (persisted, 2% to 50%, shown only while the switch is on). Detection, the outline overlay and the long-press magnifier are described in [4.9](#49-on-device-speech-bubble-detection). Speech-bubble detection does **not** run in Webtoon mode.
 
 Progress & read state:
 
@@ -330,7 +382,7 @@ Shows every page flagged from the reader's bookmark toggle (stored in `marked_pa
 
 ### 5.10 Settings (`SettingsScreen`)
 
-- **Reader Configuration**: fit mode chips; volume-key navigation switch; **invert volume keys** switch (always visible, independent of the previous switch); edge-tap navigation switch; keep-screen-on switch; speech bubble boxes switch (toggles on-device speech bubble detection and outline box overlays).
+- **Reader Configuration**: fit mode chips; volume-key navigation switch; **invert volume keys** switch (always visible, independent of the previous switch); edge-tap navigation switch; keep-screen-on switch; speech bubble boxes switch (toggles on-device speech bubble detection and the outline overlays), plus a detection confidence slider (2% to 50%) shown while the switch is on.
 - **Offline Downloads**: default storage folder chips (`Documents/Sigurvita` or `Download/Sigurvita`), a custom path text field with a folder picker (`FolderPickerDialog`, a `java.io.File` browser with "create folder" and parent navigation), and auto-delete option chips.
 - **Disconnect / Logout** (see 4.3).
 - There is no reading-mode setting in the UI (see 5.6), and no Incognito toggle in Settings (it lives in the Home, Library, Series detail and Reading list top bars).
@@ -405,16 +457,28 @@ These are accurate as of this documentation; fix them or keep this list in sync 
 3. **Network-first, mostly.** Series/chapter/list browsing needs the server. Room tables `cached_chapters` and `cached_reading_lists` are effectively unused (see 4.4). Offline reading works only for downloaded chapters; offline progress sync fails silently.
 4. **Reading lists are capped at 100** (`PageSize = 100`, single page). Series lists are capped at 5000, On Deck/Recently Updated/Newly Added at 20.
 5. **Reading-list item loading issues one chapter request per item** (parallelized, not batched), and the drawer additionally fetches the items of every reading list on launch to compute in-progress status.
-6. **Mass Download** is available from both reading-list detail and series detail (via the Bulk Download icon button beside Incognito/Mark Read).
+6. **Mass Download entry points.** Not a limitation; kept so the numbering of the other items stays stable. The dialog is opened from reading-list detail (top bar) and from series detail (Bulk Download icon button beside Incognito/Mark Read).
 7. **Download-state UI differs by layout.** Only the comic list layout shows progress/cancel/retry/delete states. In the manga layouts and the comic grid the control is a plain download/check icon, and for manga items `Chapter.isDownloaded` is never populated (it is not set when mapping API data), so the icon never shows the downloaded state.
 8. **"Clear completed" removes database rows only.** The downloaded files stay on disk, but the reader finds local files only through `download_tasks.localPath`, so those chapters are read via streaming again until re-downloaded.
-9. **Pause/resume restarts a download from the beginning.** Downloads page groups tasks by series with expandable cards, provides a "Retry Failed" action, and completed cards can be tapped to start reading directly in the reader.
+9. **Pause/resume restarts a download from the beginning.** There is no partial resume (see 4.7).
 10. **Reading mode is not persisted.** The `reading_mode` DataStore key and `updateReadingMode` exist but the reader ignores them (library default, plus a session-only override).
 11. **Incognito optimistic UI.** In Incognito, toggling read state updates the screen immediately but the server write is skipped, so the next reload shows the server's state again.
 12. **Marked pages store `imageUrl` at mark time.** For downloaded chapters that is a path inside `cacheDir/cbz_extracted/<chapterId>/`; deleting the chapter (manually or via auto-delete) removes it and the Page Review thumbnail/preview will no longer load. For streamed pages the stored URL contains the API key.
 13. **Storage access.** The folder picker and download root use plain `java.io.File` paths, and the manifest declares no all-files-access permission. Paths outside app-specific storage may not be writable on newer Android versions; the worker then falls back to the app-specific downloads folder. Credentials (API key/JWT) are stored unencrypted in Preferences DataStore.
 14. **Room uses `fallbackToDestructiveMigration()`.** Bumping the database version without a migration wipes all tables, including download records (which are what let the reader find downloaded files) and marked pages.
 15. **Drawer data is loaded once per process composition.** Libraries and reading lists are fetched in a `LaunchedEffect(Unit)` inside `SigurvitaNavGraph`. Since that composable stays in composition across login/logout, a first login (or logging in again after logout) most likely leaves the drawer's library and reading-list sections empty until the app process restarts. This is from reading the code and has not been verified at runtime.
+16. **No speech-bubble detection in Webtoon mode.** `ensureBubbles` returns early for `ReadingMode.WEBTOON`, so there are no outlines or magnifier there. Only the current and next page are detected, and very tall pages are shrunk to fit the 640 px model input, which makes small bubbles harder to find.
+17. **Bubble hit testing uses bounding boxes.** `hitBubble` returns the first bubble whose box contains the press, so with overlapping boxes the wrong bubble can open. The mask is not used.
+18. **Confidence slider re-runs detection on every change.** The slider calls `updateSpeechBubbleConfidence` from `onValueChange`, which clears the chapter's cache and restarts detection for the current and next page on each tick. It does not cancel jobs already in flight, so a result computed at an older confidence can land in `bubblesByPage` and stay until the chapter changes.
+19. **Model anchor count is hard-coded.** The `[1, 8400, 37]` transpose check in `BubbleDetector` compares against 8400, which is only correct for 640x640 input. Exporting at another `imgsz` (for example 960, which gives 18900 anchors) needs that check changed.
+20. **Magnifier details.** Each long press decodes the page again at about 2000 px with no caching. The entry animation never plays (`animScale` is animated from 1.0 to 1.0). Mask edges come from a 160x160 grid, so they are only as smooth as that allows.
+21. **`BubbleDetector.close()` is never called.** The interpreter lives for the whole process.
+22. **Model licence.** The model is listed as GPL-3.0 on Hugging Face. Check the licence terms before distributing the app.
+23. **Detector config default is misleading.** `BubbleDetectorConfig.confThreshold` (0.25) is always replaced by the user setting (default 0.10, also the default argument of `detect()` and `getPageBubbles`), so the config value has no effect.
+24. **Missing ProGuard file.** `app/build.gradle.kts` references `proguard-rules.pro`, which is not in the repo. This only matters if `isMinifyEnabled` is turned on.
+25. **The model needs Git LFS.** `model.tflite` (about 109 MB) is an LFS object. A clone, download-as-ZIP or CI job without LFS gets a tiny pointer file instead of the model, and detection fails at startup. The free LFS bandwidth quota is limited, so frequent clones or CI runs can exhaust it.
+26. **Stray `.gitattributes` line.** The first line is an absolute path from a local machine (`/home/zemmy/Projects/Sigurvita/app/src/main/assets/model.tflite ...`). It matches nothing; the second, relative line is the one that works.
+27. **Decoder has no fallbacks.** `YoloSegDecoder` assumes the model outputs probabilities and 0-1 box coordinates. A model exported in a different way (pixel coordinates, raw logits) would produce wrong boxes without an error.
 
 ---
 
@@ -434,3 +498,4 @@ When modifying or extending Sigurvita, follow these guidelines:
 7. **Strings**: prefer `res/values/strings.xml` resources for new UI text.
 8. **Code quality**: idiomatic Kotlin; coroutines and Flows (`StateFlow`) for async work; keep Material 3 consistency.
 9. **Kavita API reference**: when adding endpoints, DTOs or auth changes, cross-reference the [Kavita API documentation](https://www.kavitareader.com/docs/api/#/) and keep section 7 in sync.
+10. **Speech-bubble model**: when replacing the model or changing its export settings, update section 4.9, keep the asset name in `BubbleDetector.getInterpreter()` and the Git LFS rule in `.gitattributes` in sync, and compare results against the Hugging Face demo on a few pages. Export as float32 unless you have verified that a quantized model is accurate enough.
