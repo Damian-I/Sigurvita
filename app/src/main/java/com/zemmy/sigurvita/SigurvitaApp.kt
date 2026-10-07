@@ -58,6 +58,10 @@ class SigurvitaApp : Application(), ImageLoaderFactory {
         com.zemmy.sigurvita.core.data.repository.MarkedPageRepository(database)
     }
 
+    val bubbleRepository: com.zemmy.sigurvita.core.data.repository.BubbleRepository by lazy {
+        com.zemmy.sigurvita.core.data.repository.BubbleRepository(this)
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this

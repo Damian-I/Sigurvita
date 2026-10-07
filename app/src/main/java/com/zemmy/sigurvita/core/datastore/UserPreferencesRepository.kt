@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -49,6 +50,8 @@ class UserPreferencesRepository(private val context: Context) {
         val DOWNLOAD_PATH = stringPreferencesKey("download_path")
         val AUTO_DELETE_OPTION = stringPreferencesKey("auto_delete_option")
         val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")
+        val SPEECH_BUBBLES_ENABLED = booleanPreferencesKey("speech_bubbles_enabled")
+        val SPEECH_BUBBLE_CONFIDENCE = floatPreferencesKey("speech_bubble_confidence")
         val COMPLETED_CHAPTER_HISTORY = stringPreferencesKey("completed_chapter_history")
         val LIBRARY_ORDER = stringPreferencesKey("library_order")
         val CHOSEN_READING_LISTS = stringPreferencesKey("chosen_reading_lists")
@@ -112,6 +115,8 @@ class UserPreferencesRepository(private val context: Context) {
             val downloadPath = rawPath.ifBlank { defaultPath }
 
             val incognito = preferences[Keys.INCOGNITO_MODE] ?: false
+            val speechBubbles = preferences[Keys.SPEECH_BUBBLES_ENABLED] ?: true
+            val bubbleConfidence = preferences[Keys.SPEECH_BUBBLE_CONFIDENCE] ?: 0.10f
 
             ReaderSettings(
                 readingMode = readingMode,
@@ -124,7 +129,9 @@ class UserPreferencesRepository(private val context: Context) {
 
                 downloadPath = downloadPath,
                 autoDeleteOption = autoDeleteOption,
-                isIncognitoMode = incognito
+                isIncognitoMode = incognito,
+                speechBubblesEnabled = speechBubbles,
+                speechBubbleConfidence = bubbleConfidence
             )
         }
 
@@ -230,6 +237,18 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun updateIncognitoMode(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[Keys.INCOGNITO_MODE] = enabled
+        }
+    }
+
+    suspend fun updateSpeechBubblesEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.SPEECH_BUBBLES_ENABLED] = enabled
+        }
+    }
+
+    suspend fun updateSpeechBubbleConfidence(confidence: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.SPEECH_BUBBLE_CONFIDENCE] = confidence
         }
     }
 

@@ -303,7 +303,7 @@ Reading mode resolution:
 
 - The reader does **not** use the stored `reading_mode` preference. The default mode is `RTL` for manga libraries (type 0 or name containing "manga") and `LTR` otherwise. Choosing a mode in the in-reader options sheet sets a **session-only override** (kept in the activity-scoped ViewModel, not persisted). The sheet marks the library default with a "Library Default" label.
 
-In-reader options sheet (`ModalBottomSheet`): reading mode chips, fit mode chips (persisted), edge-tap navigation switch (persisted), keep-screen-on switch (persisted; applies `FLAG_KEEP_SCREEN_ON`).
+In-reader options sheet (`ModalBottomSheet`): reading mode chips, fit mode chips (persisted), edge-tap navigation switch (persisted), keep-screen-on switch (persisted; applies `FLAG_KEEP_SCREEN_ON`), speech bubble boxes switch (persisted; toggles on-device YOLOv8-seg float32 speech bubble detection (`model.tflite`) with smooth anti-aliased vector `Path` Bezier curve overlays, Ultralytics default thresholds (`confThreshold = 0.25f`, `iouThreshold = 0.70f`), live detection count badge, and adjustable confidence threshold slider), long-press to magnify individual speech bubbles in-place directly over their page location with 2000px high-resolution crops and elevated cards.
 
 Progress & read state:
 
@@ -330,7 +330,7 @@ Shows every page flagged from the reader's bookmark toggle (stored in `marked_pa
 
 ### 5.10 Settings (`SettingsScreen`)
 
-- **Reader Configuration**: fit mode chips; volume-key navigation switch; **invert volume keys** switch (always visible, independent of the previous switch); edge-tap navigation switch; keep-screen-on switch.
+- **Reader Configuration**: fit mode chips; volume-key navigation switch; **invert volume keys** switch (always visible, independent of the previous switch); edge-tap navigation switch; keep-screen-on switch; speech bubble boxes switch (toggles on-device speech bubble detection and outline box overlays).
 - **Offline Downloads**: default storage folder chips (`Documents/Sigurvita` or `Download/Sigurvita`), a custom path text field with a folder picker (`FolderPickerDialog`, a `java.io.File` browser with "create folder" and parent navigation), and auto-delete option chips.
 - **Disconnect / Logout** (see 4.3).
 - There is no reading-mode setting in the UI (see 5.6), and no Incognito toggle in Settings (it lives in the Home, Library, Series detail and Reading list top bars).

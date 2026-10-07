@@ -17,6 +17,7 @@ datastore = "1.1.2"
 workmanager = "2.10.0"
 coil = "2.7.0"
 ksp = "2.1.10-1.0.30"
+litert = "2.2.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -50,6 +51,7 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workmanager" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+litert = { group = "org.tensorflow", name = "tensorflow-lite", version = "2.17.0" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

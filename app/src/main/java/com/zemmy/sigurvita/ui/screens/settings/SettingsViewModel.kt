@@ -61,6 +61,18 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
+    fun updateSpeechBubblesEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updateSpeechBubblesEnabled(enabled)
+        }
+    }
+
+    fun updateSpeechBubbleConfidence(confidence: Float) {
+        viewModelScope.launch {
+            preferencesRepository.updateSpeechBubbleConfidence(confidence)
+        }
+    }
+
     fun updateDownloadLocation(location: DownloadLocation) {
         viewModelScope.launch {
             preferencesRepository.updateDownloadLocation(location)

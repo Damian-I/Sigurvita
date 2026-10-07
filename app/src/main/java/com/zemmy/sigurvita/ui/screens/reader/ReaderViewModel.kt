@@ -35,7 +35,9 @@ data class ReaderUiState(
     val promptPageNum: Int = 0,
     val markedPageIndices: Set<Int> = emptySet(),
     val chapterTitle: String = "",
-    val seriesName: String = ""
+    val seriesName: String = "",
+    val bubblesByPage: Map<Int, com.zemmy.sigurvita.core.model.PageBubbles> = emptyMap(),
+    val magnifiedBubble: com.zemmy.sigurvita.core.model.MagnifiedBubble? = null
 )
 
 class ReaderViewModel : ViewModel() {
@@ -108,12 +110,17 @@ class ReaderViewModel : ViewModel() {
     }
 
     private var markedPageJob: Job? = null
+    private var bubbleDetectionJobs = mutableMapOf<Int, Job>()
 
     fun loadChapter(chapterId: Int, totalPages: Int, seriesId: Int, volumeId: Int, readingListId: Int = 0) {
         // Flush progress for the previous chapter before loading a new one
         flushProgress()
         // Reset cached library ID for new chapter context
         cachedLibraryId = 0
+
+        bubbleDetectionJobs.values.forEach { it.cancel() }
+        bubbleDetectionJobs.clear()
+        _uiState.value = _uiState.value.copy(bubblesByPage = emptyMap())
 
         markedPageJob?.cancel()
         markedPageJob = viewModelScope.launch {
@@ -216,25 +223,95 @@ class ReaderViewModel : ViewModel() {
 
             val hasSavedProgress = savedPageNum > 1 && pageList.isNotEmpty()
 
-            if (hasSavedProgress) {
-                val resumeIdx = if (savedPageNum - 1 in pageList.indices) savedPageNum - 1 else 0
+            val activeIndex = if (hasSavedProgress) {
+                if (savedPageNum - 1 in pageList.indices) savedPageNum - 1 else 0
+            } else 0
+
+            _uiState.value = _uiState.value.copy(
+                pages = pageList,
+                currentPageIndex = activeIndex,
+                isLoading = false,
+                showResumePrompt = hasSavedProgress,
+                promptPageNum = if (hasSavedProgress) savedPageNum else 0
+            )
+
+            ensureBubbles(activeIndex)
+            ensureBubbles(activeIndex + 1)
+        }
+    }
+
+    fun ensureBubbles(pageIdx: Int) {
+        val state = _uiState.value
+        if (!state.settings.speechBubblesEnabled) return
+        if (state.settings.readingMode == ReadingMode.WEBTOON) return
+        if (pageIdx !in state.pages.indices) return
+        if (state.bubblesByPage.containsKey(pageIdx) || bubbleDetectionJobs.containsKey(pageIdx)) return
+
+        val page = state.pages[pageIdx]
+        val chapterId = state.chapterId
+
+        bubbleDetectionJobs[pageIdx] = viewModelScope.launch {
+            val pageBubbles = app.bubbleRepository.getPageBubbles(chapterId, page, state.settings.speechBubbleConfidence)
+            if (pageBubbles != null) {
                 _uiState.value = _uiState.value.copy(
-                    pages = pageList,
-                    currentPageIndex = resumeIdx,
-                    isLoading = false,
-                    showResumePrompt = true,
-                    promptPageNum = savedPageNum
+                    bubblesByPage = _uiState.value.bubblesByPage + (pageIdx to pageBubbles)
                 )
-            } else {
+            }
+            bubbleDetectionJobs.remove(pageIdx)
+        }
+    }
+
+    fun updateSpeechBubblesEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(
+            settings = _uiState.value.settings.copy(speechBubblesEnabled = enabled)
+        )
+        viewModelScope.launch {
+            preferencesRepository.updateSpeechBubblesEnabled(enabled)
+        }
+    }
+
+    fun updateSpeechBubbleConfidence(confidence: Float) {
+        _uiState.value = _uiState.value.copy(
+            settings = _uiState.value.settings.copy(speechBubbleConfidence = confidence)
+        )
+        viewModelScope.launch {
+            preferencesRepository.updateSpeechBubbleConfidence(confidence)
+        }
+        app.bubbleRepository.clearChapter(_uiState.value.chapterId)
+        _uiState.value = _uiState.value.copy(bubblesByPage = emptyMap())
+        ensureBubbles(_uiState.value.currentPageIndex)
+        ensureBubbles(_uiState.value.currentPageIndex + 1)
+    }
+
+    fun onBubbleLongPress(
+        pageIndex: Int,
+        bubbleId: Int,
+        centerOffsetPx: androidx.compose.ui.geometry.Offset,
+        bubbleSizePx: androidx.compose.ui.geometry.Size
+    ) {
+        val state = _uiState.value
+        val pageBubbles = state.bubblesByPage[pageIndex] ?: return
+        val bubble = pageBubbles.bubbles.find { it.id == bubbleId } ?: return
+        val page = state.pages.getOrNull(pageIndex) ?: return
+
+        viewModelScope.launch {
+            val cropBmp = app.bubbleRepository.cropBubble(app, page, bubble, pageBubbles.letterbox)
+            if (cropBmp != null) {
                 _uiState.value = _uiState.value.copy(
-                    pages = pageList,
-                    currentPageIndex = 0,
-                    isLoading = false,
-                    showResumePrompt = false,
-                    promptPageNum = 0
+                    magnifiedBubble = com.zemmy.sigurvita.core.model.MagnifiedBubble(
+                        pageIndex = pageIndex,
+                        bubbleId = bubbleId,
+                        bitmap = cropBmp,
+                        centerOffsetPx = centerOffsetPx,
+                        bubbleSizePx = bubbleSizePx
+                    )
                 )
             }
         }
+    }
+
+    fun dismissBubble() {
+        _uiState.value = _uiState.value.copy(magnifiedBubble = null)
     }
 
     fun toggleMarkCurrentPage() {
@@ -276,6 +353,8 @@ class ReaderViewModel : ViewModel() {
         if (_uiState.value.showResumePrompt) return
         if (index in _uiState.value.pages.indices) {
             _uiState.value = _uiState.value.copy(currentPageIndex = index)
+            ensureBubbles(index)
+            ensureBubbles(index + 1)
             progressSaveFlow.tryEmit(
                 ProgressEvent(
                     seriesId = _uiState.value.seriesId,
