@@ -258,12 +258,11 @@ class BubbleDetector(
             }
         }
 
-        // Transpose detections if shape is [1, numAnchors, channels] instead of [1, channels, numAnchors]
-        if (detArray != null && detArray[0].size > detArray[0][0].size) {
-            val numAnchors = detArray[0].size
+        // Transpose detections if shape is [1, 8400, 37] instead of [1, 37, 8400]
+        if (detArray != null && detArray[0].size == 8400 && detArray[0][0].size > 0 && detArray[0][0].size < 8400) {
             val numC = detArray[0][0].size
-            val transposed = Array(1) { Array(numC) { FloatArray(numAnchors) } }
-            for (i in 0 until numAnchors) {
+            val transposed = Array(1) { Array(numC) { FloatArray(8400) } }
+            for (i in 0 until 8400) {
                 for (j in 0 until numC) {
                     transposed[0][j][i] = detArray[0][i][j]
                 }

@@ -397,12 +397,19 @@ private fun buildBubbleVectorPaths(
 
         val path = Path()
         path.moveTo(screenPoints[0].x, screenPoints[0].y)
-        for (i in screenPoints.indices) {
-            val p0 = screenPoints[i]
-            val p1 = screenPoints[(i + 1) % screenPoints.size]
-            val midX = (p0.x + p1.x) / 2f
-            val midY = (p0.y + p1.y) / 2f
-            path.quadraticTo(p0.x, p0.y, midX, midY)
+
+        if (screenPoints.size == 4) {
+            path.lineTo(screenPoints[1].x, screenPoints[1].y)
+            path.lineTo(screenPoints[2].x, screenPoints[2].y)
+            path.lineTo(screenPoints[3].x, screenPoints[3].y)
+        } else {
+            for (i in screenPoints.indices) {
+                val p0 = screenPoints[i]
+                val p1 = screenPoints[(i + 1) % screenPoints.size]
+                val midX = (p0.x + p1.x) / 2f
+                val midY = (p0.y + p1.y) / 2f
+                path.quadraticTo(p0.x, p0.y, midX, midY)
+            }
         }
         path.close()
         paths.add(path)

@@ -39,6 +39,8 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
 
         var absMaxScore = -999f
 
+        val minConf = config.confThreshold.coerceAtMost(0.04f)
+
         for (a in 0 until numAnchors) {
             var maxScore = 0f
             var maxClass = 0
@@ -51,7 +53,7 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
                 if (score > absMaxScore) absMaxScore = score
             }
 
-            if (maxScore >= config.confThreshold) {
+            if (maxScore >= minConf) {
                 val cx = detArray[0][0][a].coerceIn(0f, 1f)
                 val cy = detArray[0][1][a].coerceIn(0f, 1f)
                 val w = detArray[0][2][a].coerceIn(0f, 1f)
@@ -97,11 +99,12 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
             }
         }
 
-        // Decode Prototype Mask
+        // Decode Prototype Mask with lower cutoff (0.25) to preserve full rectangular edges
         val isProtoNHWC = protoArray[0].size > 32 // e.g. 160x160x32
         val protoSize = if (isProtoNHWC) protoArray[0].size else protoArray[0][0].size
+        val maskCutoff = 0.25f
 
-        val detectedBubbles = mutableListOf<DetectedBubble>()
+        val rawBubbles = mutableListOf<DetectedBubble>()
 
         for ((idx, cand) in nmsKept.withIndex()) {
             val maskProbs = ByteArray(protoSize * protoSize)
@@ -126,13 +129,12 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
                     }
 
                     val prob = 1f / (1f + exp(-sum))
-                    if (prob >= config.maskThreshold) {
+                    if (prob >= maskCutoff) {
                         maskProbs[py * protoSize + px] = (prob * 255f).toInt().toByte()
                     }
                 }
             }
 
-            // Convert letterbox normalized coords (0..1 in model input) to page-normalized coords (0..1 in original page)
             val (normLeft, normTop) = letterbox.letterboxToNorm(cand.leftPx * letterbox.inputSize, cand.topPx * letterbox.inputSize)
             val (normRight, normBottom) = letterbox.letterboxToNorm(cand.rightPx * letterbox.inputSize, cand.bottomPx * letterbox.inputSize)
 
@@ -143,7 +145,7 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
                 bottom = normBottom
             )
 
-            detectedBubbles.add(
+            rawBubbles.add(
                 DetectedBubble(
                     id = idx,
                     box = normRect,
@@ -154,7 +156,117 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
             )
         }
 
-        return detectedBubbles
+        // Merge overlapping/connected bubbles so extended speech bubbles get a single unified outline
+        return mergeConnectedBubbles(rawBubbles)
+    }
+
+    /**
+     * Merges overlapping or connected bubble detections into single unified bubbles.
+     */
+    private fun mergeConnectedBubbles(bubbles: List<DetectedBubble>): List<DetectedBubble> {
+        if (bubbles.size <= 1) return bubbles
+
+        val list = bubbles.toMutableList()
+        var mergedAny = true
+
+        while (mergedAny) {
+            mergedAny = false
+            var i = 0
+            while (i < list.size) {
+                var j = i + 1
+                while (j < list.size) {
+                    val b1 = list[i]
+                    val b2 = list[j]
+
+                    val iou = calculateRectIoU(b1.box, b2.box)
+                    val minAreaOverlap = calculateIntersectionOverMinArea(b1.box, b2.box)
+                    val maskOverlap = doMasksOverlap(b1.mask, b2.mask)
+
+                    if (iou >= 0.15f || minAreaOverlap >= 0.25f || maskOverlap) {
+                        val mergedBox = NormRect(
+                            left = min(b1.box.left, b2.box.left),
+                            top = min(b1.box.top, b2.box.top),
+                            right = max(b1.box.right, b2.box.right),
+                            bottom = max(b1.box.bottom, b2.box.bottom)
+                        )
+
+                        val sz = b1.mask.size
+                        val mergedProbs = ByteArray(sz * sz)
+                        for (k in 0 until sz * sz) {
+                            val p1 = b1.mask.probs[k].toInt() and 0xFF
+                            val p2 = b2.mask.probs[k].toInt() and 0xFF
+                            mergedProbs[k] = max(p1, p2).toByte()
+                        }
+
+                        val mergedBubble = DetectedBubble(
+                            id = b1.id,
+                            box = mergedBox,
+                            score = max(b1.score, b2.score),
+                            classId = b1.classId,
+                            mask = BubbleMask(sz, mergedProbs)
+                        )
+
+                        list[i] = mergedBubble
+                        list.removeAt(j)
+                        mergedAny = true
+                    } else {
+                        j++
+                    }
+                }
+                i++
+            }
+        }
+
+        return list.mapIndexed { index, b -> b.copy(id = index) }
+    }
+
+    private fun calculateRectIoU(r1: NormRect, r2: NormRect): Float {
+        val interLeft = max(r1.left, r2.left)
+        val interTop = max(r1.top, r2.top)
+        val interRight = min(r1.right, r2.right)
+        val interBottom = min(r1.bottom, r2.bottom)
+
+        val interWidth = max(0f, interRight - interLeft)
+        val interHeight = max(0f, interBottom - interTop)
+        val interArea = interWidth * interHeight
+
+        val area1 = (r1.right - r1.left) * (r1.bottom - r1.top)
+        val area2 = (r2.right - r2.left) * (r2.bottom - r2.top)
+        val unionArea = area1 + area2 - interArea
+
+        return if (unionArea > 0f) interArea / unionArea else 0f
+    }
+
+    private fun calculateIntersectionOverMinArea(r1: NormRect, r2: NormRect): Float {
+        val interLeft = max(r1.left, r2.left)
+        val interTop = max(r1.top, r2.top)
+        val interRight = min(r1.right, r2.right)
+        val interBottom = min(r1.bottom, r2.bottom)
+
+        val interWidth = max(0f, interRight - interLeft)
+        val interHeight = max(0f, interBottom - interTop)
+        val interArea = interWidth * interHeight
+
+        val area1 = (r1.right - r1.left) * (r1.bottom - r1.top)
+        val area2 = (r2.right - r2.left) * (r2.bottom - r2.top)
+        val minArea = min(area1, area2)
+
+        return if (minArea > 0f) interArea / minArea else 0f
+    }
+
+    private fun doMasksOverlap(m1: BubbleMask, m2: BubbleMask): Boolean {
+        val sz = m1.size
+        if (sz != m2.size || sz == 0) return false
+        var sharedPixels = 0
+        for (i in 0 until sz * sz) {
+            val p1 = m1.probs[i].toInt() and 0xFF
+            val p2 = m2.probs[i].toInt() and 0xFF
+            if (p1 >= 40 && p2 >= 40) {
+                sharedPixels++
+                if (sharedPixels >= 8) return true
+            }
+        }
+        return false
     }
 
     private fun calculateIoU(c1: Candidate, c2: Candidate): Float {

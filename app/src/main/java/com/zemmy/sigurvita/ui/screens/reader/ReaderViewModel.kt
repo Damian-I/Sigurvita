@@ -298,7 +298,7 @@ class ReaderViewModel : ViewModel() {
         val page = state.pages.getOrNull(pageIndex) ?: return
 
         viewModelScope.launch {
-            val cropBmp = app.bubbleRepository.cropBubble(app, page, bubble, pageBubbles.letterbox)
+            val cropBmp = app.bubbleRepository.cropBubble(app, page, bubble, pageBubbles.letterbox, state.settings.speechBubblesEnabled)
             if (cropBmp != null) {
                 _uiState.value = _uiState.value.copy(
                     magnifiedBubble = com.zemmy.sigurvita.core.model.MagnifiedBubble(

@@ -186,6 +186,7 @@ fun ReaderScreen(
             state.magnifiedBubble?.let { magBubble ->
                 BubbleMagnifierOverlay(
                     magnifiedBubble = magBubble,
+                    speechBubblesEnabled = state.settings.speechBubblesEnabled,
                     onDismiss = { viewModel.dismissBubble() }
                 )
             }

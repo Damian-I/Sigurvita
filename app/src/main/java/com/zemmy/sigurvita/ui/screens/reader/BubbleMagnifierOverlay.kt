@@ -7,19 +7,16 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -33,6 +30,7 @@ import com.zemmy.sigurvita.core.model.MagnifiedBubble
 @Composable
 fun BubbleMagnifierOverlay(
     magnifiedBubble: MagnifiedBubble,
+    speechBubblesEnabled: Boolean,
     onDismiss: () -> Unit
 ) {
     BackHandler(enabled = true) {
@@ -50,7 +48,7 @@ fun BubbleMagnifierOverlay(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.55f))
+            .background(if (speechBubblesEnabled) Color.Black.copy(alpha = 0.55f) else Color.Transparent)
             .pointerInput(Unit) {
                 detectTapGestures(onTap = { onDismiss() })
             }
@@ -78,7 +76,7 @@ fun BubbleMagnifierOverlay(
         val magWDp = with(density) { magW.toDp() }
         val magHDp = with(density) { magH.toDp() }
 
-        Card(
+        Surface(
             modifier = Modifier
                 .offset(x = leftDp, y = topDp)
                 .size(width = magWDp, height = magHDp)
@@ -86,24 +84,19 @@ fun BubbleMagnifierOverlay(
                     scaleX = animScale,
                     scaleY = animScale
                 )
-                .shadow(elevation = 16.dp, shape = RoundedCornerShape(12.dp)),
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(2.5.dp, Color(0xFFFFE500))
+                .shadow(elevation = if (speechBubblesEnabled) 16.dp else 4.dp, shape = RoundedCornerShape(10.dp)),
+            shape = RoundedCornerShape(10.dp),
+            color = Color.Transparent,
+            border = if (speechBubblesEnabled) BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)) else null
         ) {
-            Box(
+            Image(
+                bitmap = magnifiedBubble.bitmap.asImageBitmap(),
+                contentDescription = "Magnified Speech Bubble",
+                contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(4.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    bitmap = magnifiedBubble.bitmap.asImageBitmap(),
-                    contentDescription = "Magnified Speech Bubble",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
+                    .clip(RoundedCornerShape(10.dp))
+            )
         }
     }
 }
