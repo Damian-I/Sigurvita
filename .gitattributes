@@ -1,2 +1,1 @@
-/home/zemmy/Projects/Sigurvita/app/src/main/assets/model.tflite filter=lfs diff=lfs merge=lfs -text
 app/src/main/assets/model.tflite filter=lfs diff=lfs merge=lfs -text
