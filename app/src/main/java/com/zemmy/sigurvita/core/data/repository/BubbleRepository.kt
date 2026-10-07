@@ -15,6 +15,93 @@ import kotlinx.coroutines.withContext
 
 private const val TAG = "BubbleRepository"
 
+/**
+ * Extracts a smoothed list of normalized page coordinates `(normX, normY)` (0.0..1.0)
+ * along the speech bubble contour using 48 radial raycasts and 3-point moving average smoothing.
+ */
+fun extractBubbleNormalizedPoints(
+    bubble: DetectedBubble,
+    lb: LetterboxParams,
+    numSteps: Int = 48
+): List<Pair<Float, Float>> {
+    val mask = bubble.mask
+    val sz = mask.size
+    if (sz <= 0 || mask.probs.size < sz * sz) return emptyList()
+
+    // 1. Calculate center of gravity in mask grid space
+    var sumX = 0f
+    var sumY = 0f
+    var count = 0
+    for (y in 0 until sz) {
+        for (x in 0 until sz) {
+            val prob = mask.probs[y * sz + x].toInt() and 0xFF
+            if (prob >= 120) {
+                sumX += x
+                sumY += y
+                count++
+            }
+        }
+    }
+    if (count == 0) return emptyList()
+    val cx = sumX / count
+    val cy = sumY / count
+
+    // 2. Raycast numSteps radial steps around center to extract boundary
+    val rawPoints = ArrayList<Pair<Float, Float>>(numSteps)
+    for (i in 0 until numSteps) {
+        val angle = i * (2f * Math.PI.toFloat() / numSteps)
+        val dx = kotlin.math.cos(angle.toDouble()).toFloat()
+        val dy = kotlin.math.sin(angle.toDouble()).toFloat()
+
+        var maxR = 0f
+        var r = 0.5f
+        val maxDist = sz.toFloat()
+
+        while (r < maxDist) {
+            val px = (cx + dx * r).toInt()
+            val py = (cy + dy * r).toInt()
+            if (px !in 0 until sz || py !in 0 until sz) break
+            val prob = mask.probs[py * sz + px].toInt() and 0xFF
+            if (prob >= 120) {
+                maxR = r
+            }
+            r += 0.5f
+        }
+
+        if (maxR > 0f) {
+            val gridX = cx + dx * maxR
+            val gridY = cy + dy * maxR
+            rawPoints.add(Pair(gridX, gridY))
+        }
+    }
+
+    if (rawPoints.size < 3) return emptyList()
+
+    // 3. Smooth points with 3-point moving average to remove micro-jitter
+    val n = rawPoints.size
+    val normPoints = ArrayList<Pair<Float, Float>>(n)
+    val scaleGridToLb = lb.inputSize.toFloat() / sz.toFloat()
+
+    for (i in 0 until n) {
+        val prev = rawPoints[(i - 1 + n) % n]
+        val curr = rawPoints[i]
+        val next = rawPoints[(i + 1) % n]
+
+        val smGridX = prev.first * 0.25f + curr.first * 0.5f + next.first * 0.25f
+        val smGridY = prev.second * 0.25f + curr.second * 0.5f + next.second * 0.25f
+
+        val lbX = smGridX * scaleGridToLb
+        val lbY = smGridY * scaleGridToLb
+
+        val normX = ((lbX - lb.padX) / (lb.originalWidth * lb.gain)).coerceIn(0f, 1f)
+        val normY = ((lbY - lb.padY) / (lb.originalHeight * lb.gain)).coerceIn(0f, 1f)
+
+        normPoints.add(Pair(normX, normY))
+    }
+
+    return normPoints
+}
+
 class BubbleRepository(
     private val context: Context,
     private val detector: BubbleDetector = BubbleDetector(context)
@@ -42,8 +129,8 @@ class BubbleRepository(
     }
 
     /**
-     * Crops the bubble's bounding box out of the page, then whites out every pixel
-     * outside the bubble's segmentation mask so neighbouring artwork/bubbles are hidden.
+     * Crops the bubble's contour out of the page, then masks everything outside the
+     * smooth vector path to white with anti-aliasing and draws the outline.
      */
     suspend fun cropBubble(
         context: Context,
@@ -56,24 +143,31 @@ class BubbleRepository(
             val W = fullBitmap.width.toFloat()
             val H = fullBitmap.height.toFloat()
 
-            val bw = bubble.box.right - bubble.box.left
-            val bh = bubble.box.bottom - bubble.box.top
+            val normPoints = extractBubbleNormalizedPoints(bubble, letterbox)
 
-            // 5% margin around the bubble box so no text/border is clipped
-            val marginX = (bw * 0.05f * W).toInt().coerceAtLeast(4)
-            val marginY = (bh * 0.05f * H).toInt().coerceAtLeast(4)
+            val minNormX = if (normPoints.isNotEmpty()) normPoints.minOf { it.first } else bubble.box.left
+            val maxNormX = if (normPoints.isNotEmpty()) normPoints.maxOf { it.first } else bubble.box.right
+            val minNormY = if (normPoints.isNotEmpty()) normPoints.minOf { it.second } else bubble.box.top
+            val maxNormY = if (normPoints.isNotEmpty()) normPoints.maxOf { it.second } else bubble.box.bottom
 
-            val left = (bubble.box.left * W - marginX).toInt().coerceIn(0, fullBitmap.width - 1)
-            val top = (bubble.box.top * H - marginY).toInt().coerceIn(0, fullBitmap.height - 1)
-            val right = (bubble.box.right * W + marginX).toInt().coerceIn(left + 1, fullBitmap.width)
-            val bottom = (bubble.box.bottom * H + marginY).toInt().coerceIn(top + 1, fullBitmap.height)
+            val bw = maxNormX - minNormX
+            val bh = maxNormY - minNormY
+
+            // 5% margin around the bubble bounds so stroke/border is not clipped
+            val marginX = (bw * 0.05f * W).toInt().coerceAtLeast(8)
+            val marginY = (bh * 0.05f * H).toInt().coerceAtLeast(8)
+
+            val left = (minNormX * W - marginX).toInt().coerceIn(0, fullBitmap.width - 1)
+            val top = (minNormY * H - marginY).toInt().coerceIn(0, fullBitmap.height - 1)
+            val right = (maxNormX * W + marginX).toInt().coerceIn(left + 1, fullBitmap.width)
+            val bottom = (maxNormY * H + marginY).toInt().coerceIn(top + 1, fullBitmap.height)
 
             val cropW = right - left
             val cropH = bottom - top
             if (cropW <= 0 || cropH <= 0) return@withContext null
 
             val crop = Bitmap.createBitmap(fullBitmap, left, top, cropW, cropH)
-            return@withContext applyBubbleMask(crop, left, top, W, H, bubble, letterbox)
+            return@withContext applyBubbleMask(crop, left, top, W, H, normPoints)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to crop bubble", e)
             return@withContext null
@@ -81,10 +175,8 @@ class BubbleRepository(
     }
 
     /**
-     * Blends everything outside the bubble mask to white, with a soft edge.
-     * [cropLeft]/[cropTop] are the crop's position inside the full decoded page ([pageW] x [pageH] px).
-     * The mask lives on a sz x sz grid in letterbox space, so each crop pixel is mapped
-     * page px -> page-normalised -> letterbox px -> mask grid and sampled bilinearly.
+     * Masks everything outside the smooth vector path to white with anti-aliasing
+     * and draws the outline stroke around the bubble contour.
      */
     private fun applyBubbleMask(
         crop: Bitmap,
@@ -92,62 +184,59 @@ class BubbleRepository(
         cropTop: Int,
         pageW: Float,
         pageH: Float,
-        bubble: DetectedBubble,
-        lb: LetterboxParams
+        normPoints: List<Pair<Float, Float>>
     ): Bitmap {
         val w = crop.width
         val h = crop.height
-        val mask = bubble.mask
-        val sz = mask.size
-        val probs = mask.probs
-        if (sz <= 0 || probs.size < sz * sz) return crop
+        if (normPoints.size < 3) return crop
 
-        val pixels = IntArray(w * h)
-        crop.getPixels(pixels, 0, w, 0, 0, w, h)
-
-        fun cell(gx: Int, gy: Int): Float {
-            if (gx !in 0 until sz || gy !in 0 until sz) return 0f
-            return (probs[gy * sz + gx].toInt() and 0xFF) / 255f
+        val localPoints = normPoints.map { (normX, normY) ->
+            Pair(normX * pageW - cropLeft, normY * pageH - cropTop)
         }
 
-        val lbW = lb.originalWidth * lb.gain
-        val lbH = lb.originalHeight * lb.gain
-        val gridPerLbPx = sz / lb.inputSize.toFloat()
-
-        // Soft edge: fully hidden below LOW, fully visible above HIGH.
-        // LOW is deliberately low so text touching the bubble border isn't clipped.
-        val low = 0.15f
-        val high = 0.40f
-
-        for (y in 0 until h) {
-            val normY = (cropTop + y + 0.5f) / pageH
-            val gyF = (normY * lbH + lb.padY) * gridPerLbPx - 0.5f
-            val gy0 = Math.floor(gyF.toDouble()).toInt()
-            val fy = gyF - gy0
-            for (x in 0 until w) {
-                val normX = (cropLeft + x + 0.5f) / pageW
-                val gxF = (normX * lbW + lb.padX) * gridPerLbPx - 0.5f
-                val gx0 = Math.floor(gxF.toDouble()).toInt()
-                val fx = gxF - gx0
-
-                val p = cell(gx0, gy0) * (1 - fx) * (1 - fy) +
-                        cell(gx0 + 1, gy0) * fx * (1 - fy) +
-                        cell(gx0, gy0 + 1) * (1 - fx) * fy +
-                        cell(gx0 + 1, gy0 + 1) * fx * fy
-
-                val a = ((p - low) / (high - low)).coerceIn(0f, 1f)
-                if (a >= 1f) continue
-
-                val src = pixels[y * w + x]
-                val r = (((src shr 16) and 0xFF) * a + 255 * (1 - a)).toInt()
-                val g = (((src shr 8) and 0xFF) * a + 255 * (1 - a)).toInt()
-                val b = ((src and 0xFF) * a + 255 * (1 - a)).toInt()
-                pixels[y * w + x] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-            }
+        val path = android.graphics.Path()
+        val start = localPoints[0]
+        path.moveTo(start.first, start.second)
+        for (i in localPoints.indices) {
+            val p0 = localPoints[i]
+            val p1 = localPoints[(i + 1) % localPoints.size]
+            val midX = (p0.first + p1.first) / 2f
+            val midY = (p0.second + p1.second) / 2f
+            path.quadTo(p0.first, p0.second, midX, midY)
         }
+        path.close()
 
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        out.setPixels(pixels, 0, w, 0, 0, w, h)
+        val canvas = android.graphics.Canvas(out)
+
+        // Fill background with solid white
+        canvas.drawColor(android.graphics.Color.WHITE)
+
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
+
+        // Draw cropped page image clipped strictly to the smooth vector path
+        val saveCount = canvas.saveLayer(0f, 0f, w.toFloat(), h.toFloat(), null)
+        canvas.drawPath(path, paint)
+        paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_IN)
+        canvas.drawBitmap(crop, 0f, 0f, paint)
+        canvas.restoreToCount(saveCount)
+
+        // Draw smooth outer black and inner neon yellow stroke outlines around the contour
+        val strokeScale = (minOf(w, h) / 150f).coerceIn(1.5f, 4.0f)
+
+        val strokePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            color = android.graphics.Color.BLACK
+            strokeWidth = 3.0f * strokeScale
+            strokeCap = android.graphics.Paint.Cap.ROUND
+            strokeJoin = android.graphics.Paint.Join.ROUND
+        }
+        canvas.drawPath(path, strokePaint)
+
+        strokePaint.color = android.graphics.Color.argb(255, 255, 229, 0)
+        strokePaint.strokeWidth = 1.8f * strokeScale
+        canvas.drawPath(path, strokePaint)
+
         return out
     }
 

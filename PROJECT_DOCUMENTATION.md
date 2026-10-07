@@ -267,12 +267,12 @@ Do not pass `int8=True`. An int8 export was tried first and gave clearly worse b
 
 `BubbleDetectorConfig` defaults are confidence 0.25, IoU 0.70, 50 detections and mask threshold 0.5 (matching Ultralytics' usual defaults), but `detect()` always overrides the confidence with the user's setting (default 0.10, slider 0.02 to 0.50), so the 0.25 default is never used. IoU 0.70 and the other two values are used as written.
 
-**Overlay** (`ImageReader`): a `Canvas` that shares the page image's `graphicsLayer`, so it follows zoom and pan. For each bubble it takes the center of mass of mask pixels at or above 120/255, casts 48 radial rays to find the outline, smooths the points with a 3-point average and draws a closed quadratic Bezier path: translucent yellow fill, 4.5 dp black stroke and 2.5 dp yellow stroke.
+**Overlay** (`ImageReader`): a `Canvas` that shares the page image's `graphicsLayer`, so it follows zoom and pan. For each bubble it takes the center of mass of mask pixels at or above 120/255, casts 48 radial rays to find the outline, smooths the points with a 3-point average and draws a closed quadratic Bezier path: translucent yellow fill, 1.0 dp black outer stroke and 0.6 dp neon yellow inner stroke.
 
 **Long-press magnifier.**
 
 1. `viewportToPageNorm` undoes zoom, pan and the content-scale offset to get page-normalized coordinates. `hitBubble` returns the first bubble whose **bounding box** contains the point (the mask is not used for hit testing).
-2. `ReaderViewModel.onBubbleLongPress` calls `BubbleRepository.cropBubble(app, page, bubble, letterbox)`. It decodes the page at about 2000 px, crops the bubble box with a 5% margin (at least 4 px), then `applyBubbleMask` samples the mask bilinearly for each pixel and fades everything outside the bubble to white with a soft edge, so neighbouring artwork and bubbles are hidden.
+2. `ReaderViewModel.onBubbleLongPress` calls `BubbleRepository.cropBubble(app, page, bubble, letterbox)`. It extracts the bubble's smoothed vector contour points (`extractBubbleNormalizedPoints`), crops the region with a 5% margin on the high-res page bitmap (2000 px), masks everything outside the smooth Bezier vector path to solid white with anti-aliasing (`applyBubbleMask`), and draws the stroke outline around the bubble contour.
 3. `BubbleMagnifierOverlay` shows the result in a white card at twice the bubble's on-screen size, centered on the bubble and kept 16 dp inside the screen, over a 55% black scrim. Tapping anywhere or pressing back dismisses it.
 
 **Settings.** The "Speech Bubble Boxes" switch and the confidence slider appear both in Settings and in the reader's options sheet. The reader's top bar shows a count badge ("N bubbles") for the current page while detection is on and a result exists.
