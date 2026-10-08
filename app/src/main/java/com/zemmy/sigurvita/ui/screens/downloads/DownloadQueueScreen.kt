@@ -20,12 +20,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,7 +42,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,10 +51,6 @@ import com.zemmy.sigurvita.R
 import com.zemmy.sigurvita.core.model.DownloadStatus
 import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.ui.components.CoverImage
-import android.content.Intent
-import android.os.Environment
-import java.io.File
-import androidx.core.net.toUri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -187,68 +179,6 @@ fun DownloadQueueScreen(
                                                 tint = MaterialTheme.colorScheme.error
                                             )
                                         }
-                                    }
-
-                                    val context = LocalContext.current
-                                    var showPathDialog by remember { mutableStateOf<String?>(null) }
-
-                                    IconButton(
-                                        onClick = {
-                                            val firstTaskWithFile = tasks.firstOrNull { !it.localPath.isNullOrBlank() }
-                                            val path = firstTaskWithFile?.localPath
-                                            val folder = if (path != null) {
-                                                val f = File(path)
-                                                if (f.isFile) f.parentFile else f
-                                            } else {
-                                                File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir, "$libraryName/$seriesName")
-                                            }
-                                            val folderPath = folder?.absolutePath ?: "Unknown"
-
-                                            try {
-                                                val intent = Intent(Intent.ACTION_VIEW).apply {
-                                                    setDataAndType(
-                                                        (folder?.absolutePath ?: "").toUri(), "*/*")
-                                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                                }
-                                                context.startActivity(intent)
-                                            } catch (_: Exception) {
-                                                showPathDialog = folderPath
-                                            }
-                                        }
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.FolderOpen,
-                                            contentDescription = "Open Folder"
-                                        )
-                                    }
-
-                                    if (showPathDialog != null) {
-                                        AlertDialog(
-                                            onDismissRequest = { showPathDialog = null },
-                                            title = { Text("Download Folder") },
-                                            text = {
-                                                Column {
-                                                    Text("Files are stored at:")
-                                                    Spacer(modifier = Modifier.height(8.dp))
-                                                    Text(
-                                                        text = showPathDialog!!,
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.primary
-                                                    )
-                                                    Spacer(modifier = Modifier.height(8.dp))
-                                                    Text(
-                                                        text = "Note: On Android, custom folders in Documents may fallback to app storage due to system scoped storage restrictions.",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                }
-                                            },
-                                            confirmButton = {
-                                                Button(onClick = { showPathDialog = null }) {
-                                                    Text("OK")
-                                                }
-                                            }
-                                        )
                                     }
 
                                     Icon(

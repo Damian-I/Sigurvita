@@ -6,6 +6,26 @@ Everything below describes what is in the code today. Where behavior is surprisi
 
 ---
 
+## Guide for Future AI Development & Maintenance (Mandatory Instructions)
+
+When modifying or extending Sigurvita, follow these guidelines:
+
+1. **Documentation maintenance**: update this file whenever structure, feature behavior, data flow or architecture change. Prefer describing verified behavior; add surprising behavior to section 9.
+2. **Architecture consistency**:
+   - Keep UI in Compose screens (`ui.screens.*`) and state in the matching ViewModel.
+   - Fetch data through repositories (`core.data.repository`); do not call `KavitaApi` from composables. (Existing exception: two chapter lookups in `ReaderViewModel`.)
+   - Obtain shared instances from `SigurvitaApp.instance`; register new singletons there with `by lazy`.
+3. **Navigation**: add routes to `Screen.kt` (route string + `createRoute` helper) and register the composable in `NavGraph.kt`. Add a drawer entry there if it should appear in the sliding panel.
+4. **Database changes**: when changing entities or DAOs, bump the version in `SigurvitaDatabase.kt` and **write a real migration**. The current destructive fallback would erase download records and marked pages. Do not assume `cached_chapters` data exists.
+5. **Preferences**: add new settings as a DataStore key in `UserPreferencesRepository.Keys`, a field on `ReaderSettings` (with default), mapping in `readerSettingsFlow`, and an `update...` function, then expose it through `SettingsViewModel` or the relevant screen's ViewModel.
+6. **Incognito**: any new feature that writes read state or progress to Kavita must respect `isIncognitoMode` (check `readerSettingsFlow`), as the existing repository methods do.
+7. **Strings**: prefer `res/values/strings.xml` resources for new UI text.
+8. **Code quality**: idiomatic Kotlin; coroutines and Flows (`StateFlow`) for async work; keep Material 3 consistency.
+9. **Kavita API reference**: when adding endpoints, DTOs or auth changes, cross-reference the Kavita API documentation and keep section 7 in sync.
+10. **Speech-bubble model**: when replacing the model or changing its export settings, update section 4.9, keep the asset name in `BubbleDetector.getInterpreter()` and the Git LFS rule in `.gitattributes` in sync, and compare results against the Hugging Face demo on a few pages. Export as float32 unless you have verified that a quantized model is accurate enough.
+
+---
+
 ## 1. Project Overview & Purpose
 
 Sigurvita connects to a user's Kavita server (server URL + API key) and lets them:
@@ -97,7 +117,6 @@ app/src/main/java/com/zemmy/sigurvita/
     ├── components/
     │   ├── Components.kt            # CoverImage, SeriesCard, LoadingState, ErrorState, ReadStatusBadge
     │   ├── DownloadStatusButton.kt  # Reusable download status and progress action button
-    │   ├── FolderPickerDialog.kt    # java.io.File based folder browser
     │   ├── IssueCards.kt            # Reusable IssueRow, IssueGridCard, and IssueUi models
     │   ├── IssueDetailBottomSheet.kt # Per-issue details and read/download/delete actions
     │   ├── MassDownloadDialog.kt    # Bulk-download count/unread-only dialog
@@ -156,7 +175,6 @@ app/src/main/java/com/zemmy/sigurvita/
 | `server_url`, `api_key`, `jwt_token`, `user_id` | Server session (stored unencrypted) |
 | `reading_mode`, `fit_mode` | Stored reader preferences (see 5.6 for how reading mode is actually resolved) |
 | `volume_key_nav`, `volume_key_invert`, `touch_edge_nav`, `keep_screen_on` | Reader behavior toggles |
-| `download_location`, `download_path` | Download root (see 4.7) |
 | `auto_delete_option` | Auto-delete policy for downloads |
 | `incognito_mode` | Incognito toggle (global) |
 | `speech_bubbles_enabled` | Speech-bubble detection and overlays on/off (default `true`) |
@@ -177,7 +195,7 @@ app/src/main/java/com/zemmy/sigurvita/
 
 Consequence: Sigurvita is **network-first**. Browsing screens always call the Kavita API; Room is not an offline-first source of truth. Offline *reading* works only for downloaded chapters, via `download_tasks.localPath`.
 
-### 4.5 Repositories (`Repositories.kt`)
+### 4.5 Repositories
 
 Repositories wrap `KavitaApi` calls in `withContext(Dispatchers.IO)` and return `Result<T>` for most calls. ViewModels never call `KavitaApi` directly, with two exceptions in `ReaderViewModel` (it resolves a chapter's series/volume IDs with `app.kavitaApi.getChapterById` when navigation arguments are missing).
 
@@ -391,7 +409,7 @@ Shows every page flagged from the reader's bookmark toggle (stored in `marked_pa
 ### 5.10 Settings (`SettingsScreen`)
 
 - **Reader Configuration**: fit mode chips; volume-key navigation switch; **invert volume keys** switch (always visible, independent of the previous switch); edge-tap navigation switch; keep-screen-on switch; speech bubble boxes switch (toggles on-device speech bubble detection and the outline overlays), plus a detection confidence slider (2% to 50%) shown while the switch is on.
-- **Offline Downloads**: default storage folder chips (`Documents/Sigurvita` or `Download/Sigurvita`), a custom path text field with a folder picker (`FolderPickerDialog`, a `java.io.File` browser with "create folder" and parent navigation), and auto-delete option chips.
+- **Offline Downloads**: auto-delete option chips (files are stored reliably in app-scoped external storage to ensure robust operation under Android scoped storage rules).
 - **Account & Session**: "Refresh Login" button (`SettingsViewModel.refreshLogin`) to re-test server connectivity and refresh authentication tokens.
 - **Disconnect / Logout** (see 4.3).
 - There is no reading-mode setting in the UI (see 5.6), and no Incognito toggle in Settings (it lives in the Home, Library, Series detail and Reading list top bars).
@@ -399,10 +417,12 @@ Shows every page flagged from the reader's bookmark toggle (stored in `marked_pa
 ### 5.11 Shared components (`ui.components`)
 
 - `CoverImage` (Coil `SubcomposeAsyncImage` with automatic placeholder fallback when missing/404, crossfade, rounded 8 dp, `ContentScale.Crop`), `SeriesCard` (0.7 cover aspect ratio, name, `read / total pgs`), `LoadingState`, `ErrorState` (message + optional Retry), `ReadStatusBadge` (unified pill badge with check/unchecked icon and read/unread status label).
+- `DownloadStatusButton`: reusable download status, progress indicator, and action button.
+- `ReadingListBadges`: shared reading list era and part badges (`ListBadge`, `ReadingListBadgeRow`, `IntegratedReadingListBadge`).
+- `IssueCards`: reusable `IssueRow`, `IssueGridCard`, and `IssueUi` models for chapter/issue lists and grids.
 - `MassDownloadDialog`: "Unread only" switch plus preset count chips filtered to available count; confirms with `onConfirmDownload(count, unreadOnly)`.
 - `SeriesInfoBottomSheet`: displays detailed Kavita metadata with character/person portrait cards (`/api/Image/person-cover` with automatic initial avatar badge fallback when missing/404), writers, pencillers, inkers, colorists, publishers, release year, age rating, genres, tags, and archive file details (size, formats, counts, sample path).
 - `IssueDetailBottomSheet`: displays individual issue/chapter details (cover, title, series, issue summary, character/team portrait cards, creators, read status badge, page progress, file format, file size in MB/GB, downloaded or server path, and action buttons to read, download, or delete local download) when tapping an issue's title in Series Detail or Reading Lists.
-- `FolderPickerDialog`: described in 5.10.
 
 ---
 
@@ -475,7 +495,7 @@ These are accurate as of this documentation; fix them or keep this list in sync 
 12. **Marked pages store `imageUrl` at mark time.** For downloaded chapters that is a path inside `cacheDir/cbz_extracted/<chapterId>/`; deleting the chapter (manually or via auto-delete) removes it and the Page Review thumbnail/preview will no longer load. For streamed pages the stored URL contains the API key.
 13. **Storage access.** The folder picker and download root use plain `java.io.File` paths, and the manifest declares no all-files-access permission. Paths outside app-specific storage may not be writable on newer Android versions; the worker then falls back to the app-specific downloads folder. Credentials (API key/JWT) are stored unencrypted in Preferences DataStore.
 14. **Room uses `fallbackToDestructiveMigration()`.** Bumping the database version without a migration wipes all tables, including download records (which are what let the reader find downloaded files) and marked pages.
-15. **Drawer data is loaded once per process composition.** Libraries and reading lists are fetched in a `LaunchedEffect(Unit)` inside `SigurvitaNavGraph`. Since that composable stays in composition across login/logout, a first login (or logging in again after logout) most likely leaves the drawer's library and reading-list sections empty until the app process restarts. This is from reading the code and has not been verified at runtime.
+15. **Drawer data is loaded once per process composition.** Libraries and reading lists are fetched in a `LaunchedEffect(Unit)` inside `SigurvitaNavGraph`.Since that composable stays in composition across login/logout, a first login (or logging in again after logout) most likely leaves the drawer's library and reading-list sections empty until the app process restarts. This is from reading the code and has not been verified at runtime.
 16. **No speech-bubble detection in Webtoon mode.** `ensureBubbles` returns early for `ReadingMode.WEBTOON`, so there are no outlines or magnifier there. Only the current and next page are detected, and very tall pages are shrunk to fit the 640 px model input, which makes small bubbles harder to find.
 17. **Bubble hit testing uses bounding boxes.** `hitBubble` returns the first bubble whose box contains the press, so with overlapping boxes the wrong bubble can open. The mask is not used.
 18. **Confidence slider re-runs detection on every change.** The slider calls `updateSpeechBubbleConfidence` from `onValueChange`, which clears the chapter's cache and restarts detection for the current and next page on each tick. It does not cancel jobs already in flight, so a result computed at an older confidence can land in `bubblesByPage` and stay until the chapter changes.
@@ -488,23 +508,3 @@ These are accurate as of this documentation; fix them or keep this list in sync 
 25. **The model needs Git LFS.** `model.tflite` (about 109 MB) is an LFS object. A clone, download-as-ZIP or CI job without LFS gets a tiny pointer file instead of the model, and detection fails at startup. The free LFS bandwidth quota is limited, so frequent clones or CI runs can exhaust it.
 26. **Stray `.gitattributes` line.** The first line is an absolute path from a local machine (`/home/zemmy/Projects/Sigurvita/app/src/main/assets/model.tflite ...`). It matches nothing; the second, relative line is the one that works.
 27. **Decoder has no fallbacks.** `YoloSegDecoder` assumes the model outputs probabilities and 0-1 box coordinates. A model exported in a different way (pixel coordinates, raw logits) would produce wrong boxes without an error.
-
----
-
-## 10. Guide for Future AI Development & Maintenance
-
-When modifying or extending Sigurvita, follow these guidelines:
-
-1. **Documentation maintenance**: update this file whenever structure, feature behavior, data flow or architecture change. Prefer describing verified behavior; add surprising behavior to section 9.
-2. **Architecture consistency**:
-   - Keep UI in Compose screens (`ui.screens.*`) and state in the matching ViewModel.
-   - Fetch data through repositories (`core.data.repository`); do not call `KavitaApi` from composables. (Existing exception: two chapter lookups in `ReaderViewModel`.)
-   - Obtain shared instances from `SigurvitaApp.instance`; register new singletons there with `by lazy`.
-3. **Navigation**: add routes to [`Screen.kt`](app/src/main/java/com/zemmy/sigurvita/ui/navigation/Screen.kt) (route string + `createRoute` helper) and register the composable in [`NavGraph.kt`](app/src/main/java/com/zemmy/sigurvita/ui/navigation/NavGraph.kt). Add a drawer entry there if it should appear in the sliding panel.
-4. **Database changes**: when changing entities or DAOs, bump the version in [`SigurvitaDatabase.kt`](app/src/main/java/com/zemmy/sigurvita/core/data/db/SigurvitaDatabase.kt) and **write a real migration**. The current destructive fallback would erase download records and marked pages (section 9, item 14). Do not assume `cached_chapters` data exists (section 4.4).
-5. **Preferences**: add new settings as a DataStore key in `UserPreferencesRepository.Keys`, a field on `ReaderSettings` (with default), mapping in `readerSettingsFlow`, and an `update...` function, then expose it through `SettingsViewModel` or the relevant screen's ViewModel.
-6. **Incognito**: any new feature that writes read state or progress to Kavita must respect `isIncognitoMode` (check `readerSettingsFlow`), as the existing repository methods do.
-7. **Strings**: prefer `res/values/strings.xml` resources for new UI text.
-8. **Code quality**: idiomatic Kotlin; coroutines and Flows (`StateFlow`) for async work; keep Material 3 consistency.
-9. **Kavita API reference**: when adding endpoints, DTOs or auth changes, cross-reference the [Kavita API documentation](https://www.kavitareader.com/docs/api/#/) and keep section 7 in sync.
-10. **Speech-bubble model**: when replacing the model or changing its export settings, update section 4.9, keep the asset name in `BubbleDetector.getInterpreter()` and the Git LFS rule in `.gitattributes` in sync, and compare results against the Hugging Face demo on a few pages. Export as float32 unless you have verified that a quantized model is accurate enough.
