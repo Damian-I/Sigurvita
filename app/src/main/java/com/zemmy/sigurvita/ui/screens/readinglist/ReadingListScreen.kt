@@ -22,13 +22,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -40,12 +36,10 @@ import com.zemmy.sigurvita.core.model.Chapter
 import com.zemmy.sigurvita.core.model.ReadingListItem
 import com.zemmy.sigurvita.core.util.extractEraInfo
 import com.zemmy.sigurvita.ui.components.IssueDetailBottomSheet
-import com.zemmy.sigurvita.ui.components.ReadStatusBadge
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -56,7 +50,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -68,7 +61,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -78,26 +70,6 @@ import com.zemmy.sigurvita.ui.components.CoverImage
 import com.zemmy.sigurvita.ui.components.ErrorState
 import com.zemmy.sigurvita.ui.components.LoadingState
 import com.zemmy.sigurvita.ui.components.MassDownloadDialog
-
-import androidx.compose.runtime.DisposableEffect
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-
-private fun formatReadingListItemTitle(title: String): String {
-    val trimmed = title.trim()
-    if (trimmed.isBlank()) return "Issue"
-    if (trimmed.all { it.isDigit() || it == '.' }) return "#$trimmed"
-    if (trimmed.startsWith("#") || trimmed.startsWith("Issue", ignoreCase = true) || trimmed.startsWith("Chapter", ignoreCase = true)) {
-        return trimmed
-    }
-    val firstToken = trimmed.substringBefore(" ")
-    if (firstToken.all { it.isDigit() || it == '.' }) {
-        val rest = trimmed.substringAfter(" ").trimStart('-', ':', '•', ' ').trim()
-        return if (rest.isNotBlank()) "#$firstToken - $rest" else "#$firstToken"
-    }
-    return trimmed
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -124,22 +96,13 @@ fun ReadingListScreen(
         }
     }
 
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                val currentListId = state.selectedListId
-                val currentTitle = state.selectedListTitle
-                if (currentListId != null && currentListId > 0 && currentTitle != null) {
-                    viewModel.loadListDetail(currentListId, currentTitle)
-                } else {
-                    viewModel.loadReadingLists()
-                }
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
+    com.zemmy.sigurvita.ui.util.OnResumeEffect {
+        val currentListId = state.selectedListId
+        val currentTitle = state.selectedListTitle
+        if (currentListId != null && currentListId > 0 && currentTitle != null) {
+            viewModel.loadListDetail(currentListId, currentTitle)
+        } else {
+            viewModel.loadReadingLists()
         }
     }
 
@@ -438,122 +401,43 @@ fun ReadingListScreen(
 
                     itemsIndexed(itemsList, key = { _, item -> item.id }) { index, item ->
                         val isNextUp = (index == nextUnreadIndex)
-                        val downloadTask = item.chapterId?.let { state.downloadTasks[it] }
-                        val isDownloaded = (downloadTask?.status == DownloadStatus.COMPLETED)
-
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    if (item.chapterId != null && item.chapterId > 0) {
-                                        onChapterClick(item.chapterId, item.seriesId, item.volumeId ?: 0, item.readingListId)
-                                    } else {
-                                        onSeriesClick(item.seriesId)
-                                    }
-                                },
-                            border = if (isNextUp) CardDefaults.outlinedCardBorder().copy(brush = SolidColor(MaterialTheme.colorScheme.primary)) else null,
-                            elevation = CardDefaults.cardElevation(defaultElevation = if (isNextUp) 4.dp else 2.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                CoverImage(
-                                    url = item.coverUrl,
-                                    modifier = Modifier
-                                        .width(60.dp)
-                                        .height(90.dp)
-                                )
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = formatReadingListItemTitle(item.title.ifBlank { item.seriesName }),
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                        modifier = Modifier.clickable { selectedItemForDetail = item }
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = item.seriesName,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.clickable { onSeriesClick(item.seriesId) }
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.clickable { viewModel.toggleItemRead(item) }
-                                    ) {
-                                        val showProgress = item.pages > 0 && item.pagesRead > 0 && item.pagesRead < item.pages && !item.isRead
-                                        if (showProgress) {
-                                            Text(
-                                                text = "${item.pagesRead} / ${item.pages} pages",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                        }
-                                        ReadStatusBadge(
-                                            isRead = item.isRead,
-                                            isNextUp = isNextUp,
-                                            onClick = { viewModel.toggleItemRead(item) }
-                                        )
-                                    }
-                                }
-
-                                if (item.chapterId != null && item.chapterId > 0) {
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier.padding(start = 8.dp)
-                                    ) {
-                                        when {
-                                            downloadTask != null && (downloadTask.status == DownloadStatus.DOWNLOADING || downloadTask.status == DownloadStatus.QUEUED) -> {
-                                                val progress = if (downloadTask.totalPages > 0) downloadTask.downloadedPages.toFloat() / downloadTask.totalPages else 0f
-                                                CircularProgressIndicator(
-                                                    progress = { progress },
-                                                    modifier = Modifier.size(38.dp),
-                                                    strokeWidth = 3.dp
-                                                )
-                                                IconButton(onClick = { viewModel.cancelDownload(item.chapterId) }) {
-                                                    Icon(
-                                                        Icons.Default.Close,
-                                                        contentDescription = "Cancel Download",
-                                                        tint = MaterialTheme.colorScheme.primary,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                }
-                                            }
-                                            downloadTask != null && downloadTask.status == DownloadStatus.FAILED -> {
-                                                IconButton(onClick = { viewModel.downloadChapter(item) }) {
-                                                    Icon(
-                                                        Icons.Default.ErrorOutline,
-                                                        contentDescription = "Download Failed - Tap to Retry",
-                                                        tint = MaterialTheme.colorScheme.error
-                                                    )
-                                                }
-                                            }
-                                            isDownloaded -> {
-                                                IconButton(onClick = { viewModel.deleteLocalChapter(item.chapterId) }) {
-                                                    Icon(
-                                                        Icons.Default.CheckCircle,
-                                                        contentDescription = "Downloaded",
-                                                        tint = MaterialTheme.colorScheme.primary
-                                                    )
-                                                }
-                                            }
-                                            else -> {
-                                                IconButton(onClick = { viewModel.downloadChapter(item) }) {
-                                                    Icon(
-                                                        Icons.Default.Download,
-                                                        contentDescription = "Download Chapter",
-                                                        tint = MaterialTheme.colorScheme.primary
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        val cid = item.chapterId
+                        val downloadTask = cid?.let { state.downloadTasks[it] }
+                        val issue = remember(item, isNextUp, downloadTask) {
+                            com.zemmy.sigurvita.ui.components.IssueUi(
+                                id = item.id,
+                                title = com.zemmy.sigurvita.core.util.formatChapterDisplayTitle(item.title.ifBlank { item.seriesName }, ""),
+                                subtitle = item.seriesName,
+                                coverUrl = item.coverUrl,
+                                pages = item.pages,
+                                pagesRead = item.pagesRead,
+                                isRead = item.isRead,
+                                isNextUp = isNextUp,
+                                download = downloadTask,
+                                isDownloaded = downloadTask?.status == DownloadStatus.COMPLETED,
+                                canDownload = cid != null && cid > 0
+                            )
                         }
+                        com.zemmy.sigurvita.ui.components.IssueRow(
+                            issue = issue,
+                            onOpen = {
+                                if (cid != null && cid > 0) {
+                                    onChapterClick(cid, item.seriesId, item.volumeId ?: 0, item.readingListId)
+                                } else {
+                                    onSeriesClick(item.seriesId)
+                                }
+                            },
+                            onTitleClick = { selectedItemForDetail = item },
+                            onSubtitleClick = { onSeriesClick(item.seriesId) },
+                            onToggleRead = { viewModel.toggleItemRead(item) },
+                            onDownload = { viewModel.downloadChapter(item) },
+                            onCancelDownload = { cid?.let { viewModel.cancelDownload(it) } },
+                            onDeleteLocal = { cid?.let { viewModel.deleteLocalChapter(it) } },
+                            onEraClick = {},
+                            onReadingListClick = {},
+                            coverSize = androidx.compose.ui.unit.DpSize(60.dp, 90.dp),
+                            contentPadding = 12.dp
+                        )
                     }
                 }
             } else if (state.filteredReadingLists.isNotEmpty()) {

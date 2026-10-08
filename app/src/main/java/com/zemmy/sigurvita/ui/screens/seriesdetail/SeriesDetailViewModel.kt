@@ -237,7 +237,7 @@ class SeriesDetailViewModel : ViewModel() {
 
                 val library = libraryRes.getOrNull()?.find { it.id == fetchedSeries?.libraryId }
                 val resolvedLibraryId = library?.id ?: fetchedSeries?.libraryId ?: 0
-                val isManga = library?.type == 0 || library?.name?.contains("manga", ignoreCase = true) == true
+                val isManga = library?.isManga == true
                 val resolvedLibraryName = when {
                     isManga -> "Manga"
                     library?.type == 1 || library?.name?.contains("comic", ignoreCase = true) == true -> "Comics"

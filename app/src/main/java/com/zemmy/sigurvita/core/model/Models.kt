@@ -64,7 +64,9 @@ data class Library(
     val name: String,
     val type: Int, // 0 = Manga, 1 = Comic, 2 = Book
     val coverUrl: String? = null
-)
+) {
+    val isManga: Boolean get() = type == 0 || name.contains("manga", ignoreCase = true)
+}
 
 data class Series(
     val id: Int,

@@ -76,7 +76,12 @@ app/src/main/java/com/zemmy/sigurvita/
 │   │   │   ├── dao/Daos.kt          # SeriesDao, ChapterDao, ReadingListDao, DownloadDao, MarkedPageDao
 │   │   │   └── entity/Entities.kt   # 5 entities
 │   │   └── repository/
-│   │       ├── Repositories.kt      # Auth, Library, ReadingList, Series, Reader, Download repositories
+│   │       ├── AuthRepository.kt    # Authentication and connection verification repository
+│   │       ├── LibraryRepository.kt # Libraries and series listing repository
+│   │       ├── ReadingListRepository.kt # Reading lists and items repository
+│   │       ├── SeriesRepository.kt  # Series details, volumes, chapters, and read-state repository
+│   │       ├── ReaderRepository.kt  # Reader pages and progress sync repository
+│   │       ├── DownloadRepository.kt # Download queue and offline storage management repository
 │   │       ├── BubbleRepository.kt  # Per-page detection cache, bubble crop + mask cut-out for the magnifier
 │   │       └── MarkedPageRepository.kt
 │   ├── datastore/UserPreferencesRepository.kt  # Server config, reader/download settings, lists of IDs
@@ -86,14 +91,17 @@ app/src/main/java/com/zemmy/sigurvita/
 │   │   ├── BubbleDetectorConfig.kt  # Confidence / IoU / max detections / mask threshold defaults
 │   │   ├── PageBitmapLoader.kt      # Decodes a page (local file or Coil) to a bitmap for inference/crops
 │   │   └── YoloSegDecoder.kt        # Candidate filtering, NMS, mask computation, coordinate mapping
-│   ├── model/Models.kt              # Domain models and enums (incl. bubble/letterbox models)
+│   ├── model/Models.kt              # Domain models and enums (incl. Library.isManga, bubble/letterbox models)
 │   └── util/NaturalSort.kt          # naturalCompare + chapter-number/title/era parsing helpers
 └── ui/
     ├── components/
-    │   ├── Components.kt            # CoverImage, SeriesCard, LoadingState, ErrorState
+    │   ├── Components.kt            # CoverImage, SeriesCard, LoadingState, ErrorState, ReadStatusBadge
+    │   ├── DownloadStatusButton.kt  # Reusable download status and progress action button
     │   ├── FolderPickerDialog.kt    # java.io.File based folder browser
+    │   ├── IssueCards.kt            # Reusable IssueRow, IssueGridCard, and IssueUi models
     │   ├── IssueDetailBottomSheet.kt # Per-issue details and read/download/delete actions
     │   ├── MassDownloadDialog.kt    # Bulk-download count/unread-only dialog
+    │   ├── ReadingListBadges.kt     # Shared reading list era and part badges (`ListBadge`, `ReadingListBadgeRow`)
     │   └── SeriesInfoBottomSheet.kt # Detailed series metadata & file info bottom sheet
     ├── navigation/
     │   ├── NavGraph.kt              # NavHost, navigation drawer, drawer data loading
@@ -109,6 +117,8 @@ app/src/main/java/com/zemmy/sigurvita/
     │   ├── readinglist/             # ReadingListScreen, ReadingListViewModel
     │   ├── seriesdetail/            # SeriesDetailScreen, SeriesDetailViewModel
     │   └── settings/                # SettingsScreen, SettingsViewModel
+    ├── util/
+    │   └── OnResumeEffect.kt        # Lifecycle-aware ON_RESUME effect helper
     └── theme/                       # Color.kt, Theme.kt, Type.kt
 ```
 

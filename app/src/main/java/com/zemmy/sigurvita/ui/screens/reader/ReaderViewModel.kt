@@ -168,7 +168,7 @@ class ReaderViewModel : ViewModel() {
                         val library = libraryRes.getOrNull()?.find { it.id == series.libraryId }
                         if (library != null) {
                             cachedLibraryId = library.id
-                            isManga = library.type == 0 || library.name.lowercase().contains("manga")
+                            isManga = library.isManga
                             defaultMode = if (isManga) ReadingMode.RTL else ReadingMode.LTR
                         }
                     }
