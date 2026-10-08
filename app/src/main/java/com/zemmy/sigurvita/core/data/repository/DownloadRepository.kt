@@ -1,31 +1,28 @@
 package com.zemmy.sigurvita.core.data.repository
 
 import android.content.Context
+import android.util.Log
 import androidx.work.Constraints
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
-import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.data.db.SigurvitaDatabase
 import com.zemmy.sigurvita.core.data.db.entity.DownloadTaskEntity
-import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import com.zemmy.sigurvita.core.download.DownloadWorker
 import com.zemmy.sigurvita.core.model.DownloadStatus
 import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.core.model.Series
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
 
 class DownloadRepository(
     private val database: SigurvitaDatabase,
-    private val context: Context,
-    private val preferencesRepository: UserPreferencesRepository = SigurvitaApp.instance.userPreferencesRepository
+    private val context: Context
 ) {
     val downloadedSeriesFlow: Flow<List<Series>> = database.downloadDao().getAllDownloads().map { entities ->
         entities.filter { it.status == DownloadStatus.COMPLETED && it.seriesId > 0 }
@@ -137,12 +134,13 @@ class DownloadRepository(
         )
     }
 
-    private suspend fun cleanupEmptyDirectories(file: File?) {
+    private fun cleanupEmptyDirectories(file: File?) {
         if (file == null) return
         try {
             var currentDir: File? = if (file.isDirectory) file.parentFile else file.parentFile
-            val settings = preferencesRepository.readerSettingsFlow.first()
-            val rootPath = settings.downloadPath
+            val safeAppDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
+                ?: File(context.filesDir, "downloads")
+            val rootPath = safeAppDir.absolutePath
 
             while (currentDir != null && currentDir.exists()) {
                 if (currentDir.absolutePath == rootPath || currentDir.parentFile == null) {
@@ -196,5 +194,45 @@ class DownloadRepository(
 
         database.downloadDao().deleteDownloadTask(chapterId)
         database.chapterDao().updateDownloadStatus(chapterId, false, null)
+    }
+
+    suspend fun validateExternalDeletions() = withContext(Dispatchers.IO) {
+        try {
+            val tasks = database.downloadDao().getAllDownloadsList()
+            for (task in tasks) {
+                val path = task.localPath
+                var isFileValid = false
+
+                if (!path.isNullOrBlank()) {
+                    val file = File(path)
+                    if (file.exists()) {
+                        if (file.isFile) {
+                            isFileValid = file.length() > 0L
+                        } else if (file.isDirectory) {
+                            val hasFiles = file.walkTopDown().any { f ->
+                                f.isFile && f.length() > 0L && !f.name.startsWith(".")
+                            }
+                            isFileValid = hasFiles
+                        }
+                    }
+                }
+
+                if (!isFileValid && (task.status == DownloadStatus.COMPLETED || !path.isNullOrBlank())) {
+                    database.downloadDao().deleteDownloadTask(task.chapterId)
+                    database.chapterDao().updateDownloadStatus(task.chapterId, false, null)
+                    try {
+                        val cbzCacheDir = File(context.cacheDir, "cbz_extracted/${task.chapterId}")
+                        if (cbzCacheDir.exists()) {
+                            cbzCacheDir.deleteRecursively()
+                        }
+                    } catch (_: Exception) {}
+                    if (!path.isNullOrBlank()) {
+                        cleanupEmptyDirectories(File(path))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DownloadRepository", "Error validating external file deletions", e)
+        }
     }
 }

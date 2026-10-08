@@ -74,7 +74,6 @@ class DownloadWorker(
         }
 
         val config = userPreferencesRepository.serverConfigFlow.first()
-        val settings = userPreferencesRepository.readerSettingsFlow.first()
 
         if (config.serverUrl.isBlank() || (config.apiKey.isBlank() && config.jwtToken.isBlank())) {
             val task = database.downloadDao().getDownloadByChapterId(chapterId)
@@ -104,35 +103,11 @@ class DownloadWorker(
         val seriesName = sanitizeFileName(rawSeriesName.ifBlank { "Series" })
         val title = sanitizeFileName(rawTitle)
 
-        val customPath = settings.downloadPath
         val safeAppDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             ?: File(context.filesDir, "downloads")
 
-        val rootDir = if (customPath.isNotBlank()) {
-            val customFile = File(customPath)
-            if (customFile.exists() && customFile.canWrite()) {
-                customFile
-            } else {
-                try {
-                    if (customFile.mkdirs() && customFile.canWrite()) customFile else safeAppDir
-                } catch (_: Exception) {
-                    safeAppDir
-                }
-            }
-        } else {
-            safeAppDir
-        }
-
-        var targetFolder = File(rootDir, "$libraryName/$seriesName")
-        try {
-            if (!targetFolder.exists()) {
-                targetFolder.mkdirs()
-            }
-        } catch (_: Exception) {}
-
-        if (!targetFolder.exists() || !targetFolder.canWrite()) {
-            targetFolder = File(safeAppDir, "$libraryName/$seriesName")
-            targetFolder.mkdirs()
+        val targetFolder = File(safeAppDir, "$libraryName/$seriesName").apply {
+            mkdirs()
         }
 
         // ═══════════════════════════════════════════════════════════════════
@@ -172,7 +147,7 @@ class DownloadWorker(
             val request = Request.Builder().url(downloadUrl).build()
 
             val response = downloadClient.newCall(request).execute()
-            try {
+            response.use { response ->
                 if (!response.isSuccessful) {
                     Log.w(TAG, "Native download returned HTTP ${response.code} for chapter $chapterId")
                     return null
@@ -236,8 +211,6 @@ class DownloadWorker(
                 } finally {
                     tempFile.delete()
                 }
-            } finally {
-                response.close()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Native download exception for chapter $chapterId", e)
@@ -285,7 +258,7 @@ class DownloadWorker(
                 val request = Request.Builder().url(imageUrl).build()
 
                 val response = downloadClient.newCall(request).execute()
-                try {
+                response.use { response ->
                     val responseBody = response.body
                     if (response.isSuccessful && responseBody != null) {
                         val tempFile = File.createTempFile("page_dl_", ".tmp", context.cacheDir)
@@ -316,8 +289,6 @@ class DownloadWorker(
                         }
                         return Result.failure()
                     }
-                } finally {
-                    response.close()
                 }
 
                 database.downloadDao().updateProgress(chapterId, pageIdx + 1, DownloadStatus.DOWNLOADING)

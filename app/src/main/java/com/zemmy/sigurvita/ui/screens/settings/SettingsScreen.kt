@@ -8,14 +8,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -23,7 +21,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -44,9 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
-import com.zemmy.sigurvita.core.model.DownloadLocation
 import com.zemmy.sigurvita.core.model.FitMode
-import com.zemmy.sigurvita.ui.components.FolderPickerDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,18 +51,6 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = viewModel()
 ) {
     val settings by viewModel.settings.collectAsState()
-    var showFolderPicker by remember { mutableStateOf(false) }
-
-    if (showFolderPicker) {
-        FolderPickerDialog(
-            initialPath = settings.downloadPath,
-            onDismiss = { showFolderPicker = false },
-            onFolderSelected = { path ->
-                viewModel.updateDownloadPath(path)
-                showFolderPicker = false
-            }
-        )
-    }
 
     Scaffold(
         topBar = {
@@ -229,43 +212,6 @@ fun SettingsScreen(
             )
 
             Spacer(modifier = Modifier.height(8.dp))
-
-            Text(stringResource(R.string.default_storage_folder), style = MaterialTheme.typography.bodyLarge)
-            Row(modifier = Modifier.padding(vertical = 8.dp)) {
-                DownloadLocation.entries.forEach { loc ->
-                    FilterChip(
-                        selected = (settings.downloadLocation == loc),
-                        onClick = { viewModel.updateDownloadLocation(loc) },
-                        label = { Text(stringResource(loc.stringRes)) },
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                }
-            }
-
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = settings.downloadPath,
-                    onValueChange = { viewModel.updateDownloadPath(it) },
-                    label = { Text(stringResource(R.string.custom_download_folder_path)) },
-                    placeholder = { Text(stringResource(R.string.default_documents_sigurvita)) },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                IconButton(onClick = { showFolderPicker = true }) {
-                    Icon(
-                        Icons.Default.FolderOpen,
-                        contentDescription = stringResource(R.string.browse_folder),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
 
             Spacer(modifier = Modifier.height(16.dp))
 

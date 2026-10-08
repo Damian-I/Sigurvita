@@ -1,7 +1,6 @@
 package com.zemmy.sigurvita.core.datastore
 
 import android.content.Context
-import android.os.Environment
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -12,8 +11,6 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
-
-import com.zemmy.sigurvita.core.model.DownloadLocation
 import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
@@ -25,7 +22,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import java.io.File
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "sigurvita_settings")
 
@@ -45,9 +41,6 @@ class UserPreferencesRepository(private val context: Context) {
         val VOLUME_KEY_INVERT = booleanPreferencesKey("volume_key_invert")
         val TOUCH_EDGE_NAV = booleanPreferencesKey("touch_edge_nav")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
-        val DOWNLOAD_LOCATION = stringPreferencesKey("download_location")
-
-        val DOWNLOAD_PATH = stringPreferencesKey("download_path")
         val AUTO_DELETE_OPTION = stringPreferencesKey("auto_delete_option")
         val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")
         val SPEECH_BUBBLES_ENABLED = booleanPreferencesKey("speech_bubbles_enabled")
@@ -102,18 +95,6 @@ class UserPreferencesRepository(private val context: Context) {
                 AutoDeleteOption.NEVER
             }
 
-            val locationStr = preferences[Keys.DOWNLOAD_LOCATION]
-            val location = try {
-                if (locationStr != null) DownloadLocation.valueOf(locationStr) else DownloadLocation.DOCUMENTS
-            } catch (_: Exception) {
-                DownloadLocation.DOCUMENTS
-            }
-
-
-            val defaultPath = File(Environment.getExternalStorageDirectory(), location.folderName).absolutePath
-            val rawPath = preferences[Keys.DOWNLOAD_PATH] ?: ""
-            val downloadPath = rawPath.ifBlank { defaultPath }
-
             val incognito = preferences[Keys.INCOGNITO_MODE] ?: false
             val speechBubbles = preferences[Keys.SPEECH_BUBBLES_ENABLED] ?: true
             val bubbleConfidence = preferences[Keys.SPEECH_BUBBLE_CONFIDENCE] ?: 0.10f
@@ -125,9 +106,6 @@ class UserPreferencesRepository(private val context: Context) {
                 volumeKeyInvert = preferences[Keys.VOLUME_KEY_INVERT] ?: false,
                 touchEdgeNavigationEnabled = preferences[Keys.TOUCH_EDGE_NAV] ?: true,
                 keepScreenOn = preferences[Keys.KEEP_SCREEN_ON] ?: true,
-                downloadLocation = location,
-
-                downloadPath = downloadPath,
                 autoDeleteOption = autoDeleteOption,
                 isIncognitoMode = incognito,
                 speechBubblesEnabled = speechBubbles,
@@ -213,20 +191,7 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
-    suspend fun updateDownloadLocation(location: DownloadLocation) {
-        val targetPath = File(Environment.getExternalStorageDirectory(), location.folderName).absolutePath
-        context.dataStore.edit { preferences ->
-            preferences[Keys.DOWNLOAD_LOCATION] = location.name
-            preferences[Keys.DOWNLOAD_PATH] = targetPath
-        }
-    }
 
-
-    suspend fun updateDownloadPath(path: String) {
-        context.dataStore.edit { preferences ->
-            preferences[Keys.DOWNLOAD_PATH] = path.trim()
-        }
-    }
 
     suspend fun updateAutoDeleteOption(option: AutoDeleteOption) {
         context.dataStore.edit { preferences ->

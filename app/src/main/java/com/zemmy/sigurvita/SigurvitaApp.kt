@@ -15,6 +15,9 @@ import com.zemmy.sigurvita.core.data.repository.ReaderRepository
 import com.zemmy.sigurvita.core.data.repository.ReadingListRepository
 import com.zemmy.sigurvita.core.data.repository.SeriesRepository
 import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class SigurvitaApp : Application(), ImageLoaderFactory {
 
@@ -51,7 +54,7 @@ class SigurvitaApp : Application(), ImageLoaderFactory {
     }
 
     val downloadRepository: DownloadRepository by lazy {
-        DownloadRepository(database, this, userPreferencesRepository)
+        DownloadRepository(database, this)
     }
 
     val markedPageRepository: com.zemmy.sigurvita.core.data.repository.MarkedPageRepository by lazy {
@@ -67,6 +70,9 @@ class SigurvitaApp : Application(), ImageLoaderFactory {
         instance = this
         database = SigurvitaDatabase.getDatabase(this)
         userPreferencesRepository = UserPreferencesRepository(this)
+        CoroutineScope(Dispatchers.IO).launch {
+            downloadRepository.validateExternalDeletions()
+        }
     }
 
     override fun newImageLoader(): ImageLoader {

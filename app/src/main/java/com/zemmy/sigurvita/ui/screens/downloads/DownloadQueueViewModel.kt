@@ -15,6 +15,16 @@ class DownloadQueueViewModel : ViewModel() {
     private val app = SigurvitaApp.instance
     private val repository = app.downloadRepository
 
+    init {
+        validateDownloads()
+    }
+
+    fun validateDownloads() {
+        viewModelScope.launch {
+            repository.validateExternalDeletions()
+        }
+    }
+
     val downloads: StateFlow<List<DownloadTask>> = repository.downloadsFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),

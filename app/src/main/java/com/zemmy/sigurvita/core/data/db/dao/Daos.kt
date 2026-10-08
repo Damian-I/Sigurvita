@@ -15,9 +15,6 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface SeriesDao {
     @Query("SELECT * FROM cached_series ORDER BY name ASC")
-    fun getAllSeries(): Flow<List<CachedSeriesEntity>>
-
-    @Query("SELECT * FROM cached_series ORDER BY name ASC")
     fun getAllSeriesList(): List<CachedSeriesEntity>
 
     @Query("SELECT * FROM cached_series WHERE id = :seriesId")
@@ -25,16 +22,10 @@ interface SeriesDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertSeries(series: List<CachedSeriesEntity>)
-
-    @Query("DELETE FROM cached_series")
-    fun clearAll(): Int
 }
 
 @Dao
 interface ChapterDao {
-    @Query("SELECT * FROM cached_chapters WHERE seriesId = :seriesId ORDER BY id ASC")
-    fun getChaptersForSeries(seriesId: Int): Flow<List<CachedChapterEntity>>
-
     @Query("SELECT * FROM cached_chapters WHERE id = :chapterId")
     fun getChapterById(chapterId: Int): CachedChapterEntity?
 
@@ -47,9 +38,6 @@ interface ChapterDao {
 
 @Dao
 interface ReadingListDao {
-    @Query("SELECT * FROM cached_reading_lists ORDER BY title ASC")
-    fun getAllReadingLists(): Flow<List<CachedReadingListEntity>>
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertReadingLists(lists: List<CachedReadingListEntity>)
 }
@@ -58,6 +46,9 @@ interface ReadingListDao {
 interface DownloadDao {
     @Query("SELECT * FROM download_tasks ORDER BY createdAt DESC")
     fun getAllDownloads(): Flow<List<DownloadTaskEntity>>
+
+    @Query("SELECT * FROM download_tasks")
+    fun getAllDownloadsList(): List<DownloadTaskEntity>
 
     @Query("SELECT * FROM download_tasks WHERE chapterId = :chapterId")
     fun getDownloadByChapterId(chapterId: Int): DownloadTaskEntity?

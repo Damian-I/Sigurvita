@@ -15,11 +15,6 @@ enum class FitMode(@param:StringRes val stringRes: Int) {
     FIT_SCREEN(R.string.fit_mode_screen)
 }
 
-enum class DownloadLocation(@param:StringRes val stringRes: Int, val folderName: String) {
-    DOCUMENTS(R.string.download_location_documents, "Documents/Sigurvita"),
-    DOWNLOADS(R.string.download_location_downloads, "Download/Sigurvita")
-}
-
 enum class AutoDeleteOption(@param:StringRes val stringRes: Int) {
     NEVER(R.string.auto_delete_never),
     IMMEDIATELY(R.string.auto_delete_immediately),
@@ -43,8 +38,6 @@ data class ReaderSettings(
     val volumeKeyInvert: Boolean = false,
     val touchEdgeNavigationEnabled: Boolean = true,
     val keepScreenOn: Boolean = true,
-    val downloadLocation: DownloadLocation = DownloadLocation.DOCUMENTS,
-    val downloadPath: String = "",
     val autoDeleteOption: AutoDeleteOption = AutoDeleteOption.NEVER,
     val isIncognitoMode: Boolean = false,
     val speechBubblesEnabled: Boolean = true,
