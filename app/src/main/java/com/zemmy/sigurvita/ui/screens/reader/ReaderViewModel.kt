@@ -10,6 +10,7 @@ import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
 import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
+import com.zemmy.sigurvita.core.util.sortBubblesForReading
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -254,8 +255,10 @@ class ReaderViewModel : ViewModel() {
         bubbleDetectionJobs[pageIdx] = viewModelScope.launch {
             val pageBubbles = app.bubbleRepository.getPageBubbles(chapterId, page, state.settings.speechBubbleConfidence)
             if (pageBubbles != null) {
+                val currentReadingMode = _uiState.value.settings.readingMode
+                val isRtl = (currentReadingMode == ReadingMode.RTL)
                 val sortedBubbles = pageBubbles.copy(
-                    bubbles = sortBubblesForReading(pageBubbles.bubbles, state.settings.readingMode)
+                    bubbles = sortBubblesForReading(pageBubbles.bubbles, isRtl)
                 )
                 _uiState.value = _uiState.value.copy(
                     bubblesByPage = _uiState.value.bubblesByPage + (pageIdx to sortedBubbles)
@@ -598,7 +601,14 @@ class ReaderViewModel : ViewModel() {
     fun updateReadingMode(mode: ReadingMode) {
         sessionReadingModeOverride = mode
         val currentSettings = _uiState.value.settings
-        _uiState.value = _uiState.value.copy(settings = currentSettings.copy(readingMode = mode))
+        val isRtl = (mode == ReadingMode.RTL)
+        val reSortedBubblesByPage = _uiState.value.bubblesByPage.mapValues { (_, pageBubbles) ->
+            pageBubbles.copy(bubbles = sortBubblesForReading(pageBubbles.bubbles, isRtl))
+        }
+        _uiState.value = _uiState.value.copy(
+            settings = currentSettings.copy(readingMode = mode),
+            bubblesByPage = reSortedBubblesByPage
+        )
     }
 
     fun updateFitMode(mode: FitMode) {
@@ -625,95 +635,6 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
-    private data class PanelCluster(
-        val bubbles: MutableList<com.zemmy.sigurvita.core.model.DetectedBubble> = mutableListOf()
-    ) {
-        val minTop: Float get() = bubbles.minOf { it.box.top }
-        val minLeft: Float get() = bubbles.minOf { it.box.left }
-        val maxRight: Float get() = bubbles.maxOf { it.box.right }
-        val maxBottom: Float get() = bubbles.maxOf { it.box.bottom }
-    }
-
-    private fun sortBubblesForReading(
-        bubbles: List<com.zemmy.sigurvita.core.model.DetectedBubble>,
-        readingMode: ReadingMode
-    ): List<com.zemmy.sigurvita.core.model.DetectedBubble> {
-        if (bubbles.size <= 1) return bubbles
-
-        val isRtl = (readingMode == ReadingMode.RTL)
-        val maxGutterX = 0.20f
-        val maxGutterY = 0.20f
-
-        val parent = IntArray(bubbles.size) { it }
-        fun find(i: Int): Int {
-            var root = i
-            while (root != parent[root]) root = parent[root]
-            var curr = i
-            while (curr != root) {
-                val nxt = parent[curr]
-                parent[curr] = root
-                curr = nxt
-            }
-            return root
-        }
-        fun union(i: Int, j: Int) {
-            val rootI = find(i)
-            val rootJ = find(j)
-            if (rootI != rootJ) parent[rootI] = rootJ
-        }
-
-        for (i in bubbles.indices) {
-            val b1 = bubbles[i].box
-            for (j in i + 1 until bubbles.size) {
-                val b2 = bubbles[j].box
-                val gapX = maxOf(0f, maxOf(b1.left - b2.right, b2.left - b1.right))
-                val gapY = maxOf(0f, maxOf(b1.top - b2.bottom, b2.top - b1.bottom))
-
-                if (gapX <= maxGutterX && gapY <= maxGutterY) {
-                    union(i, j)
-                }
-            }
-        }
-
-        val clusterMap = mutableMapOf<Int, PanelCluster>()
-        for (i in bubbles.indices) {
-            val root = find(i)
-            clusterMap.getOrPut(root) { PanelCluster() }.bubbles.add(bubbles[i])
-        }
-
-        val sortedPanels = clusterMap.values.sortedWith { p1, p2 ->
-            val yDiff = p1.minTop - p2.minTop
-            if (kotlin.math.abs(yDiff) > 0.12f) {
-                yDiff.compareTo(0f)
-            } else {
-                if (isRtl) {
-                    p2.minLeft.compareTo(p1.minLeft)
-                } else {
-                    p1.minLeft.compareTo(p2.minLeft)
-                }
-            }
-        }
-
-        val result = mutableListOf<com.zemmy.sigurvita.core.model.DetectedBubble>()
-        for (panel in sortedPanels) {
-            val sortedBubblesInPanel = panel.bubbles.sortedWith { a, b ->
-                val yDiff = a.box.top - b.box.top
-                if (kotlin.math.abs(yDiff) > 0.08f) {
-                    yDiff.compareTo(0f)
-                } else {
-                    if (isRtl) {
-                        b.box.left.compareTo(a.box.left)
-                    } else {
-                        a.box.left.compareTo(b.box.left)
-                    }
-                }
-            }
-            result.addAll(sortedBubblesInPanel)
-        }
-
-        return result
-    }
-
     fun handleVolumeKey(isVolumeUp: Boolean): Boolean {
         if (!_uiState.value.settings.volumeKeyNavigationEnabled) return false
 
@@ -725,8 +646,7 @@ class ReaderViewModel : ViewModel() {
         if (currentMag != null) {
             val pageIdx = state.currentPageIndex
             val pageBubbles = state.bubblesByPage[pageIdx]
-            val unsortedBubbles = pageBubbles?.bubbles ?: emptyList()
-            val bubbles = sortBubblesForReading(unsortedBubbles, state.settings.readingMode)
+            val bubbles = pageBubbles?.bubbles ?: emptyList()
             val currentIdx = bubbles.indexOfFirst { it.id == currentMag.bubbleId }
 
             if (isNext) {
@@ -741,8 +661,7 @@ class ReaderViewModel : ViewModel() {
                         onPageChanged(nextPageIndex)
                         val nextPageBubbles = _uiState.value.bubblesByPage[nextPageIndex]
                         if (nextPageBubbles != null && nextPageBubbles.bubbles.isNotEmpty()) {
-                            val sortedNext = sortBubblesForReading(nextPageBubbles.bubbles, state.settings.readingMode)
-                            magnifyBubbleObject(nextPageIndex, sortedNext.first(), nextPageBubbles)
+                            magnifyBubbleObject(nextPageIndex, nextPageBubbles.bubbles.first(), nextPageBubbles)
                         }
                     } else {
                         nextPage()
@@ -761,8 +680,7 @@ class ReaderViewModel : ViewModel() {
                         onPageChanged(prevPageIndex)
                         val prevPageBubbles = _uiState.value.bubblesByPage[prevPageIndex]
                         if (prevPageBubbles != null && prevPageBubbles.bubbles.isNotEmpty()) {
-                            val sortedPrev = sortBubblesForReading(prevPageBubbles.bubbles, state.settings.readingMode)
-                            magnifyBubbleObject(prevPageIndex, sortedPrev.last(), prevPageBubbles)
+                            magnifyBubbleObject(prevPageIndex, prevPageBubbles.bubbles.last(), prevPageBubbles)
                         }
                     } else {
                         previousPage()
