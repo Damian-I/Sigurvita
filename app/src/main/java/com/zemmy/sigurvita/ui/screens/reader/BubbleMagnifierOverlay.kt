@@ -30,7 +30,7 @@ import com.zemmy.sigurvita.core.model.MagnifiedBubble
 @Composable
 fun BubbleMagnifierOverlay(
     magnifiedBubble: MagnifiedBubble,
-    speechBubblesEnabled: Boolean,
+    speechBubbleBoxesEnabled: Boolean,
     onDismiss: () -> Unit
 ) {
     BackHandler(enabled = true) {
@@ -48,7 +48,7 @@ fun BubbleMagnifierOverlay(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (speechBubblesEnabled) Color.Black.copy(alpha = 0.55f) else Color.Transparent)
+            .background(Color.Black.copy(alpha = 0.55f))
             .pointerInput(Unit) {
                 detectTapGestures(onTap = { onDismiss() })
             }
@@ -84,10 +84,10 @@ fun BubbleMagnifierOverlay(
                     scaleX = animScale,
                     scaleY = animScale
                 )
-                .shadow(elevation = if (speechBubblesEnabled) 16.dp else 4.dp, shape = RoundedCornerShape(10.dp)),
+                .shadow(elevation = if (speechBubbleBoxesEnabled) 16.dp else 8.dp, shape = RoundedCornerShape(10.dp)),
             shape = RoundedCornerShape(10.dp),
             color = Color.Transparent,
-            border = if (speechBubblesEnabled) BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)) else null
+            border = if (speechBubbleBoxesEnabled) BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)) else null
         ) {
             Image(
                 bitmap = magnifiedBubble.bitmap.asImageBitmap(),

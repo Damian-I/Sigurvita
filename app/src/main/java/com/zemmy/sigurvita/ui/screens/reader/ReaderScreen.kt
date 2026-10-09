@@ -179,14 +179,15 @@ fun ReaderScreen(
                 fitMode = state.settings.fitMode,
                 touchEdgeNavigationEnabled = state.settings.touchEdgeNavigationEnabled,
                 bubblesByPage = state.bubblesByPage,
-                speechBubblesEnabled = state.settings.speechBubblesEnabled,
+                speechBubbleDetectionEnabled = state.settings.speechBubbleDetectionEnabled,
+                speechBubbleBoxesEnabled = state.settings.speechBubbleBoxesEnabled,
                 onBubbleLongPress = { pageIdx, bubbleId, centerPx, bubbleSizePx -> viewModel.onBubbleLongPress(pageIdx, bubbleId, centerPx, bubbleSizePx) }
             )
 
             state.magnifiedBubble?.let { magBubble ->
                 BubbleMagnifierOverlay(
                     magnifiedBubble = magBubble,
-                    speechBubblesEnabled = state.settings.speechBubblesEnabled,
+                    speechBubbleBoxesEnabled = state.settings.speechBubbleBoxesEnabled,
                     onDismiss = { viewModel.dismissBubble() }
                 )
             }
@@ -230,7 +231,7 @@ fun ReaderScreen(
                                 }
                             }
                             val currentBubbles = state.bubblesByPage[state.currentPageIndex]
-                            if (state.settings.speechBubblesEnabled && currentBubbles != null) {
+                            if (state.settings.speechBubbleDetectionEnabled && currentBubbles != null) {
                                 Surface(
                                     color = Color(0xFF333333),
                                     shape = RoundedCornerShape(12.dp)
@@ -483,26 +484,52 @@ fun ReaderScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Speech Bubble Boxes", style = MaterialTheme.typography.bodyLarge, color = Color.White)
-                                Text("Outline detected speech bubbles on page", style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                                Text(stringResource(R.string.speech_bubble_detection), style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                                Text(stringResource(R.string.speech_bubble_detection_subtitle), style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
                             }
                             Switch(
-                                checked = state.settings.speechBubblesEnabled,
-                                onCheckedChange = { viewModel.updateSpeechBubblesEnabled(it) }
+                                checked = state.settings.speechBubbleDetectionEnabled,
+                                onCheckedChange = { viewModel.updateSpeechBubbleDetectionEnabled(it) }
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
-                        var sliderConfidence by remember(state.settings.speechBubbleConfidence) { mutableFloatStateOf(state.settings.speechBubbleConfidence) }
-                        Text("Detection Confidence: ${(sliderConfidence * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge, color = Color.White)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Slider(
-                            value = sliderConfidence,
-                            onValueChange = { sliderConfidence = it },
-                            onValueChangeFinished = { viewModel.updateSpeechBubbleConfidence(sliderConfidence) },
-                            valueRange = 0.02f..0.50f,
-                            steps = 48
-                        )
+                        if (state.settings.speechBubbleDetectionEnabled) {
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(stringResource(R.string.speech_bubble_boxes), style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                                    Text(stringResource(R.string.speech_bubble_boxes_subtitle), style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                                }
+                                Switch(
+                                    checked = state.settings.speechBubbleBoxesEnabled,
+                                    onCheckedChange = { viewModel.updateSpeechBubbleBoxesEnabled(it) }
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            var sliderConfidence by remember(state.settings.speechBubbleConfidence) { mutableFloatStateOf(state.settings.speechBubbleConfidence) }
+                            Text(
+                                stringResource(R.string.detection_confidence, (sliderConfidence * 100).toInt()),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Color.White,
+                                modifier = Modifier.padding(start = 16.dp)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Slider(
+                                value = sliderConfidence,
+                                onValueChange = { sliderConfidence = it },
+                                onValueChangeFinished = { viewModel.updateSpeechBubbleConfidence(sliderConfidence) },
+                                valueRange = 0.02f..0.50f,
+                                steps = 48,
+                                modifier = Modifier.padding(start = 16.dp)
+                            )
+                        }
 
                         Spacer(modifier = Modifier.height(24.dp))
                     }

@@ -60,9 +60,15 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
-    fun updateSpeechBubblesEnabled(enabled: Boolean) {
+    fun updateSpeechBubbleDetectionEnabled(enabled: Boolean) {
         viewModelScope.launch {
-            preferencesRepository.updateSpeechBubblesEnabled(enabled)
+            preferencesRepository.updateSpeechBubbleDetectionEnabled(enabled)
+        }
+    }
+
+    fun updateSpeechBubbleBoxesEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updateSpeechBubbleBoxesEnabled(enabled)
         }
     }
 

@@ -178,30 +178,59 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Speech Bubble Boxes", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.speech_bubble_detection), style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Outline detected speech bubbles on page",
+                        stringResource(R.string.speech_bubble_detection_subtitle),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Switch(
-                    checked = settings.speechBubblesEnabled,
-                    onCheckedChange = { viewModel.updateSpeechBubblesEnabled(it) }
+                    checked = settings.speechBubbleDetectionEnabled,
+                    onCheckedChange = { viewModel.updateSpeechBubbleDetectionEnabled(it) }
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-            var sliderConfidence by remember(settings.speechBubbleConfidence) { mutableFloatStateOf(settings.speechBubbleConfidence) }
-            Text("Detection Confidence: ${(sliderConfidence * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge)
-            Spacer(modifier = Modifier.height(4.dp))
-            Slider(
-                value = sliderConfidence,
-                onValueChange = { sliderConfidence = it },
-                onValueChangeFinished = { viewModel.updateSpeechBubbleConfidence(sliderConfidence) },
-                valueRange = 0.02f..0.50f,
-                steps = 48
-            )
+            if (settings.speechBubbleDetectionEnabled) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.speech_bubble_boxes), style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            stringResource(R.string.speech_bubble_boxes_subtitle),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = settings.speechBubbleBoxesEnabled,
+                        onCheckedChange = { viewModel.updateSpeechBubbleBoxesEnabled(it) }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                var sliderConfidence by remember(settings.speechBubbleConfidence) { mutableFloatStateOf(settings.speechBubbleConfidence) }
+                Text(
+                    stringResource(R.string.detection_confidence, (sliderConfidence * 100).toInt()),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(start = 16.dp)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Slider(
+                    value = sliderConfidence,
+                    onValueChange = { sliderConfidence = it },
+                    onValueChangeFinished = { viewModel.updateSpeechBubbleConfidence(sliderConfidence) },
+                    valueRange = 0.02f..0.50f,
+                    steps = 48,
+                    modifier = Modifier.padding(start = 16.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
 

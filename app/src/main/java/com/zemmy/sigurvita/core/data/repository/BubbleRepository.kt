@@ -164,14 +164,14 @@ class BubbleRepository(
 
     /**
      * Crops the bubble region out of the page at high resolution for the magnifier overlay.
-     * Optionally draws the smooth outline if [speechBubblesEnabled] is true.
+     * Optionally draws the smooth outline if [speechBubbleBoxesEnabled] is true.
      */
     suspend fun cropBubble(
         context: Context,
         page: ReaderPage,
         bubble: DetectedBubble,
         letterbox: LetterboxParams,
-        speechBubblesEnabled: Boolean
+        speechBubbleBoxesEnabled: Boolean
     ): Bitmap? = withContext(Dispatchers.IO) {
         try {
             val fullBitmap = PageBitmapLoader.decodeForInference(context, page, targetSize = 2000) ?: return@withContext null
@@ -202,7 +202,7 @@ class BubbleRepository(
             if (cropW <= 0 || cropH <= 0) return@withContext null
 
             val crop = Bitmap.createBitmap(fullBitmap, left, top, cropW, cropH)
-            if (speechBubblesEnabled) {
+            if (speechBubbleBoxesEnabled) {
                 return@withContext applyBubbleOutline(crop, left, top, W, H, normPoints)
             } else {
                 return@withContext crop

@@ -107,6 +107,11 @@
     <string name="touch_edge_nav_subtitle">Tap left or right edges of the screen to navigate pages</string>
     <string name="keep_screen_on">Keep Screen On</string>
     <string name="keep_screen_on_subtitle">Prevent display timeout while reading</string>
+    <string name="speech_bubble_detection">Speech Bubble Detection</string>
+    <string name="speech_bubble_detection_subtitle">Detect speech bubbles on pages for magnification</string>
+    <string name="speech_bubble_boxes">Speech Bubble Boxes</string>
+    <string name="speech_bubble_boxes_subtitle">Outline detected speech bubbles on page</string>
+    <string name="detection_confidence">Detection Confidence: %1$d%%</string>
     <string name="default_storage_folder">Default Storage Folder</string>
     <string name="download_file_format">Download File Format</string>
     <string name="custom_download_folder_path">Custom Download Folder Path</string>

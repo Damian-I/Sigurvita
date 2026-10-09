@@ -43,7 +43,9 @@ class UserPreferencesRepository(private val context: Context) {
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val AUTO_DELETE_OPTION = stringPreferencesKey("auto_delete_option")
         val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")
+        val SPEECH_BUBBLE_DETECTION_ENABLED = booleanPreferencesKey("speech_bubble_detection_enabled")
         val SPEECH_BUBBLES_ENABLED = booleanPreferencesKey("speech_bubbles_enabled")
+        val SPEECH_BUBBLE_BOXES_ENABLED = booleanPreferencesKey("speech_bubble_boxes_enabled")
         val SPEECH_BUBBLE_CONFIDENCE = floatPreferencesKey("speech_bubble_confidence")
         val COMPLETED_CHAPTER_HISTORY = stringPreferencesKey("completed_chapter_history")
         val LIBRARY_ORDER = stringPreferencesKey("library_order")
@@ -96,7 +98,10 @@ class UserPreferencesRepository(private val context: Context) {
             }
 
             val incognito = preferences[Keys.INCOGNITO_MODE] ?: false
-            val speechBubbles = preferences[Keys.SPEECH_BUBBLES_ENABLED] ?: true
+            val detectionEnabled = preferences[Keys.SPEECH_BUBBLE_DETECTION_ENABLED]
+                ?: preferences[Keys.SPEECH_BUBBLES_ENABLED]
+                ?: true
+            val boxesEnabled = preferences[Keys.SPEECH_BUBBLE_BOXES_ENABLED] ?: true
             val bubbleConfidence = preferences[Keys.SPEECH_BUBBLE_CONFIDENCE] ?: 0.10f
 
             ReaderSettings(
@@ -108,7 +113,8 @@ class UserPreferencesRepository(private val context: Context) {
                 keepScreenOn = preferences[Keys.KEEP_SCREEN_ON] ?: true,
                 autoDeleteOption = autoDeleteOption,
                 isIncognitoMode = incognito,
-                speechBubblesEnabled = speechBubbles,
+                speechBubbleDetectionEnabled = detectionEnabled,
+                speechBubbleBoxesEnabled = boxesEnabled,
                 speechBubbleConfidence = bubbleConfidence
             )
         }
@@ -205,9 +211,16 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
-    suspend fun updateSpeechBubblesEnabled(enabled: Boolean) {
+    suspend fun updateSpeechBubbleDetectionEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
+            preferences[Keys.SPEECH_BUBBLE_DETECTION_ENABLED] = enabled
             preferences[Keys.SPEECH_BUBBLES_ENABLED] = enabled
+        }
+    }
+
+    suspend fun updateSpeechBubbleBoxesEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.SPEECH_BUBBLE_BOXES_ENABLED] = enabled
         }
     }
 

@@ -177,7 +177,8 @@ app/src/main/java/com/zemmy/sigurvita/
 | `volume_key_nav`, `volume_key_invert`, `touch_edge_nav`, `keep_screen_on` | Reader behavior toggles |
 | `auto_delete_option` | Auto-delete policy for downloads |
 | `incognito_mode` | Incognito toggle (global) |
-| `speech_bubbles_enabled` | Speech-bubble detection and overlays on/off (default `true`) |
+| `speech_bubble_detection_enabled` | Speech-bubble AI detection on/off (default `true`; legacy key `speech_bubbles_enabled`) |
+| `speech_bubble_boxes_enabled` | Speech-bubble highlight box overlays on/off (default `true`) |
 | `speech_bubble_confidence` | Detection confidence threshold (default `0.10`; the UI slider allows 0.02 to 0.50) |
 | `completed_chapter_history` | Comma-separated chapter IDs, used by "After N issues" auto-delete |
 | `library_order` | Comma-separated library IDs (drawer drag-reorder) |
@@ -248,7 +249,7 @@ Queue operations (`DownloadRepository`):
 
 ### 4.8 Domain models & utilities
 
-- `Models.kt`: enums `ReadingMode` (`RTL`, `LTR`, `WEBTOON`), `FitMode` (`FIT_WIDTH`, `FIT_HEIGHT`, `FIT_SCREEN`), `AutoDeleteOption` (`NEVER`, `IMMEDIATELY`, `AFTER_1_ISSUE`, `AFTER_2_ISSUES`, `AFTER_5_ISSUES`), `DownloadStatus` (`QUEUED`, `DOWNLOADING`, `PAUSED`, `COMPLETED`, `FAILED`); data classes `ServerConfig`, `ReaderSettings`, `Library` (type 0 manga / 1 comic / 2 book), `Series`, `Volume`, `Chapter`, `ReadingList`, `ReadingListItem`, `ReaderPage`, `DownloadTask`, plus the speech-bubble models `LetterboxParams`, `NormRect`, `BubbleMask`, `DetectedBubble`, `PageBubbles` and `MagnifiedBubble` (see 4.9). `ReaderSettings` also carries `speechBubblesEnabled` and `speechBubbleConfidence`.
+- `Models.kt`: enums `ReadingMode` (`RTL`, `LTR`, `WEBTOON`), `FitMode` (`FIT_WIDTH`, `FIT_HEIGHT`, `FIT_SCREEN`), `AutoDeleteOption` (`NEVER`, `IMMEDIATELY`, `AFTER_1_ISSUE`, `AFTER_2_ISSUES`, `AFTER_5_ISSUES`), `DownloadStatus` (`QUEUED`, `DOWNLOADING`, `PAUSED`, `COMPLETED`, `FAILED`); data classes `ServerConfig`, `ReaderSettings`, `Library` (type 0 manga / 1 comic / 2 book), `Series`, `Volume`, `Chapter`, `ReadingList`, `ReadingListItem`, `ReaderPage`, `DownloadTask`, plus the speech-bubble models `LetterboxParams`, `NormRect`, `BubbleMask`, `DetectedBubble`, `PageBubbles` and `MagnifiedBubble` (see 4.9). `ReaderSettings` also carries `speechBubbleDetectionEnabled`, `speechBubbleBoxesEnabled`, and `speechBubbleConfidence`.
 - `NaturalSort.kt` (despite the name) holds all title/number parsing:
   - `naturalCompare(a, b)`: case-insensitive, numeric chunks compared numerically.
   - `extractChapterNumber(number, title)`: if the server's number is blank/`0`/`0.0`, derives it from the title (handles forms like `#8AU`, `5B`, `12.5`, `Chapter 7`).
@@ -286,22 +287,22 @@ Do not pass `int8=True`. An int8 export was tried first and gave clearly worse b
 
 **Pipeline.**
 
-1. **Trigger** (`ReaderViewModel.ensureBubbles`): runs for the current page and the next page after a chapter loads and on every page change. It does nothing when detection is disabled, in **Webtoon** mode, or when that page already has a result or a job in flight. Jobs and results are cleared when a new chapter loads.
+1. **Trigger** (`ReaderViewModel.ensureBubbles`): runs for the current page and the next page after a chapter loads and on every page change. It does nothing when `speechBubbleDetectionEnabled` is false, in **Webtoon** mode, or when that page already has a result or a job in flight. Jobs and results are cleared when a new chapter loads.
 2. **Cache and decode** (`BubbleRepository.getPageBubbles`): an `LruCache` of 30 pages keyed by (chapter, page index, confidence). The page is decoded by `PageBitmapLoader.decodeForInference`: local files are sub-sampled by powers of two until the longest side is under about 1280 px; streamed pages go through Coil and its caches.
 3. **Preprocess** (`BubbleDetector.detect`): the page is letterboxed into a square of the model's input size (640) with gray (114) padding, converted to RGB, scaled to 0-1 (or quantized if the input is int8), and laid out as NHWC or NCHW depending on the model. Inference runs on a single-thread dispatcher.
 4. **Outputs**: a rank-3 detection tensor `[1, 37, 8400]` (4 box values, 1 class score, 32 mask coefficients per anchor; transposed if the model returns `[1, 8400, 37]`) and a rank-4 prototype tensor (`[1, 160, 160, 32]`, NHWC or NCHW). Quantized outputs are dequantized.
 5. **Decode & Merge** (`YoloSegDecoder`): keeps candidate anchors above the confidence threshold (minimum 0.04), runs NMS, and builds prototype masks at a 0.25 threshold so full rectangular box edges are retained. It then executes `mergeConnectedBubbles` to merge overlapping or touching candidate boxes (IoU $\ge 0.15$, min-area intersection $\ge 0.25$, or mask pixel overlap) into single unified `DetectedBubble` objects with combined masks and union bounding boxes.
 6. **Contour Extraction** (`extractBubbleNormalizedPoints`): evaluates the mask fill ratio inside the grid bounding box. If fill ratio $\ge 83\%$ (square or rectangular boxes), it extracts 4 sharp rectangular corner points for crisp box rendering; otherwise, it raycasts 48 radial steps and applies 3-point moving average smoothing for curved speech bubbles.
 
-**Overlay** (`ImageReader`): a `Canvas` that shares the page image's `graphicsLayer`, so it follows zoom and pan. For each bubble it uses `extractBubbleNormalizedPoints`: sharp 4-point straight `lineTo` paths for rectangular/square boxes, and smooth closed quadratic Bezier paths for curved bubbles, rendered with translucent yellow fill, 1.0 dp black outer stroke and 0.6 dp neon yellow inner stroke.
+**Overlay** (`ImageReader`): rendered on a `Canvas` sharing the page image's `graphicsLayer` when `speechBubbleBoxesEnabled` is true. For each bubble it uses `extractBubbleNormalizedPoints`: sharp 4-point straight `lineTo` paths for rectangular/square boxes, and smooth closed quadratic Bezier paths for curved bubbles, rendered with translucent yellow fill, 1.0 dp black outer stroke and 0.6 dp neon yellow inner stroke.
 
 **Long-press magnifier.**
 
-1. `viewportToPageNorm` undoes zoom, pan and the content-scale offset to get page-normalized coordinates. `hitBubble` returns the first bubble whose **bounding box** contains the point (the mask is not used for hit testing).
-2. `ReaderViewModel.onBubbleLongPress` calls `BubbleRepository.cropBubble(app, page, bubble, letterbox)`. It extracts the speech bubble's bounds (`extractBubbleNormalizedPoints`) and crops the high-resolution page bitmap (2000 px) around the bubble with a 4% safety margin, returning the clean magnified artwork without drawing overlay strokes or white background blocks.
+1. `viewportToPageNorm` undoes zoom, pan and the content-scale offset to get page-normalized coordinates. `hitBubble` returns the first bubble whose **bounding box** contains the point (the mask is not used for hit testing). Long-press magnification works whenever `speechBubbleDetectionEnabled` is true, regardless of whether `speechBubbleBoxesEnabled` is turned on or off.
+2. `ReaderViewModel.onBubbleLongPress` calls `BubbleRepository.cropBubble(app, page, bubble, letterbox, speechBubbleBoxesEnabled)`. It extracts the speech bubble's bounds (`extractBubbleNormalizedPoints`) and crops the high-resolution page bitmap (2000 px) around the bubble with a 4% safety margin, returning clean artwork (or with an outline if `speechBubbleBoxesEnabled` is true).
 3. `BubbleMagnifierOverlay` displays the high-res 2x enlarged speech bubble inside a transparent `Surface` container with rounded corners and subtle shadow floating over a 55% black scrim. Tapping anywhere or pressing back dismisses it.
 
-**Settings.** The "Speech Bubble Boxes" switch and the confidence slider appear both in Settings and in the reader's options sheet. The reader's top bar shows a count badge ("N bubbles") for the current page while detection is on and a result exists.
+**Settings.** A main toggle "Speech Bubble Detection" enables or disables on-device detection entirely. When detection is enabled, the nested "Speech Bubble Boxes" switch (which toggles yellow highlight outlines on the page) and the "Detection Confidence" slider are displayed and functional in both Settings and the reader's options sheet. The reader's top bar shows a count badge ("N bubbles") for the current page while detection is on and a result exists.
 
 ---
 

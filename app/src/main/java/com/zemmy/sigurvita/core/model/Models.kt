@@ -40,7 +40,8 @@ data class ReaderSettings(
     val keepScreenOn: Boolean = true,
     val autoDeleteOption: AutoDeleteOption = AutoDeleteOption.NEVER,
     val isIncognitoMode: Boolean = false,
-    val speechBubblesEnabled: Boolean = true,
+    val speechBubbleDetectionEnabled: Boolean = true,
+    val speechBubbleBoxesEnabled: Boolean = true,
     val speechBubbleConfidence: Float = 0.10f
 )
 

@@ -59,7 +59,8 @@ fun ImageReader(
     fitMode: FitMode = FitMode.FIT_WIDTH,
     touchEdgeNavigationEnabled: Boolean = true,
     bubblesByPage: Map<Int, PageBubbles> = emptyMap(),
-    speechBubblesEnabled: Boolean = true,
+    speechBubbleDetectionEnabled: Boolean = true,
+    speechBubbleBoxesEnabled: Boolean = true,
     onBubbleLongPress: (pageIndex: Int, bubbleId: Int, centerPx: Offset, bubbleSizePx: Size) -> Unit = { _, _, _, _ -> }
 ) {
     if (pages.isEmpty()) return
@@ -108,7 +109,8 @@ fun ImageReader(
                         touchEdgeNavigationEnabled = touchEdgeNavigationEnabled,
                         readingMode = readingMode,
                         bubbles = bubblesByPage[idx],
-                        speechBubblesEnabled = speechBubblesEnabled,
+                        speechBubbleDetectionEnabled = speechBubbleDetectionEnabled,
+                        speechBubbleBoxesEnabled = speechBubbleBoxesEnabled,
                         onBubbleLongPress = { bubbleId, centerPx, bubbleSizePx -> onBubbleLongPress(idx, bubbleId, centerPx, bubbleSizePx) },
                         onNextPage = onNextPage,
                         onPreviousPage = onPreviousPage,
@@ -149,7 +151,8 @@ fun ImageReader(
                     touchEdgeNavigationEnabled = touchEdgeNavigationEnabled,
                     readingMode = readingMode,
                     bubbles = bubblesByPage[pageIdx],
-                    speechBubblesEnabled = speechBubblesEnabled,
+                    speechBubbleDetectionEnabled = speechBubbleDetectionEnabled,
+                    speechBubbleBoxesEnabled = speechBubbleBoxesEnabled,
                     onBubbleLongPress = { bubbleId, centerPx, bubbleSizePx -> onBubbleLongPress(pageIdx, bubbleId, centerPx, bubbleSizePx) },
                     onNextPage = onNextPage,
                     onPreviousPage = onPreviousPage,
@@ -168,7 +171,8 @@ private fun ZoomableImage(
     touchEdgeNavigationEnabled: Boolean,
     readingMode: ReadingMode,
     bubbles: PageBubbles? = null,
-    speechBubblesEnabled: Boolean = true,
+    speechBubbleDetectionEnabled: Boolean = true,
+    speechBubbleBoxesEnabled: Boolean = true,
     onBubbleLongPress: (bubbleId: Int, centerPx: Offset, bubbleSizePx: Size) -> Unit = { _, _, _ -> },
     onNextPage: () -> Unit,
     onPreviousPage: () -> Unit,
@@ -244,7 +248,7 @@ private fun ZoomableImage(
                         }
                     },
                     onLongPress = { offset ->
-                        if (speechBubblesEnabled && bubbles != null && bubbles.bubbles.isNotEmpty()) {
+                        if (speechBubbleDetectionEnabled && bubbles != null && bubbles.bubbles.isNotEmpty()) {
                             val norm = viewportToPageNorm(
                                 tap = offset,
                                 box = size,
@@ -321,7 +325,7 @@ private fun ZoomableImage(
             modifier = imageModifier
         )
 
-        if (speechBubblesEnabled && bubbles != null && bubbles.bubbles.isNotEmpty()) {
+        if (speechBubbleBoxesEnabled && bubbles != null && bubbles.bubbles.isNotEmpty()) {
             Canvas(modifier = imageModifier) {
                 val boxW = size.width
                 val boxH = size.height

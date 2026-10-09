@@ -242,7 +242,7 @@ class ReaderViewModel : ViewModel() {
 
     fun ensureBubbles(pageIdx: Int) {
         val state = _uiState.value
-        if (!state.settings.speechBubblesEnabled) return
+        if (!state.settings.speechBubbleDetectionEnabled) return
         if (state.settings.readingMode == ReadingMode.WEBTOON) return
         if (pageIdx !in state.pages.indices) return
         if (state.bubblesByPage.containsKey(pageIdx) || bubbleDetectionJobs.containsKey(pageIdx)) return
@@ -261,12 +261,33 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
-    fun updateSpeechBubblesEnabled(enabled: Boolean) {
+    fun updateSpeechBubbleDetectionEnabled(enabled: Boolean) {
+        if (!enabled) {
+            bubbleDetectionJobs.values.forEach { it.cancel() }
+            bubbleDetectionJobs.clear()
+            _uiState.value = _uiState.value.copy(
+                settings = _uiState.value.settings.copy(speechBubbleDetectionEnabled = enabled),
+                bubblesByPage = emptyMap(),
+                magnifiedBubble = null
+            )
+        } else {
+            _uiState.value = _uiState.value.copy(
+                settings = _uiState.value.settings.copy(speechBubbleDetectionEnabled = enabled)
+            )
+            ensureBubbles(_uiState.value.currentPageIndex)
+            ensureBubbles(_uiState.value.currentPageIndex + 1)
+        }
+        viewModelScope.launch {
+            preferencesRepository.updateSpeechBubbleDetectionEnabled(enabled)
+        }
+    }
+
+    fun updateSpeechBubbleBoxesEnabled(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(
-            settings = _uiState.value.settings.copy(speechBubblesEnabled = enabled)
+            settings = _uiState.value.settings.copy(speechBubbleBoxesEnabled = enabled)
         )
         viewModelScope.launch {
-            preferencesRepository.updateSpeechBubblesEnabled(enabled)
+            preferencesRepository.updateSpeechBubbleBoxesEnabled(enabled)
         }
     }
 
@@ -298,7 +319,7 @@ class ReaderViewModel : ViewModel() {
         val page = state.pages.getOrNull(pageIndex) ?: return
 
         viewModelScope.launch {
-            val cropBmp = app.bubbleRepository.cropBubble(app, page, bubble, pageBubbles.letterbox, state.settings.speechBubblesEnabled)
+            val cropBmp = app.bubbleRepository.cropBubble(app, page, bubble, pageBubbles.letterbox, state.settings.speechBubbleBoxesEnabled)
             if (cropBmp != null) {
                 _uiState.value = _uiState.value.copy(
                     magnifiedBubble = com.zemmy.sigurvita.core.model.MagnifiedBubble(
