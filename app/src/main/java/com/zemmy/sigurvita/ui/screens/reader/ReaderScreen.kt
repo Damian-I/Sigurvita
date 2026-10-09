@@ -115,6 +115,11 @@ fun ReaderScreen(
         handleBack()
     }
 
+    val displayMetrics = context.resources.displayMetrics
+    LaunchedEffect(displayMetrics.widthPixels, displayMetrics.heightPixels) {
+        viewModel.updateScreenSize(displayMetrics.widthPixels, displayMetrics.heightPixels)
+    }
+
     LaunchedEffect(chapterId) {
         viewModel.loadChapter(chapterId, totalPages, seriesId, volumeId, readingListId)
     }
