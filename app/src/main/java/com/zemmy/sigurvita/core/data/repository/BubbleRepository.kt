@@ -175,8 +175,8 @@ class BubbleRepository(
     ): Bitmap? = withContext(Dispatchers.IO) {
         try {
             val fullBitmap = PageBitmapLoader.decodeForInference(context, page, targetSize = 2000) ?: return@withContext null
-            val W = fullBitmap.width.toFloat()
-            val H = fullBitmap.height.toFloat()
+            val w = fullBitmap.width.toFloat()
+            val h = fullBitmap.height.toFloat()
 
             val normPoints = extractBubbleNormalizedPoints(bubble, letterbox)
 
@@ -189,13 +189,13 @@ class BubbleRepository(
             val bh = maxNormY - minNormY
 
             // 4% margin around the bubble bounds so text/border is not clipped
-            val marginX = (bw * 0.04f * W).toInt().coerceAtLeast(6)
-            val marginY = (bh * 0.04f * H).toInt().coerceAtLeast(6)
+            val marginX = (bw * 0.04f * w).toInt().coerceAtLeast(6)
+            val marginY = (bh * 0.04f * h).toInt().coerceAtLeast(6)
 
-            val left = (minNormX * W - marginX).toInt().coerceIn(0, fullBitmap.width - 1)
-            val top = (minNormY * H - marginY).toInt().coerceIn(0, fullBitmap.height - 1)
-            val right = (maxNormX * W + marginX).toInt().coerceIn(left + 1, fullBitmap.width)
-            val bottom = (maxNormY * H + marginY).toInt().coerceIn(top + 1, fullBitmap.height)
+            val left = (minNormX * w - marginX).toInt().coerceIn(0, fullBitmap.width - 1)
+            val top = (minNormY * h - marginY).toInt().coerceIn(0, fullBitmap.height - 1)
+            val right = (maxNormX * w + marginX).toInt().coerceIn(left + 1, fullBitmap.width)
+            val bottom = (maxNormY * h + marginY).toInt().coerceIn(top + 1, fullBitmap.height)
 
             val cropW = right - left
             val cropH = bottom - top
@@ -203,7 +203,7 @@ class BubbleRepository(
 
             val crop = Bitmap.createBitmap(fullBitmap, left, top, cropW, cropH)
             if (speechBubbleBoxesEnabled) {
-                return@withContext applyBubbleOutline(crop, left, top, W, H, normPoints)
+                return@withContext applyBubbleOutline(crop, left, top, w, h, normPoints)
             } else {
                 return@withContext crop
             }

@@ -235,6 +235,7 @@ data class MarkReadDto(
 
 typealias MarkSeriesDto = MarkReadDto
 
+@Suppress("unused")
 @Serializable
 data class MarkVolumeReadDto(
     val seriesId: Int = 0,

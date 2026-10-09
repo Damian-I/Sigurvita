@@ -21,7 +21,41 @@ private data class Candidate(
     val topPx: Float,
     val rightPx: Float,
     val bottomPx: Float
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as Candidate
+
+        if (cx != other.cx) return false
+        if (cy != other.cy) return false
+        if (w != other.w) return false
+        if (h != other.h) return false
+        if (score != other.score) return false
+        if (classId != other.classId) return false
+        if (!maskCoeffs.contentEquals(other.maskCoeffs)) return false
+        if (leftPx != other.leftPx) return false
+        if (topPx != other.topPx) return false
+        if (rightPx != other.rightPx) return false
+        return bottomPx == other.bottomPx
+    }
+
+    override fun hashCode(): Int {
+        var result = cx.hashCode()
+        result = 31 * result + cy.hashCode()
+        result = 31 * result + w.hashCode()
+        result = 31 * result + h.hashCode()
+        result = 31 * result + score.hashCode()
+        result = 31 * result + classId.hashCode()
+        result = 31 * result + maskCoeffs.contentHashCode()
+        result = 31 * result + leftPx.hashCode()
+        result = 31 * result + topPx.hashCode()
+        result = 31 * result + rightPx.hashCode()
+        result = 31 * result + bottomPx.hashCode()
+        return result
+    }
+}
 
 class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorConfig()) {
 

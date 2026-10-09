@@ -273,13 +273,13 @@ class ReaderViewModel : ViewModel() {
             bubbleDetectionJobs.values.forEach { it.cancel() }
             bubbleDetectionJobs.clear()
             _uiState.value = _uiState.value.copy(
-                settings = _uiState.value.settings.copy(speechBubbleDetectionEnabled = enabled),
+                settings = _uiState.value.settings.copy(speechBubbleDetectionEnabled = false),
                 bubblesByPage = emptyMap(),
                 magnifiedBubble = null
             )
         } else {
             _uiState.value = _uiState.value.copy(
-                settings = _uiState.value.settings.copy(speechBubbleDetectionEnabled = enabled)
+                settings = _uiState.value.settings.copy(speechBubbleDetectionEnabled = true)
             )
             ensureBubbles(_uiState.value.currentPageIndex)
             ensureBubbles(_uiState.value.currentPageIndex + 1)

@@ -18,7 +18,10 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 import java.util.concurrent.Executors
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 private const val TAG = "BubbleDetector"
 
@@ -132,13 +135,13 @@ class BubbleDetector(
         )
 
         // Draw original bitmap letterboxed into inputSize x inputSize bitmap
-        val letterboxedBitmap = Bitmap.createBitmap(inputSize, inputSize, Bitmap.Config.ARGB_8888)
+        val letterboxedBitmap = createBitmap(inputSize, inputSize)
         val canvas = Canvas(letterboxedBitmap)
         canvas.drawColor(Color.rgb(114, 114, 114))
 
         val destW = (origW * gain).toInt()
         val destH = (origH * gain).toInt()
-        val scaled = Bitmap.createScaledBitmap(bitmap, destW, destH, true)
+        val scaled = bitmap.scale(destW, destH, filter = true)
         canvas.drawBitmap(scaled, padX, padY, Paint(Paint.FILTER_BITMAP_FLAG))
 
         // Preprocess input bitmap
@@ -170,17 +173,17 @@ class BubbleDetector(
             if (isInputNCHW) {
                 for (pixel in pixels) {
                     val r = (pixel shr 16 and 0xFF) / 255f
-                    val rB = if (inputQuantScale > 0f) Math.round(r / inputQuantScale + inputQuantZeroPoint).coerceIn(-128, 127).toByte() else (r * 255f - 128f).toInt().toByte()
+                    val rB = if (inputQuantScale > 0f) (r / inputQuantScale + inputQuantZeroPoint).roundToInt().coerceIn(-128, 127).toByte() else (r * 255f - 128f).toInt().toByte()
                     inputBuffer.put(rB)
                 }
                 for (pixel in pixels) {
                     val g = (pixel shr 8 and 0xFF) / 255f
-                    val gB = if (inputQuantScale > 0f) Math.round(g / inputQuantScale + inputQuantZeroPoint).coerceIn(-128, 127).toByte() else (g * 255f - 128f).toInt().toByte()
+                    val gB = if (inputQuantScale > 0f) (g / inputQuantScale + inputQuantZeroPoint).roundToInt().coerceIn(-128, 127).toByte() else (g * 255f - 128f).toInt().toByte()
                     inputBuffer.put(gB)
                 }
                 for (pixel in pixels) {
                     val b = (pixel and 0xFF) / 255f
-                    val bB = if (inputQuantScale > 0f) Math.round(b / inputQuantScale + inputQuantZeroPoint).coerceIn(-128, 127).toByte() else (b * 255f - 128f).toInt().toByte()
+                    val bB = if (inputQuantScale > 0f) (b / inputQuantScale + inputQuantZeroPoint).roundToInt().coerceIn(-128, 127).toByte() else (b * 255f - 128f).toInt().toByte()
                     inputBuffer.put(bB)
                 }
             } else {
@@ -189,9 +192,9 @@ class BubbleDetector(
                     val g = (pixel shr 8 and 0xFF) / 255f
                     val b = (pixel and 0xFF) / 255f
 
-                    val rB = if (inputQuantScale > 0f) Math.round(r / inputQuantScale + inputQuantZeroPoint).coerceIn(-128, 127).toByte() else (r * 255f - 128f).toInt().toByte()
-                    val gB = if (inputQuantScale > 0f) Math.round(g / inputQuantScale + inputQuantZeroPoint).coerceIn(-128, 127).toByte() else (g * 255f - 128f).toInt().toByte()
-                    val bB = if (inputQuantScale > 0f) Math.round(b / inputQuantScale + inputQuantZeroPoint).coerceIn(-128, 127).toByte() else (b * 255f - 128f).toInt().toByte()
+                    val rB = if (inputQuantScale > 0f) (r / inputQuantScale + inputQuantZeroPoint).roundToInt().coerceIn(-128, 127).toByte() else (r * 255f - 128f).toInt().toByte()
+                    val gB = if (inputQuantScale > 0f) (g / inputQuantScale + inputQuantZeroPoint).roundToInt().coerceIn(-128, 127).toByte() else (g * 255f - 128f).toInt().toByte()
+                    val bB = if (inputQuantScale > 0f) (b / inputQuantScale + inputQuantZeroPoint).roundToInt().coerceIn(-128, 127).toByte() else (b * 255f - 128f).toInt().toByte()
 
                     inputBuffer.put(rB)
                     inputBuffer.put(gB)
@@ -259,7 +262,7 @@ class BubbleDetector(
         }
 
         // Transpose detections if shape is [1, 8400, 37] instead of [1, 37, 8400]
-        if (detArray != null && detArray[0].size == 8400 && detArray[0][0].size > 0 && detArray[0][0].size < 8400) {
+        if (detArray != null && detArray[0].size == 8400 && detArray[0][0].isNotEmpty() && detArray[0][0].size < 8400) {
             val numC = detArray[0][0].size
             val transposed = Array(1) { Array(numC) { FloatArray(8400) } }
             for (i in 0 until 8400) {
