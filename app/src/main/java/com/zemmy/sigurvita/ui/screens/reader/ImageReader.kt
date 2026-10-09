@@ -46,6 +46,9 @@ import com.zemmy.sigurvita.core.model.PageBubbles
 import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReadingMode
 
+import androidx.compose.ui.graphics.nativeCanvas
+import com.zemmy.sigurvita.core.util.PanelMap
+
 @Composable
 fun ImageReader(
     pages: List<ReaderPage>,
@@ -59,8 +62,10 @@ fun ImageReader(
     fitMode: FitMode = FitMode.FIT_WIDTH,
     touchEdgeNavigationEnabled: Boolean = true,
     bubblesByPage: Map<Int, PageBubbles> = emptyMap(),
+    panelMapsByPage: Map<Int, PanelMap> = emptyMap(),
     speechBubbleDetectionEnabled: Boolean = true,
     speechBubbleBoxesEnabled: Boolean = true,
+    panelDebugOverlayEnabled: Boolean = false,
     onBubbleLongPress: (pageIndex: Int, bubbleId: Int, centerPx: Offset, bubbleSizePx: Size) -> Unit = { _, _, _, _ -> }
 ) {
     if (pages.isEmpty()) return
@@ -109,8 +114,10 @@ fun ImageReader(
                         touchEdgeNavigationEnabled = touchEdgeNavigationEnabled,
                         readingMode = readingMode,
                         bubbles = bubblesByPage[idx],
+                        panelMap = panelMapsByPage[idx],
                         speechBubbleDetectionEnabled = speechBubbleDetectionEnabled,
                         speechBubbleBoxesEnabled = speechBubbleBoxesEnabled,
+                        panelDebugOverlayEnabled = panelDebugOverlayEnabled,
                         onBubbleLongPress = { bubbleId, centerPx, bubbleSizePx -> onBubbleLongPress(idx, bubbleId, centerPx, bubbleSizePx) },
                         onNextPage = onNextPage,
                         onPreviousPage = onPreviousPage,
@@ -151,8 +158,10 @@ fun ImageReader(
                     touchEdgeNavigationEnabled = touchEdgeNavigationEnabled,
                     readingMode = readingMode,
                     bubbles = bubblesByPage[pageIdx],
+                    panelMap = panelMapsByPage[pageIdx],
                     speechBubbleDetectionEnabled = speechBubbleDetectionEnabled,
                     speechBubbleBoxesEnabled = speechBubbleBoxesEnabled,
+                    panelDebugOverlayEnabled = panelDebugOverlayEnabled,
                     onBubbleLongPress = { bubbleId, centerPx, bubbleSizePx -> onBubbleLongPress(pageIdx, bubbleId, centerPx, bubbleSizePx) },
                     onNextPage = onNextPage,
                     onPreviousPage = onPreviousPage,
@@ -171,8 +180,10 @@ private fun ZoomableImage(
     touchEdgeNavigationEnabled: Boolean,
     readingMode: ReadingMode,
     bubbles: PageBubbles? = null,
+    panelMap: PanelMap? = null,
     speechBubbleDetectionEnabled: Boolean = true,
     speechBubbleBoxesEnabled: Boolean = true,
+    panelDebugOverlayEnabled: Boolean = false,
     onBubbleLongPress: (bubbleId: Int, centerPx: Offset, bubbleSizePx: Size) -> Unit = { _, _, _ -> },
     onNextPage: () -> Unit,
     onPreviousPage: () -> Unit,
@@ -325,12 +336,12 @@ private fun ZoomableImage(
             modifier = imageModifier
         )
 
-        if (speechBubbleBoxesEnabled && bubbles != null && bubbles.bubbles.isNotEmpty()) {
+        if ((speechBubbleBoxesEnabled && bubbles != null && bubbles.bubbles.isNotEmpty()) || (panelDebugOverlayEnabled && (panelMap != null || bubbles != null))) {
             Canvas(modifier = imageModifier) {
                 val boxW = size.width
                 val boxH = size.height
-                val pageW = bubbles.pageWidth.toFloat()
-                val pageH = bubbles.pageHeight.toFloat()
+                val pageW = (bubbles?.pageWidth ?: panelMap?.letterbox?.originalWidth ?: 2000).toFloat()
+                val pageH = (bubbles?.pageHeight ?: panelMap?.letterbox?.originalHeight ?: 3000).toFloat()
 
                 if (boxW > 0f && boxH > 0f && pageW > 0f && pageH > 0f) {
                     val s = when (contentScale) {
@@ -343,35 +354,63 @@ private fun ZoomableImage(
                     val originX = (boxW - dispW) / 2f
                     val originY = (boxH - dispH) / 2f
 
-                    val vectorPaths = buildBubbleVectorPaths(bubbles, dispW, dispH, originX, originY)
+                    if (speechBubbleBoxesEnabled && bubbles != null && bubbles.bubbles.isNotEmpty()) {
+                        val vectorPaths = buildBubbleVectorPaths(bubbles, dispW, dispH, originX, originY)
+                        vectorPaths.forEach { path ->
+                            drawPath(path = path, color = Color(0x38FFE500), style = Fill)
+                            drawPath(path = path, color = Color.Black, style = Stroke(width = 1.0.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                            drawPath(path = path, color = Color(0xFFFFE500), style = Stroke(width = 0.6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                        }
+                    }
 
-                    vectorPaths.forEach { path ->
-                        // 1. Smooth vector translucent yellow fill
-                        drawPath(
-                            path = path,
-                            color = Color(0x38FFE500),
-                            style = Fill
-                        )
-                        // 2. Smooth vector black outer stroke
-                        drawPath(
-                            path = path,
-                            color = Color.Black,
-                            style = Stroke(
-                                width = 1.0.dp.toPx(),
-                                cap = StrokeCap.Round,
-                                join = StrokeJoin.Round
+                    if (panelDebugOverlayEnabled) {
+                        panelMap?.panels?.forEach { panel ->
+                            val pLeft = originX + panel.box.left * dispW
+                            val pTop = originY + panel.box.top * dispH
+                            val pW = (panel.box.right - panel.box.left) * dispW
+                            val pH = (panel.box.bottom - panel.box.top) * dispH
+
+                            drawRect(
+                                color = Color(0xFF00E5FF),
+                                topLeft = Offset(pLeft, pTop),
+                                size = Size(pW, pH),
+                                style = Stroke(width = 2.dp.toPx())
                             )
-                        )
-                        // 3. Smooth vector neon yellow inner stroke
-                        drawPath(
-                            path = path,
-                            color = Color(0xFFFFE500),
-                            style = Stroke(
-                                width = 0.6.dp.toPx(),
-                                cap = StrokeCap.Round,
-                                join = StrokeJoin.Round
-                            )
-                        )
+                        }
+
+                        if (bubbles != null && bubbles.bubbles.isNotEmpty()) {
+                            bubbles.bubbles.forEachIndexed { index, bubble ->
+                                val cx = originX + ((bubble.box.left + bubble.box.right) / 2f) * dispW
+                                val cy = originY + ((bubble.box.top + bubble.box.bottom) / 2f) * dispH
+
+                                drawContext.canvas.nativeCanvas.apply {
+                                    val radius = 12.dp.toPx()
+                                    val bgPaint = android.graphics.Paint().apply {
+                                        color = android.graphics.Color.argb(220, 20, 20, 20)
+                                        style = android.graphics.Paint.Style.FILL
+                                        isAntiAlias = true
+                                    }
+                                    val borderPaint = android.graphics.Paint().apply {
+                                        color = android.graphics.Color.rgb(0, 229, 255)
+                                        style = android.graphics.Paint.Style.STROKE
+                                        strokeWidth = 1.5f.dp.toPx()
+                                        isAntiAlias = true
+                                    }
+                                    val textPaint = android.graphics.Paint().apply {
+                                        color = android.graphics.Color.WHITE
+                                        textSize = 12.dp.toPx()
+                                        isAntiAlias = true
+                                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                        textAlign = android.graphics.Paint.Align.CENTER
+                                    }
+
+                                    drawCircle(cx, cy, radius, bgPaint)
+                                    drawCircle(cx, cy, radius, borderPaint)
+                                    val textY = cy - ((textPaint.descent() + textPaint.ascent()) / 2f)
+                                    drawText("${index + 1}", cx, textY, textPaint)
+                                }
+                            }
+                        }
                     }
                 }
             }

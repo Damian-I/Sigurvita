@@ -47,6 +47,8 @@ class UserPreferencesRepository(private val context: Context) {
         val SPEECH_BUBBLES_ENABLED = booleanPreferencesKey("speech_bubbles_enabled")
         val SPEECH_BUBBLE_BOXES_ENABLED = booleanPreferencesKey("speech_bubble_boxes_enabled")
         val SPEECH_BUBBLE_CONFIDENCE = floatPreferencesKey("speech_bubble_confidence")
+        val PANEL_AWARE_ORDER = booleanPreferencesKey("panel_aware_order")
+        val PANEL_DEBUG_OVERLAY = booleanPreferencesKey("panel_debug_overlay")
         val COMPLETED_CHAPTER_HISTORY = stringPreferencesKey("completed_chapter_history")
         val LIBRARY_ORDER = stringPreferencesKey("library_order")
         val CHOSEN_READING_LISTS = stringPreferencesKey("chosen_reading_lists")
@@ -103,6 +105,8 @@ class UserPreferencesRepository(private val context: Context) {
                 ?: true
             val boxesEnabled = preferences[Keys.SPEECH_BUBBLE_BOXES_ENABLED] ?: true
             val bubbleConfidence = preferences[Keys.SPEECH_BUBBLE_CONFIDENCE] ?: 0.10f
+            val panelAwareOrder = preferences[Keys.PANEL_AWARE_ORDER] ?: true
+            val panelDebugOverlay = preferences[Keys.PANEL_DEBUG_OVERLAY] ?: false
 
             ReaderSettings(
                 readingMode = readingMode,
@@ -115,7 +119,9 @@ class UserPreferencesRepository(private val context: Context) {
                 isIncognitoMode = incognito,
                 speechBubbleDetectionEnabled = detectionEnabled,
                 speechBubbleBoxesEnabled = boxesEnabled,
-                speechBubbleConfidence = bubbleConfidence
+                speechBubbleConfidence = bubbleConfidence,
+                panelAwareOrderEnabled = panelAwareOrder,
+                panelDebugOverlayEnabled = panelDebugOverlay
             )
         }
 
@@ -227,6 +233,18 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun updateSpeechBubbleConfidence(confidence: Float) {
         context.dataStore.edit { preferences ->
             preferences[Keys.SPEECH_BUBBLE_CONFIDENCE] = confidence
+        }
+    }
+
+    suspend fun updatePanelAwareOrder(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.PANEL_AWARE_ORDER] = enabled
+        }
+    }
+
+    suspend fun updatePanelDebugOverlay(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.PANEL_DEBUG_OVERLAY] = enabled
         }
     }
 

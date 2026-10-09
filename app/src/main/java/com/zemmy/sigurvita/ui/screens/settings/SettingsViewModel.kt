@@ -78,7 +78,17 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
+    fun updatePanelAwareOrder(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updatePanelAwareOrder(enabled)
+        }
+    }
 
+    fun updatePanelDebugOverlay(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updatePanelDebugOverlay(enabled)
+        }
+    }
 
     fun updateAutoDeleteOption(option: AutoDeleteOption) {
         viewModelScope.launch {

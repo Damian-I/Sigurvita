@@ -184,8 +184,10 @@ fun ReaderScreen(
                 fitMode = state.settings.fitMode,
                 touchEdgeNavigationEnabled = state.settings.touchEdgeNavigationEnabled,
                 bubblesByPage = state.bubblesByPage,
+                panelMapsByPage = state.panelMapsByPage,
                 speechBubbleDetectionEnabled = state.settings.speechBubbleDetectionEnabled,
                 speechBubbleBoxesEnabled = state.settings.speechBubbleBoxesEnabled,
+                panelDebugOverlayEnabled = state.settings.panelDebugOverlayEnabled,
                 onBubbleLongPress = { pageIdx, bubbleId, centerPx, bubbleSizePx -> viewModel.onBubbleLongPress(pageIdx, bubbleId, centerPx, bubbleSizePx) }
             )
 
@@ -534,6 +536,41 @@ fun ReaderScreen(
                                 steps = 48,
                                 modifier = Modifier.padding(start = 16.dp)
                             )
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(stringResource(R.string.panel_aware_order), style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                                    Text(stringResource(R.string.panel_aware_order_subtitle), style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                                }
+                                Switch(
+                                    checked = state.settings.panelAwareOrderEnabled,
+                                    onCheckedChange = { viewModel.updatePanelAwareOrder(it) }
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(stringResource(R.string.panel_debug_overlay), style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                                    Text(stringResource(R.string.panel_debug_overlay_subtitle), style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                                }
+                                Switch(
+                                    checked = state.settings.panelDebugOverlayEnabled,
+                                    onCheckedChange = { viewModel.updatePanelDebugOverlay(it) }
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(24.dp))

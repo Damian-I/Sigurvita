@@ -42,7 +42,9 @@ data class ReaderSettings(
     val isIncognitoMode: Boolean = false,
     val speechBubbleDetectionEnabled: Boolean = true,
     val speechBubbleBoxesEnabled: Boolean = true,
-    val speechBubbleConfidence: Float = 0.10f
+    val speechBubbleConfidence: Float = 0.10f,
+    val panelAwareOrderEnabled: Boolean = true,
+    val panelDebugOverlayEnabled: Boolean = false
 )
 
 data class MagnifiedBubble(

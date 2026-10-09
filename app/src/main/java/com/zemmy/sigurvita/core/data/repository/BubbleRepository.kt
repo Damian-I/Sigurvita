@@ -143,6 +143,8 @@ class BubbleRepository(
 
     // Cache up to 30 pages in memory
     private val cache = LruCache<Pair<Pair<Int, Int>, Float>, PageBubbles>(30)
+    // High-resolution (2000px) bitmap cache for bubble magnifier (2 pages)
+    private val highResCache = LruCache<Pair<Int, Int>, Bitmap>(2)
 
     suspend fun getPageBubbles(chapterId: Int, page: ReaderPage, confidence: Float = 0.10f): PageBubbles? = withContext(Dispatchers.IO) {
         val key = Pair(Pair(chapterId, page.index), confidence)
@@ -171,10 +173,18 @@ class BubbleRepository(
         page: ReaderPage,
         bubble: DetectedBubble,
         letterbox: LetterboxParams,
-        speechBubbleBoxesEnabled: Boolean
+        speechBubbleBoxesEnabled: Boolean,
+        chapterId: Int = 0
     ): Bitmap? = withContext(Dispatchers.IO) {
         try {
-            val fullBitmap = PageBitmapLoader.decodeForInference(context, page, targetSize = 2000) ?: return@withContext null
+            val key = Pair(chapterId, page.index)
+            var fullBitmap = if (chapterId > 0) highResCache.get(key) else null
+            if (fullBitmap == null || fullBitmap.isRecycled) {
+                fullBitmap = PageBitmapLoader.decodeForInference(context, page, targetSize = 2000) ?: return@withContext null
+                if (chapterId > 0) {
+                    highResCache.put(key, fullBitmap)
+                }
+            }
             val w = fullBitmap.width.toFloat()
             val h = fullBitmap.height.toFloat()
 
@@ -272,6 +282,10 @@ class BubbleRepository(
         val keysToRemove = cache.snapshot().keys.filter { it.first.first == chapterId }
         for (k in keysToRemove) {
             cache.remove(k)
+        }
+        val highResKeysToRemove = highResCache.snapshot().keys.filter { it.first == chapterId }
+        for (k in highResKeysToRemove) {
+            highResCache.remove(k)
         }
     }
 }

@@ -120,4 +120,8 @@
     <string name="auto_delete_subtitle">Automatically clean up local files after reading X amount of chapters</string>
     <string name="disconnect_logout">Disconnect Server &amp; Logout</string>
     <string name="browse_folder">Browse Folder</string>
+    <string name="panel_aware_order">Panel-Aware Reading Order</string>
+    <string name="panel_aware_order_subtitle">Traverse speech bubbles by comic panel order during volume key navigation</string>
+    <string name="panel_debug_overlay">Panel Debug Overlay</string>
+    <string name="panel_debug_overlay_subtitle">Draw panel outlines and bubble sequence numbers</string>
 </resources>

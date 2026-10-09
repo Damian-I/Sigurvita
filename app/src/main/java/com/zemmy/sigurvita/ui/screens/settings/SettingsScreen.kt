@@ -230,6 +230,49 @@ fun SettingsScreen(
                     steps = 48,
                     modifier = Modifier.padding(start = 16.dp)
                 )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.panel_aware_order), style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            stringResource(R.string.panel_aware_order_subtitle),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = settings.panelAwareOrderEnabled,
+                        onCheckedChange = { viewModel.updatePanelAwareOrder(it) }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.panel_debug_overlay), style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            stringResource(R.string.panel_debug_overlay_subtitle),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = settings.panelDebugOverlayEnabled,
+                        onCheckedChange = { viewModel.updatePanelDebugOverlay(it) }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))

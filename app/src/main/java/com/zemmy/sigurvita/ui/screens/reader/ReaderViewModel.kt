@@ -10,6 +10,7 @@ import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
 import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
+import com.zemmy.sigurvita.core.util.orderBubbles
 import com.zemmy.sigurvita.core.util.sortBubblesForReading
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -39,6 +40,7 @@ data class ReaderUiState(
     val chapterTitle: String = "",
     val seriesName: String = "",
     val bubblesByPage: Map<Int, com.zemmy.sigurvita.core.model.PageBubbles> = emptyMap(),
+    val panelMapsByPage: Map<Int, com.zemmy.sigurvita.core.util.PanelMap> = emptyMap(),
     val magnifiedBubble: com.zemmy.sigurvita.core.model.MagnifiedBubble? = null
 )
 
@@ -253,15 +255,26 @@ class ReaderViewModel : ViewModel() {
         val chapterId = state.chapterId
 
         bubbleDetectionJobs[pageIdx] = viewModelScope.launch {
-            val pageBubbles = app.bubbleRepository.getPageBubbles(chapterId, page, state.settings.speechBubbleConfidence)
+            val isRtl = (_uiState.value.settings.readingMode == ReadingMode.RTL)
+            val isPanelAware = _uiState.value.settings.panelAwareOrderEnabled
+
+            val bitmap = com.zemmy.sigurvita.core.ml.PageBitmapLoader.decodeForInference(app, page)
+
+            val panelMap = if (isPanelAware && bitmap != null) {
+                app.panelRepository.getPanelMap(chapterId, page, bitmap)
+            } else null
+
+            val pageBubbles = if (bitmap != null) {
+                app.bubbleRepository.getPageBubbles(chapterId, page, state.settings.speechBubbleConfidence)
+            } else null
+
             if (pageBubbles != null) {
-                val currentReadingMode = _uiState.value.settings.readingMode
-                val isRtl = (currentReadingMode == ReadingMode.RTL)
                 val sortedBubbles = pageBubbles.copy(
-                    bubbles = sortBubblesForReading(pageBubbles.bubbles, isRtl)
+                    bubbles = orderBubbles(pageBubbles, panelMap, isRtl, isPanelAware)
                 )
                 _uiState.value = _uiState.value.copy(
-                    bubblesByPage = _uiState.value.bubblesByPage + (pageIdx to sortedBubbles)
+                    bubblesByPage = _uiState.value.bubblesByPage + (pageIdx to sortedBubbles),
+                    panelMapsByPage = if (panelMap != null) _uiState.value.panelMapsByPage + (pageIdx to panelMap) else _uiState.value.panelMapsByPage
                 )
             }
             bubbleDetectionJobs.remove(pageIdx)
@@ -391,7 +404,7 @@ class ReaderViewModel : ViewModel() {
         )
 
         viewModelScope.launch {
-            val cropBmp = app.bubbleRepository.cropBubble(app, page, bubble, pageBubbles.letterbox, state.settings.speechBubbleBoxesEnabled)
+            val cropBmp = app.bubbleRepository.cropBubble(app, page, bubble, pageBubbles.letterbox, state.settings.speechBubbleBoxesEnabled, state.chapterId)
             if (cropBmp != null) {
                 _uiState.value = _uiState.value.copy(
                     magnifiedBubble = com.zemmy.sigurvita.core.model.MagnifiedBubble(
@@ -418,7 +431,7 @@ class ReaderViewModel : ViewModel() {
         val page = state.pages.getOrNull(pageIndex) ?: return
 
         viewModelScope.launch {
-            val cropBmp = app.bubbleRepository.cropBubble(app, page, bubble, pageBubbles.letterbox, state.settings.speechBubbleBoxesEnabled)
+            val cropBmp = app.bubbleRepository.cropBubble(app, page, bubble, pageBubbles.letterbox, state.settings.speechBubbleBoxesEnabled, state.chapterId)
             if (cropBmp != null) {
                 _uiState.value = _uiState.value.copy(
                     magnifiedBubble = com.zemmy.sigurvita.core.model.MagnifiedBubble(
@@ -603,7 +616,7 @@ class ReaderViewModel : ViewModel() {
         val currentSettings = _uiState.value.settings
         val isRtl = (mode == ReadingMode.RTL)
         val reSortedBubblesByPage = _uiState.value.bubblesByPage.mapValues { (_, pageBubbles) ->
-            pageBubbles.copy(bubbles = sortBubblesForReading(pageBubbles.bubbles, isRtl))
+            pageBubbles.copy(bubbles = orderBubbles(pageBubbles, null, isRtl))
         }
         _uiState.value = _uiState.value.copy(
             settings = currentSettings.copy(readingMode = mode),
@@ -635,6 +648,52 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
+    private fun magnifyFrom(startIdx: Int, forward: Boolean) = viewModelScope.launch {
+        var idx = startIdx
+        val totalPages = _uiState.value.pages.size
+        while (idx in 0 until totalPages) {
+            onPageChanged(idx)
+            ensureBubbles(idx)
+            bubbleDetectionJobs[idx]?.join()
+            val pb = _uiState.value.bubblesByPage[idx]
+            val target = if (forward) pb?.bubbles?.firstOrNull() else pb?.bubbles?.lastOrNull()
+            if (pb != null && target != null) {
+                magnifyBubbleObject(idx, target, pb)
+                return@launch
+            }
+            idx += if (forward) 1 else -1
+        }
+        if (forward) {
+            nextPage()
+        }
+    }
+
+    fun updatePanelAwareOrder(enabled: Boolean) {
+        val currentSettings = _uiState.value.settings
+        val isRtl = (currentSettings.readingMode == ReadingMode.RTL)
+        val reSortedBubblesByPage = _uiState.value.bubblesByPage.mapValues { (pageIdx, pageBubbles) ->
+            val pMap = _uiState.value.panelMapsByPage[pageIdx]
+            pageBubbles.copy(bubbles = orderBubbles(pageBubbles, pMap, isRtl, enabled))
+        }
+        _uiState.value = _uiState.value.copy(
+            settings = currentSettings.copy(panelAwareOrderEnabled = enabled),
+            bubblesByPage = reSortedBubblesByPage
+        )
+        viewModelScope.launch {
+            preferencesRepository.updatePanelAwareOrder(enabled)
+        }
+    }
+
+    fun updatePanelDebugOverlay(enabled: Boolean) {
+        val currentSettings = _uiState.value.settings
+        _uiState.value = _uiState.value.copy(
+            settings = currentSettings.copy(panelDebugOverlayEnabled = enabled)
+        )
+        viewModelScope.launch {
+            preferencesRepository.updatePanelDebugOverlay(enabled)
+        }
+    }
+
     fun handleVolumeKey(isVolumeUp: Boolean): Boolean {
         if (!_uiState.value.settings.volumeKeyNavigationEnabled) return false
 
@@ -650,22 +709,13 @@ class ReaderViewModel : ViewModel() {
             val currentIdx = bubbles.indexOfFirst { it.id == currentMag.bubbleId }
 
             if (isNext) {
-                if (currentIdx != -1 && currentIdx < bubbles.size - 1) {
+                if (currentIdx != -1 && currentIdx < bubbles.size - 1 && pageBubbles != null) {
                     val nextBubble = bubbles[currentIdx + 1]
-                    magnifyBubbleObject(pageIdx, nextBubble, pageBubbles!!)
+                    magnifyBubbleObject(pageIdx, nextBubble, pageBubbles)
                     return true
                 } else {
                     _uiState.value = _uiState.value.copy(magnifiedBubble = null)
-                    val nextPageIndex = pageIdx + 1
-                    if (nextPageIndex in state.pages.indices) {
-                        onPageChanged(nextPageIndex)
-                        val nextPageBubbles = _uiState.value.bubblesByPage[nextPageIndex]
-                        if (nextPageBubbles != null && nextPageBubbles.bubbles.isNotEmpty()) {
-                            magnifyBubbleObject(nextPageIndex, nextPageBubbles.bubbles.first(), nextPageBubbles)
-                        }
-                    } else {
-                        nextPage()
-                    }
+                    magnifyFrom(pageIdx + 1, forward = true)
                     return true
                 }
             } else {
@@ -675,16 +725,7 @@ class ReaderViewModel : ViewModel() {
                     return true
                 } else {
                     _uiState.value = _uiState.value.copy(magnifiedBubble = null)
-                    val prevPageIndex = pageIdx - 1
-                    if (prevPageIndex in state.pages.indices) {
-                        onPageChanged(prevPageIndex)
-                        val prevPageBubbles = _uiState.value.bubblesByPage[prevPageIndex]
-                        if (prevPageBubbles != null && prevPageBubbles.bubbles.isNotEmpty()) {
-                            magnifyBubbleObject(prevPageIndex, prevPageBubbles.bubbles.last(), prevPageBubbles)
-                        }
-                    } else {
-                        previousPage()
-                    }
+                    magnifyFrom(pageIdx - 1, forward = false)
                     return true
                 }
             }
