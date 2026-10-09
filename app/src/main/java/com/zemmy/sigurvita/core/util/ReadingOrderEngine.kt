@@ -6,6 +6,7 @@ import com.zemmy.sigurvita.core.model.NormRect
 import com.zemmy.sigurvita.core.model.PageBubbles
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
 
 data class PanelInfo(
     val label: Int,          // 1..n, equals value in label map
@@ -119,16 +120,40 @@ fun <T> readingOrder(
         for (j in i + 1 until n) {
             val a = s[i]
             val b = s[j]
-            val vOv = span(a.box.top, a.box.bottom, b.box.top, b.box.bottom) /
-                    minOf(a.box.height, b.box.height).coerceAtLeast(1e-6f)
-            val hOv = span(a.box.left, a.box.right, b.box.left, b.box.right) /
-                    minOf(a.box.width, b.box.width).coerceAtLeast(1e-6f)
-            val aLeads = if (rtl) a.cx > b.cx else a.cx < b.cx
-            val aFirst = when {
-                vOv >= rowOverlap && hOv < rowOverlap -> aLeads
-                vOv < rowOverlap -> a.cy < b.cy
-                abs(a.cy - b.cy) > sameCy -> a.cy < b.cy
-                else -> aLeads
+
+            // Check container / inset panel relationship (one item mostly contained inside or heavily overlapping the other)
+            val interLeft = maxOf(a.box.left, b.box.left)
+            val interTop = maxOf(a.box.top, b.box.top)
+            val interRight = minOf(a.box.right, b.box.right)
+            val interBottom = minOf(a.box.bottom, b.box.bottom)
+            val interW = maxOf(0f, interRight - interLeft)
+            val interH = maxOf(0f, interBottom - interTop)
+            val interArea = interW * interH
+            val areaA = (a.box.right - a.box.left) * (a.box.bottom - a.box.top)
+            val areaB = (b.box.right - b.box.left) * (b.box.bottom - b.box.top)
+            val minArea = minOf(areaA, areaB).coerceAtLeast(1e-6f)
+            val isInsetOverlap = (interArea / minArea) >= 0.70f && abs(areaA - areaB) > 0.05f
+
+            val aFirst = if (isInsetOverlap) {
+                // Inset / container relationship:
+                val smallerIsA = areaA < areaB
+                val smaller = if (smallerIsA) a else b
+                val larger = if (smallerIsA) b else a
+                // If smaller panel sits in the upper part of larger panel (or top < larger.cy)
+                val smallerFirst = smaller.cy < larger.cy || smaller.box.top < larger.cy
+                if (smallerIsA) smallerFirst else !smallerFirst
+            } else {
+                val vOv = span(a.box.top, a.box.bottom, b.box.top, b.box.bottom) /
+                        minOf(a.box.height, b.box.height).coerceAtLeast(1e-6f)
+                val hOv = span(a.box.left, a.box.right, b.box.left, b.box.right) /
+                        minOf(a.box.width, b.box.width).coerceAtLeast(1e-6f)
+                val aLeads = if (rtl) a.cx > b.cx else a.cx < b.cx
+                when {
+                    vOv >= rowOverlap && hOv < rowOverlap -> aLeads
+                    vOv < rowOverlap -> a.cy < b.cy
+                    abs(a.cy - b.cy) > sameCy -> a.cy < b.cy
+                    else -> aLeads
+                }
             }
             if (aFirst) wins[i]++ else wins[j]++
         }
@@ -166,10 +191,28 @@ fun panelOfBubble(b: DetectedBubble, bubbleLb: LetterboxParams, map: PanelMap): 
             }
         }
     }
-    val best = (1..map.panels.size).maxByOrNull { votes[it] }
-    if (best != null && votes[best] > 0) return best
+
+    val candidateLabels = (1..map.panels.size).filter { votes[it] > 0 }
+    if (candidateLabels.isNotEmpty()) {
+        val maxVotes = candidateLabels.maxOf { votes[it] }
+        val topCandidates = candidateLabels.filter { votes[it] >= (maxVotes * 0.5f).toInt().coerceAtLeast(1) }
+        if (topCandidates.size == 1) {
+            return topCandidates[0]
+        }
+        // If multiple candidate panels have significant votes (e.g. inset panel vs enclosing background panel),
+        // prefer the smaller inset panel
+        return topCandidates.minByOrNull { map.panels[it - 1].area } ?: topCandidates[0]
+    }
+
     return map.nearestPanel(b.box)
 }
+
+private data class ReadingUnit(
+    val box: NormRect,
+    val cx: Float,
+    val cy: Float,
+    val bubbles: List<DetectedBubble>
+)
 
 fun orderBubbles(
     pageBubbles: PageBubbles,
@@ -214,13 +257,65 @@ fun orderBubbles(
         return sortBubblesForReading(bubbles, rtl)
     }
 
-    // Order bubbles inside each panel and flatten
-    val result = mutableListOf<DetectedBubble>()
+    // Build reading units. Large background container panels (area >= 0.25)
+    // are partitioned into row-based bubble clusters so that unassigned bubbles
+    // in the container panel are spatially ordered alongside any inset panels.
+    val units = mutableListOf<ReadingUnit>()
     for (label in 1..reorderedMap.panels.size) {
         val pBubbles = panelToBubbles[label]
         if (pBubbles.isEmpty()) continue
-        val orderedInPanel = readingOrder(
-            pBubbles,
+
+        val panel = reorderedMap.panels[label - 1]
+        val isContainer = panel.area >= 0.25f && pBubbles.size > 1
+
+        if (isContainer) {
+            val clusters = mutableListOf<MutableList<DetectedBubble>>()
+            var currentCluster = mutableListOf<DetectedBubble>()
+
+            for (b in pBubbles.sortedBy { it.box.top }) {
+                if (currentCluster.isEmpty()) {
+                    currentCluster.add(b)
+                } else {
+                    val prevMaxBottom = currentCluster.maxOf { it.box.bottom }
+                    val prevMinTop = currentCluster.minOf { it.box.top }
+                    if (b.box.top <= prevMaxBottom + 0.08f || abs(b.box.top - prevMinTop) <= 0.12f) {
+                        currentCluster.add(b)
+                    } else {
+                        clusters.add(currentCluster)
+                        currentCluster = mutableListOf(b)
+                    }
+                }
+            }
+            if (currentCluster.isNotEmpty()) {
+                clusters.add(currentCluster)
+            }
+
+            for (cluster in clusters) {
+                val cLeft = cluster.minOf { it.box.left }
+                val cTop = cluster.minOf { it.box.top }
+                val cRight = cluster.maxOf { it.box.right }
+                val cBottom = cluster.maxOf { it.box.bottom }
+                val cCx = (cLeft + cRight) / 2f
+                val cCy = (cTop + cBottom) / 2f
+                units.add(ReadingUnit(NormRect(cLeft, cTop, cRight, cBottom), cCx, cCy, cluster))
+            }
+        } else {
+            units.add(ReadingUnit(panel.box, panel.cx, panel.cy, pBubbles))
+        }
+    }
+
+    // Spatially order all reading units (standalone/inset panels + container bubble groups)
+    val orderedUnits = readingOrder(
+        units,
+        spot = { Spot(it.box, it.cx, it.cy) },
+        rtl = rtl
+    )
+
+    // Flatten bubbles from ordered units
+    val result = mutableListOf<DetectedBubble>()
+    for (unit in orderedUnits) {
+        val orderedInUnit = readingOrder(
+            unit.bubbles,
             spot = { b ->
                 val cx = (b.box.left + b.box.right) / 2f
                 val cy = (b.box.top + b.box.bottom) / 2f
@@ -229,10 +324,10 @@ fun orderBubbles(
             rtl = rtl,
             rowOverlap = 0.40f
         )
-        result.addAll(orderedInPanel)
+        result.addAll(orderedInUnit)
     }
 
-    // If any unassigned bubbles remained (<=20%), append them or re-sort
+    // If any unassigned bubbles remained (<=20%), append them in reading order
     if (result.size < bubbles.size) {
         val addedIds = result.map { it.id }.toSet()
         val remaining = bubbles.filter { it.id !in addedIds }

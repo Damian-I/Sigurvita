@@ -176,4 +176,46 @@ class ReadingOrderUnitTest {
         val result = orderBubbles(pb, map, rtl = false)
         assertEquals(1, result.size)
     }
+
+    @Test
+    fun testContainerPanelWithInsetAndUnassignedBubbles_MatchesExpectedLayout() {
+        // Layout matching expected.png:
+        // Panel 1: Top-Left (0.0, 0.0 to 0.45, 0.48)
+        // Panel 2: Top-Right (0.52, 0.0 to 1.0, 0.48)
+        // Panel 3: Inset Middle-Right (0.52, 0.52 to 0.98, 0.76)
+        // Panel 4: Container Background covering bottom half (0.0, 0.50 to 1.0, 1.0)
+        val p1 = PanelInfo(1, NormRect(0.0f, 0.0f, 0.45f, 0.48f), 0.225f, 0.24f, 0.216f)
+        val p2 = PanelInfo(2, NormRect(0.52f, 0.0f, 1.0f, 0.48f), 0.76f, 0.24f, 0.23f)
+        val p3 = PanelInfo(3, NormRect(0.52f, 0.52f, 0.98f, 0.76f), 0.75f, 0.64f, 0.11f)
+        val p4 = PanelInfo(4, NormRect(0.0f, 0.50f, 1.0f, 1.0f), 0.50f, 0.75f, 0.50f)
+        val panels = listOf(p1, p2, p3, p4)
+
+        val bTopLeft = createDummyBubble(1, 0.1f, 0.1f, 0.3f, 0.2f)
+        val bTopRight = createDummyBubble(2, 0.6f, 0.1f, 0.8f, 0.2f)
+        val bMidLeft = createDummyBubble(3, 0.15f, 0.53f, 0.35f, 0.62f)
+        val bInsetRight = createDummyBubble(4, 0.6f, 0.55f, 0.85f, 0.65f)
+        val bBottom = createDummyBubble(5, 0.2f, 0.8f, 0.5f, 0.9f)
+
+        // Labels matrix mapping:
+        // Panel 1 (1), Panel 2 (2), Panel 3 (3), Panel 4 (4)
+        val gridDim = 10
+        val labels = ShortArray(gridDim * gridDim) { 4.toShort() }
+        // Fill top-left with 1, top-right with 2, inset with 3
+        for (gy in 0..4) {
+            for (gx in 0..4) labels[gy * gridDim + gx] = 1.toShort()
+            for (gx in 5..9) labels[gy * gridDim + gx] = 2.toShort()
+        }
+        for (gy in 5..7) {
+            for (gx in 5..9) labels[gy * gridDim + gx] = 3.toShort()
+        }
+
+        val map = PanelMap(gridDim, gridDim, labels, defaultLetterbox, panels)
+        val pb = PageBubbles(0, 2000, 3000, defaultLetterbox, listOf(bTopLeft, bTopRight, bMidLeft, bInsetRight, bBottom))
+
+        val ordered = orderBubbles(pb, map, rtl = false)
+        val ids = ordered.map { it.id }
+
+        // Expected sequence: Top-Left (1), Top-Right (2), Middle-Left in container (3), Inset Middle-Right (4), Bottom in container (5)
+        assertEquals(listOf(1, 2, 3, 4, 5), ids)
+    }
 }
