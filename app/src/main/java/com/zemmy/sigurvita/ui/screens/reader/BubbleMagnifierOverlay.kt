@@ -3,15 +3,12 @@ package com.zemmy.sigurvita.ui.screens.reader
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -19,9 +16,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -55,7 +51,6 @@ fun BubbleMagnifierOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.55f))
             .pointerInput(Unit) {
                 detectTapGestures(onTap = { onDismiss() })
             }
@@ -66,17 +61,24 @@ fun BubbleMagnifierOverlay(
             val screenH = screenSize.height.toFloat()
 
             val magFactor = 2.0f
-            val origW = if (magnifiedBubble.bubbleSizePx.width > 0f) magnifiedBubble.bubbleSizePx.width else 150f
-            val origH = if (magnifiedBubble.bubbleSizePx.height > 0f) magnifiedBubble.bubbleSizePx.height else 100f
+            val cropW = if (magnifiedBubble.cropSizeOnScreen.width > 0f) magnifiedBubble.cropSizeOnScreen.width else 150f
+            val cropH = if (magnifiedBubble.cropSizeOnScreen.height > 0f) magnifiedBubble.cropSizeOnScreen.height else 100f
 
-            val magW = origW * magFactor
-            val magH = origH * magFactor
+            val magW = cropW * magFactor
+            val magH = cropH * magFactor
 
-            val center = magnifiedBubble.centerOffsetPx
-            val rawLeft = center.x - magW / 2f
-            val rawTop = center.y - magH / 2f
+            val anchorX = magnifiedBubble.anchorScreenPx.x
+            val anchorY = magnifiedBubble.anchorScreenPx.y
 
-            val padding = with(density) { 16.dp.toPx() }
+            val relTipX = magnifiedBubble.tipRelOffset.x.coerceIn(0f, 1f)
+            val relTipY = magnifiedBubble.tipRelOffset.y.coerceIn(0f, 1f)
+
+            // Pin the magnified bubble's tail tip (or box corner) directly on top of the original bubble's tip,
+            // so it grows outwards from the tip and completely covers the original bubble.
+            val rawLeft = anchorX - relTipX * magW
+            val rawTop = anchorY - relTipY * magH
+
+            val padding = with(density) { 8.dp.toPx() }
             val leftPx = rawLeft.coerceIn(padding, maxOf(padding, screenW - magW - padding))
             val topPx = rawTop.coerceIn(padding, maxOf(padding, screenH - magH - padding))
 
@@ -91,20 +93,16 @@ fun BubbleMagnifierOverlay(
                     .size(width = magWDp, height = magHDp)
                     .graphicsLayer(
                         scaleX = animScale,
-                        scaleY = animScale
-                    )
-                    .shadow(elevation = if (speechBubbleBoxesEnabled) 16.dp else 8.dp, shape = RoundedCornerShape(10.dp)),
-                shape = RoundedCornerShape(10.dp),
-                color = Color.Transparent,
-                border = if (speechBubbleBoxesEnabled) BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)) else null
+                        scaleY = animScale,
+                        transformOrigin = TransformOrigin(relTipX, relTipY)
+                    ),
+                color = Color.Transparent
             ) {
                 Image(
                     bitmap = magnifiedBubble.bitmap.asImageBitmap(),
                     contentDescription = "Magnified Speech Bubble",
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(10.dp))
+                    modifier = Modifier.fillMaxSize()
                 )
             }
         }

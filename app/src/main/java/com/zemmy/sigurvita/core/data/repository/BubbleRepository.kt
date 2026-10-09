@@ -12,6 +12,7 @@ import com.zemmy.sigurvita.core.model.PageBubbles
 import com.zemmy.sigurvita.core.model.ReaderPage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.core.graphics.createBitmap
 
 private const val TAG = "BubbleRepository"
 
@@ -164,6 +165,19 @@ class BubbleRepository(
         }
     }
 
+data class BubbleCropResult(
+    val bitmap: Bitmap,
+    val cropLeftNorm: Float,
+    val cropTopNorm: Float,
+    val cropRightNorm: Float,
+    val cropBottomNorm: Float,
+    val anchorNormX: Float,
+    val anchorNormY: Float,
+    val relTipX: Float,
+    val relTipY: Float,
+    val isLiteralBox: Boolean
+)
+
     /**
      * Crops the bubble region out of the page at high resolution for the magnifier overlay.
      * Optionally draws the smooth outline if [speechBubbleBoxesEnabled] is true.
@@ -175,7 +189,7 @@ class BubbleRepository(
         letterbox: LetterboxParams,
         speechBubbleBoxesEnabled: Boolean,
         chapterId: Int = 0
-    ): Bitmap? = withContext(Dispatchers.IO) {
+    ): BubbleCropResult? = withContext(Dispatchers.IO) {
         try {
             val key = Pair(chapterId, page.index)
             var fullBitmap = if (chapterId > 0) highResCache.get(key) else null
@@ -198,9 +212,8 @@ class BubbleRepository(
             val bw = maxNormX - minNormX
             val bh = maxNormY - minNormY
 
-            // 4% margin around the bubble bounds so text/border is not clipped
-            val marginX = (bw * 0.04f * w).toInt().coerceAtLeast(6)
-            val marginY = (bh * 0.04f * h).toInt().coerceAtLeast(6)
+            val marginX = (bw * 0.08f * w).toInt().coerceAtLeast(16)
+            val marginY = (bh * 0.08f * h).toInt().coerceAtLeast(16)
 
             val left = (minNormX * w - marginX).toInt().coerceIn(0, fullBitmap.width - 1)
             val top = (minNormY * h - marginY).toInt().coerceIn(0, fullBitmap.height - 1)
@@ -211,72 +224,153 @@ class BubbleRepository(
             val cropH = bottom - top
             if (cropW <= 0 || cropH <= 0) return@withContext null
 
-            val crop = Bitmap.createBitmap(fullBitmap, left, top, cropW, cropH)
-            if (speechBubbleBoxesEnabled) {
-                return@withContext applyBubbleOutline(crop, left, top, w, h, normPoints)
-            } else {
-                return@withContext crop
+            val isLiteralBox = normPoints.size == 4
+
+            val cropLeftNorm = left.toFloat() / w
+            val cropTopNorm = top.toFloat() / h
+            val cropRightNorm = right.toFloat() / w
+            val cropBottomNorm = bottom.toFloat() / h
+            val cropWNorm = cropRightNorm - cropLeftNorm
+            val cropHNorm = cropBottomNorm - cropTopNorm
+
+            var anchorNormX = minNormX
+            var anchorNormY = minNormY
+
+            if (!isLiteralBox && normPoints.size >= 5) {
+                val bh = maxNormY - minNormY
+
+                // Check for a bottom tail protruding below the main bubble body
+                val bottomThreshold = minNormY + 0.85f * bh
+                val bottomTailPt = normPoints.filter { it.second > bottomThreshold }
+                    .maxByOrNull { it.second }
+
+                if (bottomTailPt != null && (bottomTailPt.second - bottomThreshold) > 0.02f * bh) {
+                    anchorNormX = bottomTailPt.first
+                    anchorNormY = bottomTailPt.second
+                } else {
+                    // Check for a top tail protruding above the main bubble body
+                    val topThreshold = minNormY + 0.15f * bh
+                    val topTailPt = normPoints.filter { it.second < topThreshold }
+                        .minByOrNull { it.second }
+
+                    if (topTailPt != null && (topThreshold - topTailPt.second) > 0.02f * bh) {
+                        anchorNormX = topTailPt.first
+                        anchorNormY = topTailPt.second
+                    }
+                }
             }
+
+            val relTipX = ((anchorNormX - cropLeftNorm) / cropWNorm).coerceIn(0f, 1f)
+            val relTipY = ((anchorNormY - cropTopNorm) / cropHNorm).coerceIn(0f, 1f)
+
+            val crop = Bitmap.createBitmap(fullBitmap, left, top, cropW, cropH)
+            val masked = maskAndOutlineBubble(
+                crop = crop,
+                cropLeft = left,
+                cropTop = top,
+                pageW = w,
+                pageH = h,
+                normPoints = normPoints,
+                drawOutline = speechBubbleBoxesEnabled
+            )
+
+            return@withContext BubbleCropResult(
+                bitmap = masked,
+                cropLeftNorm = cropLeftNorm,
+                cropTopNorm = cropTopNorm,
+                cropRightNorm = cropRightNorm,
+                cropBottomNorm = cropBottomNorm,
+                anchorNormX = anchorNormX,
+                anchorNormY = anchorNormY,
+                relTipX = relTipX,
+                relTipY = relTipY,
+                isLiteralBox = isLiteralBox
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to crop bubble", e)
             return@withContext null
         }
     }
 
-    private fun applyBubbleOutline(
+    private fun maskAndOutlineBubble(
         crop: Bitmap,
         cropLeft: Int,
         cropTop: Int,
         pageW: Float,
         pageH: Float,
-        normPoints: List<Pair<Float, Float>>
+        normPoints: List<Pair<Float, Float>>,
+        drawOutline: Boolean
     ): Bitmap {
         val w = crop.width
         val h = crop.height
-        if (normPoints.size < 3) return crop
+        if (w <= 0 || h <= 0) return crop
 
-        val localPoints = normPoints.map { (normX, normY) ->
-            Pair(normX * pageW - cropLeft, normY * pageH - cropTop)
-        }
+        val maskedBmp = createBitmap(w, h)
+        val canvas = android.graphics.Canvas(maskedBmp)
 
-        val path = android.graphics.Path()
-        val start = localPoints[0]
-        path.moveTo(start.first, start.second)
-
-        if (localPoints.size == 4) {
-            path.lineTo(localPoints[1].first, localPoints[1].second)
-            path.lineTo(localPoints[2].first, localPoints[2].second)
-            path.lineTo(localPoints[3].first, localPoints[3].second)
-        } else {
-            for (i in localPoints.indices) {
-                val p0 = localPoints[i]
-                val p1 = localPoints[(i + 1) % localPoints.size]
-                val midX = (p0.first + p1.first) / 2f
-                val midY = (p0.second + p1.second) / 2f
-                path.quadTo(p0.first, p0.second, midX, midY)
+        if (normPoints.size >= 3) {
+            val localPoints = normPoints.map { (normX, normY) ->
+                Pair(normX * pageW - cropLeft, normY * pageH - cropTop)
             }
+
+            // Inflate path outward from centroid to ensure speech bubble edges and tails are never clipped
+            val cx = localPoints.map { it.first }.average().toFloat()
+            val cy = localPoints.map { it.second }.average().toFloat()
+            val expandPx = (minOf(w, h) * 0.05f).coerceIn(8f, 16f)
+
+            val inflatedPoints = localPoints.map { (px, py) ->
+                val dx = px - cx
+                val dy = py - cy
+                val dist = kotlin.math.hypot(dx, dy).coerceAtLeast(1e-3f)
+                Pair(px + (dx / dist) * expandPx, py + (dy / dist) * expandPx)
+            }
+
+            val path = android.graphics.Path()
+            val start = inflatedPoints[0]
+            path.moveTo(start.first, start.second)
+
+            if (inflatedPoints.size == 4) {
+                path.lineTo(inflatedPoints[1].first, inflatedPoints[1].second)
+                path.lineTo(inflatedPoints[2].first, inflatedPoints[2].second)
+                path.lineTo(inflatedPoints[3].first, inflatedPoints[3].second)
+            } else {
+                for (i in inflatedPoints.indices) {
+                    val p0 = inflatedPoints[i]
+                    val p1 = inflatedPoints[(i + 1) % inflatedPoints.size]
+                    val midX = (p0.first + p1.first) / 2f
+                    val midY = (p0.second + p1.second) / 2f
+                    path.quadTo(p0.first, p0.second, midX, midY)
+                }
+            }
+            path.close()
+
+            val antiAliasPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
+
+            canvas.clipPath(path)
+            canvas.drawBitmap(crop, 0f, 0f, antiAliasPaint)
+
+            if (drawOutline) {
+                val strokeScale = (minOf(w, h) / 150f).coerceIn(1.5f, 4.0f)
+
+                val strokePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    style = android.graphics.Paint.Style.STROKE
+                    color = android.graphics.Color.BLACK
+                    strokeWidth = 3.0f * strokeScale
+                    strokeCap = android.graphics.Paint.Cap.ROUND
+                    strokeJoin = android.graphics.Paint.Join.ROUND
+                }
+                canvas.drawPath(path, strokePaint)
+
+                strokePaint.color = android.graphics.Color.argb(255, 255, 229, 0)
+                strokePaint.strokeWidth = 1.8f * strokeScale
+                canvas.drawPath(path, strokePaint)
+            }
+        } else {
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
+            canvas.drawBitmap(crop, 0f, 0f, paint)
         }
-        path.close()
 
-        val out = Bitmap.createBitmap(crop, 0, 0, w, h, null, true)
-        val canvas = android.graphics.Canvas(out)
-
-        val strokeScale = (minOf(w, h) / 150f).coerceIn(1.5f, 4.0f)
-
-        val strokePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            style = android.graphics.Paint.Style.STROKE
-            color = android.graphics.Color.BLACK
-            strokeWidth = 3.0f * strokeScale
-            strokeCap = android.graphics.Paint.Cap.ROUND
-            strokeJoin = android.graphics.Paint.Join.ROUND
-        }
-        canvas.drawPath(path, strokePaint)
-
-        strokePaint.color = android.graphics.Color.argb(255, 255, 229, 0)
-        strokePaint.strokeWidth = 1.8f * strokeScale
-        canvas.drawPath(path, strokePaint)
-
-        return out
+        return maskedBmp
     }
     fun clearChapter(chapterId: Int) {
         val keysToRemove = cache.snapshot().keys.filter { it.first.first == chapterId }

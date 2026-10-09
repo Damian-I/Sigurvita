@@ -337,15 +337,21 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
-    private fun calculateBubbleScreenBounds(
-        bubble: com.zemmy.sigurvita.core.model.DetectedBubble,
+    private data class PageLayout(
+        val originX: Float,
+        val originY: Float,
+        val dispW: Float,
+        val dispH: Float
+    )
+
+    private fun calculatePageScreenLayout(
         pageWidth: Int,
         pageHeight: Int,
         screenWidthPx: Float,
         screenHeightPx: Float,
         fitMode: FitMode,
         readingMode: ReadingMode
-    ): Pair<androidx.compose.ui.geometry.Offset, androidx.compose.ui.geometry.Size> {
+    ): PageLayout {
         val boxW = if (screenWidthPx > 0f) screenWidthPx else 1080f
         val boxH = if (screenHeightPx > 0f) screenHeightPx else 2400f
         val pageW = if (pageWidth > 0) pageWidth.toFloat() else boxW
@@ -369,20 +375,7 @@ class ReaderViewModel : ViewModel() {
         val originX = (boxW - dispW) / 2f
         val originY = (boxH - dispH) / 2f
 
-        val normCenterX = (bubble.box.left + bubble.box.right) / 2f
-        val normCenterY = (bubble.box.top + bubble.box.bottom) / 2f
-        val normW = bubble.box.right - bubble.box.left
-        val normH = bubble.box.bottom - bubble.box.top
-
-        val centerX = originX + normCenterX * dispW
-        val centerY = originY + normCenterY * dispH
-        val bw = normW * dispW
-        val bh = normH * dispH
-
-        return Pair(
-            androidx.compose.ui.geometry.Offset(centerX, centerY),
-            androidx.compose.ui.geometry.Size(bw, bh)
-        )
+        return PageLayout(originX, originY, dispW, dispH)
     }
 
     private fun magnifyBubbleObject(
@@ -393,8 +386,7 @@ class ReaderViewModel : ViewModel() {
         val state = _uiState.value
         val page = state.pages.getOrNull(pageIndex) ?: return
 
-        val (centerOffsetPx, bubbleSizePx) = calculateBubbleScreenBounds(
-            bubble = bubble,
+        val layout = calculatePageScreenLayout(
             pageWidth = pageBubbles.pageWidth,
             pageHeight = pageBubbles.pageHeight,
             screenWidthPx = screenWidthPx.toFloat(),
@@ -404,15 +396,22 @@ class ReaderViewModel : ViewModel() {
         )
 
         viewModelScope.launch {
-            val cropBmp = app.bubbleRepository.cropBubble(app, page, bubble, pageBubbles.letterbox, state.settings.speechBubbleBoxesEnabled, state.chapterId)
-            if (cropBmp != null) {
+            val cropResult = app.bubbleRepository.cropBubble(app, page, bubble, pageBubbles.letterbox, state.settings.speechBubbleBoxesEnabled, state.chapterId)
+            if (cropResult != null) {
+                val anchorX = layout.originX + cropResult.anchorNormX * layout.dispW
+                val anchorY = layout.originY + cropResult.anchorNormY * layout.dispH
+                val cropWOnScreen = (cropResult.cropRightNorm - cropResult.cropLeftNorm) * layout.dispW
+                val cropHOnScreen = (cropResult.cropBottomNorm - cropResult.cropTopNorm) * layout.dispH
+
                 _uiState.value = _uiState.value.copy(
                     magnifiedBubble = com.zemmy.sigurvita.core.model.MagnifiedBubble(
                         pageIndex = pageIndex,
                         bubbleId = bubble.id,
-                        bitmap = cropBmp,
-                        centerOffsetPx = centerOffsetPx,
-                        bubbleSizePx = bubbleSizePx
+                        bitmap = cropResult.bitmap,
+                        anchorScreenPx = androidx.compose.ui.geometry.Offset(anchorX, anchorY),
+                        cropSizeOnScreen = androidx.compose.ui.geometry.Size(cropWOnScreen, cropHOnScreen),
+                        tipRelOffset = androidx.compose.ui.geometry.Offset(cropResult.relTipX, cropResult.relTipY),
+                        isLiteralBox = cropResult.isLiteralBox
                     )
                 )
             }
@@ -430,16 +429,32 @@ class ReaderViewModel : ViewModel() {
         val bubble = pageBubbles.bubbles.find { it.id == bubbleId } ?: return
         val page = state.pages.getOrNull(pageIndex) ?: return
 
+        val layout = calculatePageScreenLayout(
+            pageWidth = pageBubbles.pageWidth,
+            pageHeight = pageBubbles.pageHeight,
+            screenWidthPx = screenWidthPx.toFloat(),
+            screenHeightPx = screenHeightPx.toFloat(),
+            fitMode = state.settings.fitMode,
+            readingMode = state.settings.readingMode
+        )
+
         viewModelScope.launch {
-            val cropBmp = app.bubbleRepository.cropBubble(app, page, bubble, pageBubbles.letterbox, state.settings.speechBubbleBoxesEnabled, state.chapterId)
-            if (cropBmp != null) {
+            val cropResult = app.bubbleRepository.cropBubble(app, page, bubble, pageBubbles.letterbox, state.settings.speechBubbleBoxesEnabled, state.chapterId)
+            if (cropResult != null) {
+                val anchorX = layout.originX + cropResult.anchorNormX * layout.dispW
+                val anchorY = layout.originY + cropResult.anchorNormY * layout.dispH
+                val cropWOnScreen = (cropResult.cropRightNorm - cropResult.cropLeftNorm) * layout.dispW
+                val cropHOnScreen = (cropResult.cropBottomNorm - cropResult.cropTopNorm) * layout.dispH
+
                 _uiState.value = _uiState.value.copy(
                     magnifiedBubble = com.zemmy.sigurvita.core.model.MagnifiedBubble(
                         pageIndex = pageIndex,
                         bubbleId = bubbleId,
-                        bitmap = cropBmp,
-                        centerOffsetPx = centerOffsetPx,
-                        bubbleSizePx = bubbleSizePx
+                        bitmap = cropResult.bitmap,
+                        anchorScreenPx = androidx.compose.ui.geometry.Offset(anchorX, anchorY),
+                        cropSizeOnScreen = androidx.compose.ui.geometry.Size(cropWOnScreen, cropHOnScreen),
+                        tipRelOffset = androidx.compose.ui.geometry.Offset(cropResult.relTipX, cropResult.relTipY),
+                        isLiteralBox = cropResult.isLiteralBox
                     )
                 )
             }

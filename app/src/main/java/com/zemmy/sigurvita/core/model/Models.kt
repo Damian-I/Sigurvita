@@ -47,12 +47,21 @@ data class ReaderSettings(
     val panelDebugOverlayEnabled: Boolean = false
 )
 
+enum class BubbleCorner {
+    TOP_LEFT,
+    TOP_RIGHT,
+    BOTTOM_LEFT,
+    BOTTOM_RIGHT
+}
+
 data class MagnifiedBubble(
     val pageIndex: Int,
     val bubbleId: Int,
     val bitmap: android.graphics.Bitmap,
-    val centerOffsetPx: androidx.compose.ui.geometry.Offset,
-    val bubbleSizePx: androidx.compose.ui.geometry.Size
+    val anchorScreenPx: androidx.compose.ui.geometry.Offset,
+    val cropSizeOnScreen: androidx.compose.ui.geometry.Size,
+    val tipRelOffset: androidx.compose.ui.geometry.Offset,
+    val isLiteralBox: Boolean = false
 )
 
 data class Library(
