@@ -4,16 +4,19 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
+import com.zemmy.sigurvita.core.data.api.dto.SeriesMetadataDto
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
+import com.zemmy.sigurvita.core.model.Chapter
+import com.zemmy.sigurvita.core.model.DownloadStatus
 import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
 import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
 import com.zemmy.sigurvita.core.util.orderBubbles
-import com.zemmy.sigurvita.core.util.sortBubblesForReading
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +42,10 @@ data class ReaderUiState(
     val markedPageIndices: Set<Int> = emptySet(),
     val chapterTitle: String = "",
     val seriesName: String = "",
+    val libraryName: String = "Manga",
+    val currentChapter: Chapter? = null,
+    val seriesCoverUrl: String? = null,
+    val seriesMetadata: SeriesMetadataDto? = null,
     val bubblesByPage: Map<Int, com.zemmy.sigurvita.core.model.PageBubbles> = emptyMap(),
     val panelMapsByPage: Map<Int, com.zemmy.sigurvita.core.util.PanelMap> = emptyMap(),
     val magnifiedBubble: com.zemmy.sigurvita.core.model.MagnifiedBubble? = null
@@ -140,6 +147,10 @@ class ReaderViewModel : ViewModel() {
             var targetVolumeId = volumeId
             var fetchedSeriesName = ""
             var fetchedChapterTitle = ""
+            var fetchedLibraryName = "Manga"
+            var fetchedCoverUrl: String? = null
+            var fetchedMetadata: SeriesMetadataDto? = null
+            var fetchedChapter: Chapter? = null
             var isManga = false
             var defaultMode = ReadingMode.LTR
 
@@ -167,14 +178,21 @@ class ReaderViewModel : ViewModel() {
                     if (seriesRes.isSuccess && seriesRes.getOrNull() != null) {
                         val series = seriesRes.getOrNull()!!
                         fetchedSeriesName = series.name
+                        fetchedCoverUrl = series.coverUrl
 
                         val libraryRes = libraryRepository.getLibraries()
                         val library = libraryRes.getOrNull()?.find { it.id == series.libraryId }
                         if (library != null) {
                             cachedLibraryId = library.id
+                            fetchedLibraryName = library.name
                             isManga = library.isManga
                             defaultMode = if (isManga) ReadingMode.RTL else ReadingMode.LTR
                         }
+                    }
+
+                    val metaRes = seriesRepository.getSeriesMetadataDetails(targetSeriesId)
+                    if (metaRes.isSuccess) {
+                        fetchedMetadata = metaRes.getOrNull()
                     }
 
                     val volumesRes = seriesRepository.getSeriesVolumes(targetSeriesId)
@@ -183,6 +201,7 @@ class ReaderViewModel : ViewModel() {
                         val matchingChapter = volumes.flatMap { it.chapters }.find { it.id == chapterId }
                         if (matchingChapter != null) {
                             fetchedChapterTitle = formatChapterDisplayTitle(matchingChapter.title, matchingChapter.chapterNumber, isManga = isManga)
+                            fetchedChapter = matchingChapter
                         }
                     }
                 }
@@ -203,6 +222,32 @@ class ReaderViewModel : ViewModel() {
                 } catch (_: Exception) {}
             }
 
+            val downloadTask = try {
+                app.database.downloadDao().getDownloadByChapterId(chapterId)
+            } catch (_: Exception) { null }
+            val isDownloadedLocal = downloadTask?.status == DownloadStatus.COMPLETED
+
+            val finalChapter = (fetchedChapter ?: Chapter(
+                id = chapterId,
+                volumeId = targetVolumeId,
+                seriesId = targetSeriesId,
+                chapterNumber = "",
+                title = fetchedChapterTitle,
+                summary = null,
+                pages = totalPages,
+                pagesRead = 0,
+                isRead = false,
+                isDownloaded = isDownloadedLocal,
+                localPath = downloadTask?.localPath,
+                coverUrl = null
+            )).let { ch ->
+                if (isDownloadedLocal) {
+                    ch.copy(isDownloaded = true, localPath = downloadTask?.localPath)
+                } else {
+                    ch
+                }
+            }
+
             val activeReadingMode = sessionReadingModeOverride ?: defaultMode
             val effectiveSettings = userSettings.copy(
                 readingMode = activeReadingMode,
@@ -219,8 +264,14 @@ class ReaderViewModel : ViewModel() {
                 readingListId = readingListId,
                 showResumePrompt = false,
                 chapterTitle = fetchedChapterTitle,
-                seriesName = fetchedSeriesName
+                seriesName = fetchedSeriesName,
+                libraryName = fetchedLibraryName,
+                currentChapter = finalChapter,
+                seriesCoverUrl = fetchedCoverUrl,
+                seriesMetadata = fetchedMetadata,
+                controlsVisible = true
             )
+            scheduleAutoHideControls()
 
             val pageList = readerRepository.getPages(chapterId, totalPages)
             val savedPageNum = readerRepository.getProgress(chapterId)
@@ -231,9 +282,15 @@ class ReaderViewModel : ViewModel() {
                 if (savedPageNum - 1 in pageList.indices) savedPageNum - 1 else 0
             } else 0
 
+            val updatedChapter = finalChapter.copy(
+                pages = if (pageList.isNotEmpty()) pageList.size else totalPages,
+                pagesRead = activeIndex + 1
+            )
+
             _uiState.value = _uiState.value.copy(
                 pages = pageList,
                 currentPageIndex = activeIndex,
+                currentChapter = updatedChapter,
                 isLoading = false,
                 showResumePrompt = hasSavedProgress,
                 promptPageNum = if (hasSavedProgress) savedPageNum else 0
@@ -500,10 +557,96 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
+    private var autoHideControlsJob: Job? = null
+
+    fun scheduleAutoHideControls() {
+        autoHideControlsJob?.cancel()
+        autoHideControlsJob = viewModelScope.launch {
+            delay(5.seconds)
+            _uiState.value = _uiState.value.copy(controlsVisible = false)
+        }
+    }
+
+    fun cancelAutoHideControls() {
+        autoHideControlsJob?.cancel()
+    }
+
+    fun toggleControls() {
+        val currentVisible = _uiState.value.controlsVisible
+        if (currentVisible) {
+            cancelAutoHideControls()
+            _uiState.value = _uiState.value.copy(controlsVisible = false)
+        } else {
+            _uiState.value = _uiState.value.copy(controlsVisible = true)
+            scheduleAutoHideControls()
+        }
+    }
+
+    fun toggleChapterRead(chapter: Chapter) {
+        val newReadState = !chapter.isRead
+        val updatedChapter = chapter.copy(
+            isRead = newReadState,
+            pagesRead = if (newReadState) chapter.pages else chapter.pagesRead
+        )
+        _uiState.value = _uiState.value.copy(currentChapter = updatedChapter)
+
+        viewModelScope.launch {
+            if (newReadState) {
+                seriesRepository.markChapterRead(chapter.id, chapter.seriesId)
+            } else {
+                seriesRepository.markChapterUnread(chapter.id, chapter.seriesId)
+            }
+        }
+    }
+
+    fun downloadChapter(chapter: Chapter) {
+        val state = _uiState.value
+        viewModelScope.launch {
+            downloadRepository.enqueueDownload(
+                chapterId = chapter.id,
+                seriesId = state.seriesId,
+                volumeId = chapter.volumeId,
+                title = chapter.title.ifBlank { "Issue ${chapter.chapterNumber}" },
+                coverUrl = chapter.coverUrl ?: state.seriesCoverUrl,
+                totalPages = chapter.pages,
+                libraryName = state.libraryName,
+                seriesName = state.seriesName,
+                chapterNumber = chapter.chapterNumber
+            )
+        }
+    }
+
+    fun deleteLocalChapter(chapterId: Int) {
+        viewModelScope.launch {
+            downloadRepository.deleteLocalChapter(chapterId)
+            val currentCh = _uiState.value.currentChapter
+            if (currentCh != null && currentCh.id == chapterId) {
+                _uiState.value = _uiState.value.copy(
+                    currentChapter = currentCh.copy(isDownloaded = false, localPath = null)
+                )
+            }
+        }
+    }
+
     fun onPageChanged(index: Int) {
         if (_uiState.value.showResumePrompt) return
         if (index in _uiState.value.pages.indices) {
-            _uiState.value = _uiState.value.copy(currentPageIndex = index)
+            val totalPages = _uiState.value.pages.size
+            val currentCh = _uiState.value.currentChapter
+            val updatedCh = currentCh?.copy(
+                pagesRead = index + 1,
+                isRead = (index + 1 >= totalPages && totalPages > 0)
+            )
+
+            _uiState.value = _uiState.value.copy(
+                currentPageIndex = index,
+                currentChapter = updatedCh ?: currentCh
+            )
+
+            if (_uiState.value.controlsVisible) {
+                scheduleAutoHideControls()
+            }
+
             ensureBubbles(index)
             ensureBubbles(index + 1)
             progressSaveFlow.tryEmit(
@@ -518,7 +661,6 @@ class ReaderViewModel : ViewModel() {
 
             // Auto-delete logic still runs immediately on last page
             viewModelScope.launch {
-                val totalPages = _uiState.value.pages.size
                 if (index >= totalPages - 1 && totalPages > 0) {
                     // Flush progress immediately for the last page
                     readerRepository.saveProgress(
@@ -620,10 +762,6 @@ class ReaderViewModel : ViewModel() {
                 }
             }
         }
-    }
-
-    fun toggleControls() {
-        _uiState.value = _uiState.value.copy(controlsVisible = !_uiState.value.controlsVisible)
     }
 
     fun updateReadingMode(mode: ReadingMode) {

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Bookmark
@@ -65,8 +66,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.zemmy.sigurvita.core.model.Chapter
+import com.zemmy.sigurvita.ui.components.IssueDetailBottomSheet
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -103,6 +107,7 @@ fun ReaderScreen(
 
     val state by viewModel.uiState.collectAsState()
     var showOptionsBottomSheet by remember { mutableStateOf(false) }
+    var showIssueDetailSheet by remember { mutableStateOf(false) }
 
     val handleBack: () -> Unit = {
         scope.launch {
@@ -208,57 +213,77 @@ fun ReaderScreen(
             ) {
                 TopAppBar(
                     title = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.cancelAutoHideControls()
+                                    showIssueDetailSheet = true
+                                },
+                            verticalArrangement = Arrangement.Center
                         ) {
-                            Text(stringResource(R.string.page_indicator, state.currentPageIndex + 1, state.pages.size))
-                            if (state.settings.isIncognitoMode) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.tertiary,
-                                    shape = MaterialTheme.shapes.extraSmall
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.VisibilityOff,
-                                            contentDescription = "Incognito",
-                                            modifier = Modifier.size(14.dp),
-                                            tint = MaterialTheme.colorScheme.onTertiary
-                                        )
-                                        Text(
-                                            text = "Incognito",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onTertiary
-                                        )
-                                    }
-                                }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.height(22.dp)
+                            ) {
+                                val headerTitle = state.seriesName.ifBlank { state.chapterTitle.ifBlank { "Issue Details" } }
+                                Text(
+                                    text = headerTitle,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = "Issue Details",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
                             }
-                            val currentBubbles = state.bubblesByPage[state.currentPageIndex]
-                            if (state.settings.speechBubbleDetectionEnabled && currentBubbles != null) {
-                                Surface(
-                                    color = Color(0xFF333333),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.height(18.dp)
+                            ) {
+                                if (state.seriesName.isNotBlank() && state.chapterTitle.isNotBlank()) {
+                                    Text(
+                                        text = state.chapterTitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.LightGray,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Text(
+                                    text = stringResource(R.string.page_indicator, state.currentPageIndex + 1, state.pages.size),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.LightGray
+                                )
+                                if (state.settings.isIncognitoMode) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.tertiary,
+                                        shape = MaterialTheme.shapes.extraSmall
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.ChatBubble,
-                                            contentDescription = null,
-                                            tint = Color(0xFFFFE500),
-                                            modifier = Modifier.size(12.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "${currentBubbles.bubbles.size} bubbles",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color.White
-                                        )
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.VisibilityOff,
+                                                contentDescription = "Incognito",
+                                                modifier = Modifier.size(12.dp),
+                                                tint = MaterialTheme.colorScheme.onTertiary
+                                            )
+                                            Text(
+                                                text = "Incognito",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onTertiary
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -271,14 +296,20 @@ fun ReaderScreen(
                     },
                     actions = {
                         val isCurrentPageMarked = state.currentPageIndex in state.markedPageIndices
-                        IconButton(onClick = { viewModel.toggleMarkCurrentPage() }) {
+                        IconButton(onClick = {
+                            viewModel.scheduleAutoHideControls()
+                            viewModel.toggleMarkCurrentPage()
+                        }) {
                             Icon(
                                 imageVector = if (isCurrentPageMarked) Icons.Default.Bookmark else Icons.Outlined.Bookmark,
                                 contentDescription = if (isCurrentPageMarked) "Remove Page Mark" else "Mark Page for Review",
                                 tint = if (isCurrentPageMarked) MaterialTheme.colorScheme.primary else Color.White
                             )
                         }
-                        IconButton(onClick = { showOptionsBottomSheet = true }) {
+                        IconButton(onClick = {
+                            viewModel.cancelAutoHideControls()
+                            showOptionsBottomSheet = true
+                        }) {
                             Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.reader_options_cd), tint = Color.White)
                         }
                     },
@@ -309,6 +340,40 @@ fun ReaderScreen(
                             .padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(32.dp)
+                                .padding(bottom = 8.dp),
+                            contentAlignment = Alignment.CenterEnd
+                        ) {
+                            val currentBubbles = state.bubblesByPage[state.currentPageIndex]
+                            if (state.settings.speechBubbleDetectionEnabled && currentBubbles != null) {
+                                Surface(
+                                    color = Color(0xFF333333),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ChatBubble,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFFE500),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "${currentBubbles.bubbles.size}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = Color.White
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         // Multi-Thumbnail Timeline Preview Strip
                         if (state.pages.isNotEmpty()) {
                             Row(
@@ -395,9 +460,48 @@ fun ReaderScreen(
                 }
             }
 
+            if (showIssueDetailSheet) {
+                val chapterForDetail = state.currentChapter ?: Chapter(
+                    id = state.chapterId,
+                    volumeId = state.volumeId,
+                    seriesId = state.seriesId,
+                    chapterNumber = "",
+                    title = state.chapterTitle,
+                    pages = state.pages.size,
+                    pagesRead = state.currentPageIndex + 1,
+                    isRead = state.currentPageIndex + 1 >= state.pages.size
+                )
+                IssueDetailBottomSheet(
+                    chapter = chapterForDetail,
+                    seriesName = state.seriesName.ifBlank { "Series" },
+                    seriesCoverUrl = state.seriesCoverUrl,
+                    metadata = state.seriesMetadata,
+                    onReadClick = { _, _, _ ->
+                        showIssueDetailSheet = false
+                        viewModel.scheduleAutoHideControls()
+                    },
+                    onToggleRead = { targetChapter ->
+                        viewModel.toggleChapterRead(targetChapter)
+                    },
+                    onDownloadClick = { targetChapter ->
+                        viewModel.downloadChapter(targetChapter)
+                    },
+                    onDeleteDownloadClick = { chapterId ->
+                        viewModel.deleteLocalChapter(chapterId)
+                    },
+                    onDismissRequest = {
+                        showIssueDetailSheet = false
+                        viewModel.scheduleAutoHideControls()
+                    }
+                )
+            }
+
             if (showOptionsBottomSheet) {
                 ModalBottomSheet(
-                    onDismissRequest = { showOptionsBottomSheet = false },
+                    onDismissRequest = {
+                        showOptionsBottomSheet = false
+                        viewModel.scheduleAutoHideControls()
+                    },
                     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                     containerColor = Color(0xFF1E1E1E),
                     contentColor = Color.White
@@ -580,3 +684,4 @@ fun ReaderScreen(
         }
     }
 }
+
