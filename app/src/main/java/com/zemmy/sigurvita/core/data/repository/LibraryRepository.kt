@@ -15,6 +15,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
+import com.zemmy.sigurvita.core.util.getSeriesCoverUrl
+
 class LibraryRepository(
     private val api: KavitaApi,
     private val database: SigurvitaDatabase,
@@ -107,7 +109,7 @@ class LibraryRepository(
                     libraryId = dto.libraryId,
                     name = dto.name,
                     localizedName = dto.localizedName,
-                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
+                    coverUrl = config.getSeriesCoverUrl(dto.id),
                     summary = dto.summary,
                     pagesRead = dto.pagesRead,
                     totalPages = dto.pages,
