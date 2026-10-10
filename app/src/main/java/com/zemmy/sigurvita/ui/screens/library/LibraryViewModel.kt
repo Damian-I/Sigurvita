@@ -5,11 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.model.Library
 import com.zemmy.sigurvita.core.model.Series
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 data class LibraryUiState(
     val libraries: List<Library> = emptyList(),
@@ -17,27 +20,38 @@ data class LibraryUiState(
     val libraryName: String = "All Libraries",
     val series: List<Series> = emptyList(),
     val searchQuery: String = "",
+    val debouncedQuery: String = "",
     val isSearchActive: Boolean = false,
     val isIncognitoMode: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
 ) {
     val filteredSeries: List<Series>
-        get() = if (searchQuery.isBlank()) series else series.filter {
-            it.name.contains(searchQuery, ignoreCase = true) || (it.localizedName?.contains(searchQuery, ignoreCase = true) == true)
+        get() = if (debouncedQuery.isBlank()) series else series.filter {
+            it.name.contains(debouncedQuery, ignoreCase = true) || (it.localizedName?.contains(debouncedQuery, ignoreCase = true) == true)
         }
 }
 
+@OptIn(FlowPreview::class)
 class LibraryViewModel : ViewModel() {
 
     private val app = SigurvitaApp.instance
     private val preferencesRepository = app.userPreferencesRepository
     private val libraryRepository = app.libraryRepository
 
+    private val searchQueryFlow = MutableStateFlow("")
+
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            searchQueryFlow
+                .debounce(200.milliseconds)
+                .collect { query ->
+                    _uiState.value = _uiState.value.copy(debouncedQuery = query)
+                }
+        }
         viewModelScope.launch {
             preferencesRepository.readerSettingsFlow.collect { settings ->
                 _uiState.value = _uiState.value.copy(
@@ -79,14 +93,17 @@ class LibraryViewModel : ViewModel() {
 
     fun updateSearchQuery(query: String) {
         _uiState.value = _uiState.value.copy(searchQuery = query)
+        searchQueryFlow.value = query
     }
 
     fun toggleSearchActive() {
         val newSearchState = !_uiState.value.isSearchActive
+        val activeQuery = if (!newSearchState) "" else _uiState.value.searchQuery
         _uiState.value = _uiState.value.copy(
             isSearchActive = newSearchState,
-            searchQuery = if (!newSearchState) "" else _uiState.value.searchQuery
+            searchQuery = activeQuery
         )
+        searchQueryFlow.value = activeQuery
     }
 
     fun toggleIncognitoMode() {

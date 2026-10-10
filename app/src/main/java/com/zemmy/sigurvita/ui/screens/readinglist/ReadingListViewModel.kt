@@ -10,10 +10,13 @@ import com.zemmy.sigurvita.core.util.EraCategory
 import com.zemmy.sigurvita.core.util.cleanReadingListTitle
 import com.zemmy.sigurvita.core.util.extractEraInfo
 import com.zemmy.sigurvita.core.util.naturalCompare
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 enum class ReadingListSortOption(val displayName: String) {
     TITLE_NATURAL_ASC("Title (A-Z)"),
@@ -30,6 +33,7 @@ data class ReadingListUiState(
     val selectedListTitle: String? = null,
     val selectedEraName: String = "All",
     val searchQuery: String = "",
+    val debouncedQuery: String = "",
     val sortOption: ReadingListSortOption = ReadingListSortOption.TITLE_NATURAL_ASC,
     val totalIssues: Int = 0,
     val issuesRead: Int = 0,
@@ -54,10 +58,10 @@ data class ReadingListUiState(
             val filtered = readingLists.filter { list ->
                 val eraInfo = extractEraInfo(list.title)
                 val matchesEra = selectedEraName == "All" || eraInfo.name == selectedEraName
-                val matchesQuery = searchQuery.isBlank() ||
-                        list.title.contains(searchQuery, ignoreCase = true) ||
-                        cleanReadingListTitle(list.title).contains(searchQuery, ignoreCase = true) ||
-                        (list.summary?.contains(searchQuery, ignoreCase = true) == true)
+                val matchesQuery = debouncedQuery.isBlank() ||
+                        list.title.contains(debouncedQuery, ignoreCase = true) ||
+                        cleanReadingListTitle(list.title).contains(debouncedQuery, ignoreCase = true) ||
+                        (list.summary?.contains(debouncedQuery, ignoreCase = true) == true)
                 matchesEra && matchesQuery
             }
 
@@ -75,15 +79,16 @@ data class ReadingListUiState(
 
     val filteredListItems: List<ReadingListItem>
         get() = selectedListItems.filter { item ->
-            searchQuery.isBlank() ||
-                    item.title.contains(searchQuery, ignoreCase = true) ||
-                    item.seriesName.contains(searchQuery, ignoreCase = true)
+            debouncedQuery.isBlank() ||
+                    item.title.contains(debouncedQuery, ignoreCase = true) ||
+                    item.seriesName.contains(debouncedQuery, ignoreCase = true)
         }
 
     val nextToReadIndex: Int
         get() = selectedListItems.indexOfFirst { !it.isRead }
 }
 
+@OptIn(FlowPreview::class)
 class ReadingListViewModel : ViewModel() {
 
     private val app = SigurvitaApp.instance
@@ -92,10 +97,19 @@ class ReadingListViewModel : ViewModel() {
     private val downloadRepository = app.downloadRepository
     private val preferencesRepository = app.userPreferencesRepository
 
+    private val searchQueryFlow = MutableStateFlow("")
+
     private val _uiState = MutableStateFlow(ReadingListUiState())
     val uiState: StateFlow<ReadingListUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            searchQueryFlow
+                .debounce(200.milliseconds)
+                .collect { query ->
+                    _uiState.value = _uiState.value.copy(debouncedQuery = query)
+                }
+        }
         viewModelScope.launch {
             downloadRepository.downloadsFlow.collect { tasks ->
                 _uiState.value = _uiState.value.copy(
@@ -223,6 +237,7 @@ class ReadingListViewModel : ViewModel() {
 
     fun updateSearchQuery(query: String) {
         _uiState.value = _uiState.value.copy(searchQuery = query)
+        searchQueryFlow.value = query
     }
 
     fun selectEra(eraName: String) {

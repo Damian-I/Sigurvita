@@ -8,12 +8,15 @@ import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.core.model.Series
 import com.zemmy.sigurvita.core.model.Volume
 import com.zemmy.sigurvita.core.util.naturalCompare
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.time.Duration.Companion.milliseconds
 
 import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
 
@@ -93,6 +96,7 @@ data class SeriesDetailUiState(
     val totalPages: Int = 0,
     val pagesRead: Int = 0,
     val searchQuery: String = "",
+    val debouncedQuery: String = "",
     val viewFilter: SeriesViewFilter = SeriesViewFilter.BOTH,
     val isSearchActive: Boolean = false,
     val isGridView: Boolean = false,
@@ -140,11 +144,11 @@ data class SeriesDetailUiState(
                 SeriesViewFilter.CHAPTERS -> sortedChapters
             }
 
-            if (searchQuery.isBlank()) return baseItems
+            if (debouncedQuery.isBlank()) return baseItems
 
             return baseItems.filter { item ->
-                item.title.contains(searchQuery, ignoreCase = true) ||
-                (item is SeriesItem.ChapterItem && item.chapter.chapterNumber.contains(searchQuery, ignoreCase = true))
+                item.title.contains(debouncedQuery, ignoreCase = true) ||
+                (item is SeriesItem.ChapterItem && item.chapter.chapterNumber.contains(debouncedQuery, ignoreCase = true))
             }
         }
 
@@ -172,11 +176,11 @@ data class SeriesDetailUiState(
 
     val filteredVolumes: List<Volume>
         get() {
-            if (searchQuery.isBlank()) return volumes
+            if (debouncedQuery.isBlank()) return volumes
             return volumes.mapNotNull { volume ->
                 val matchingChapters = volume.chapters.filter { c ->
-                    c.title.contains(searchQuery, ignoreCase = true) ||
-                    c.chapterNumber.contains(searchQuery, ignoreCase = true)
+                    c.title.contains(debouncedQuery, ignoreCase = true) ||
+                    c.chapterNumber.contains(debouncedQuery, ignoreCase = true)
                 }
                 if (matchingChapters.isNotEmpty()) {
                     volume.copy(chapters = matchingChapters)
@@ -194,10 +198,19 @@ class SeriesDetailViewModel : ViewModel() {
     private val readingListRepository = app.readingListRepository
     private val downloadRepository = app.downloadRepository
 
+    private val searchQueryFlow = MutableStateFlow("")
+
     private val _uiState = MutableStateFlow(SeriesDetailUiState())
     val uiState: StateFlow<SeriesDetailUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            searchQueryFlow
+                .debounce(200.milliseconds)
+                .collect { query ->
+                    _uiState.value = _uiState.value.copy(debouncedQuery = query)
+                }
+        }
         viewModelScope.launch {
             downloadRepository.downloadsFlow.collect { tasks ->
                 _uiState.value = _uiState.value.copy(
@@ -308,6 +321,7 @@ class SeriesDetailViewModel : ViewModel() {
 
     fun updateSearchQuery(query: String) {
         _uiState.value = _uiState.value.copy(searchQuery = query)
+        searchQueryFlow.value = query
     }
 
     fun selectViewFilter(filter: SeriesViewFilter) {
@@ -316,10 +330,12 @@ class SeriesDetailViewModel : ViewModel() {
 
     fun toggleSearchActive() {
         val newSearchState = !_uiState.value.isSearchActive
+        val activeQuery = if (!newSearchState) "" else _uiState.value.searchQuery
         _uiState.value = _uiState.value.copy(
             isSearchActive = newSearchState,
-            searchQuery = if (!newSearchState) "" else _uiState.value.searchQuery
+            searchQuery = activeQuery
         )
+        searchQueryFlow.value = activeQuery
     }
 
     fun toggleGridView() {

@@ -37,19 +37,18 @@ fun extractBubbleNormalizedPoints(
     var minY = sz
     var maxY = -1
     var count = 0
-    var sumX = 0f
-    var sumY = 0f
 
+    val grid = BooleanArray(sz * sz)
     for (y in 0 until sz) {
+        val rowOffset = y * sz
         for (x in 0 until sz) {
-            val prob = mask.probs[y * sz + x].toInt() and 0xFF
+            val prob = mask.probs[rowOffset + x].toInt() and 0xFF
             if (prob >= maskThreshold) {
+                grid[rowOffset + x] = true
                 if (x < minX) minX = x
                 if (x > maxX) maxX = x
                 if (y < minY) minY = y
                 if (y > maxY) maxY = y
-                sumX += x
-                sumY += y
                 count++
             }
         }
@@ -85,48 +84,100 @@ fun extractBubbleNormalizedPoints(
         )
     }
 
-    // Otherwise calculate 48-ray radial contour for curved / oval bubbles
-    val cx = sumX / count
-    val cy = sumY / count
+    // Marching Squares boundary contour extraction on the prototype mask
+    val startX = (minX - 1).coerceAtLeast(0)
+    val endX = (maxX + 1).coerceAtMost(sz - 2)
+    val startY = (minY - 1).coerceAtLeast(0)
+    val endY = (maxY + 1).coerceAtMost(sz - 2)
 
-    val rawPoints = ArrayList<Pair<Float, Float>>(numSteps)
-    for (i in 0 until numSteps) {
-        val angle = i * (2f * Math.PI.toFloat() / numSteps)
-        val dx = kotlin.math.cos(angle.toDouble()).toFloat()
-        val dy = kotlin.math.sin(angle.toDouble()).toFloat()
+    val segments = mutableListOf<Pair<Pair<Float, Float>, Pair<Float, Float>>>()
 
-        var maxR = 0f
-        var r = 0.5f
-        val maxDist = sz.toFloat()
+    for (y in startY..endY) {
+        for (x in startX..endX) {
+            val v0 = if (grid[y * sz + x]) 1 else 0
+            val v1 = if (grid[y * sz + (x + 1)]) 1 else 0
+            val v2 = if (grid[(y + 1) * sz + (x + 1)]) 1 else 0
+            val v3 = if (grid[(y + 1) * sz + x]) 1 else 0
 
-        while (r < maxDist) {
-            val px = (cx + dx * r).toInt()
-            val py = (cy + dy * r).toInt()
-            if (px !in 0 until sz || py !in 0 until sz) break
-            val prob = mask.probs[py * sz + px].toInt() and 0xFF
-            if (prob >= maskThreshold) {
-                maxR = r
+            val caseIndex = (v0 shl 3) or (v1 shl 2) or (v2 shl 1) or v3
+            if (caseIndex == 0 || caseIndex == 15) continue
+
+            val fx = x.toFloat()
+            val fy = y.toFloat()
+
+            val topMid = Pair(fx + 0.5f, fy)
+            val rightMid = Pair(fx + 1.0f, fy + 0.5f)
+            val bottomMid = Pair(fx + 0.5f, fy + 1.0f)
+            val leftMid = Pair(fx, fy + 0.5f)
+
+            when (caseIndex) {
+                1, 14 -> segments.add(Pair(leftMid, bottomMid))
+                2, 13 -> segments.add(Pair(bottomMid, rightMid))
+                3, 12 -> segments.add(Pair(leftMid, rightMid))
+                4, 11 -> segments.add(Pair(topMid, rightMid))
+                5 -> {
+                    segments.add(Pair(leftMid, topMid))
+                    segments.add(Pair(bottomMid, rightMid))
+                }
+                6, 9 -> segments.add(Pair(topMid, bottomMid))
+                7, 8 -> segments.add(Pair(leftMid, topMid))
+                10 -> {
+                    segments.add(Pair(topMid, rightMid))
+                    segments.add(Pair(leftMid, bottomMid))
+                }
             }
-            r += 0.5f
-        }
-
-        if (maxR > 0f) {
-            val gridX = cx + dx * maxR
-            val gridY = cy + dy * maxR
-            rawPoints.add(Pair(gridX, gridY))
         }
     }
 
-    if (rawPoints.size < 3) return emptyList()
+    if (segments.isEmpty()) return emptyList()
 
-    // Smooth radial points with 3-point moving average
-    val n = rawPoints.size
+    // Chain segments into connected boundary loop
+    val orderedPoints = mutableListOf<Pair<Float, Float>>()
+    val current = segments.removeAt(0)
+    orderedPoints.add(current.first)
+    orderedPoints.add(current.second)
+
+    while (segments.isNotEmpty()) {
+        val lastPt = orderedPoints.last()
+        var foundIdx = -1
+        var reverse = false
+
+        for ((idx, seg) in segments.withIndex()) {
+            val dx1 = kotlin.math.abs(seg.first.first - lastPt.first)
+            val dy1 = kotlin.math.abs(seg.first.second - lastPt.second)
+            if (dx1 < 0.1f && dy1 < 0.1f) {
+                foundIdx = idx
+                reverse = false
+                break
+            }
+            val dx2 = kotlin.math.abs(seg.second.first - lastPt.first)
+            val dy2 = kotlin.math.abs(seg.second.second - lastPt.second)
+            if (dx2 < 0.1f && dy2 < 0.1f) {
+                foundIdx = idx
+                reverse = true
+                break
+            }
+        }
+
+        if (foundIdx != -1) {
+            val seg = segments.removeAt(foundIdx)
+            val nextPt = if (reverse) seg.first else seg.second
+            orderedPoints.add(nextPt)
+        } else {
+            break
+        }
+    }
+
+    if (orderedPoints.size < 3) return emptyList()
+
+    // Smooth contour points with 3-point moving average and map to page-normalized coordinates
+    val n = orderedPoints.size
     val normPoints = ArrayList<Pair<Float, Float>>(n)
 
     for (i in 0 until n) {
-        val prev = rawPoints[(i - 1 + n) % n]
-        val curr = rawPoints[i]
-        val next = rawPoints[(i + 1) % n]
+        val prev = orderedPoints[(i - 1 + n) % n]
+        val curr = orderedPoints[i]
+        val next = orderedPoints[(i + 1) % n]
 
         val smGridX = prev.first * 0.25f + curr.first * 0.5f + next.first * 0.25f
         val smGridY = prev.second * 0.25f + curr.second * 0.5f + next.second * 0.25f
