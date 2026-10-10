@@ -37,7 +37,9 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.SubcomposeAsyncImage
+import androidx.compose.foundation.Image
+import coil.compose.AsyncImagePainter
+import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.zemmy.sigurvita.core.model.Series
 
@@ -49,19 +51,25 @@ fun CoverImage(
 ) {
     val context = LocalContext.current
     if (!url.isNullOrBlank()) {
-        SubcomposeAsyncImage(
+        val painter = rememberAsyncImagePainter(
             model = ImageRequest.Builder(context)
                 .data(url)
                 .crossfade(true)
-                .build(),
-            contentDescription = contentDescription,
-            modifier = modifier
-                .clip(RoundedCornerShape(8.dp)),
-            contentScale = ContentScale.Crop,
-            error = {
-                CoverPlaceholder(title = contentDescription)
-            }
+                .build()
         )
+        val state = painter.state
+
+        if (state is AsyncImagePainter.State.Error) {
+            CoverPlaceholder(title = contentDescription, modifier = modifier)
+        } else {
+            Image(
+                painter = painter,
+                contentDescription = contentDescription,
+                modifier = modifier
+                    .clip(RoundedCornerShape(8.dp)),
+                contentScale = ContentScale.Crop
+            )
+        }
     } else {
         CoverPlaceholder(title = contentDescription, modifier = modifier)
     }

@@ -100,11 +100,6 @@ interface KavitaApi {
         @Query("seriesId") seriesId: Int
     ): Response<List<ReadingListDto>>
 
-    @GET("api/ReadingList/lists-for-chapter")
-    suspend fun getReadingListsForChapter(
-        @Query("chapterId") chapterId: Int
-    ): Response<List<ReadingListDto>>
-
     @GET("api/ReadingList/items")
     suspend fun getReadingListItems(
         @Query("readingListId") readingListId: Int
@@ -115,10 +110,6 @@ interface KavitaApi {
         @Query("chapterId") chapterId: Int
     ): Response<ProgressDto>
 
-    @GET("api/Reader/continue-point")
-    suspend fun getContinuePoint(
-        @Query("seriesId") seriesId: Int
-    ): Response<ChapterDto>
 
     @POST("api/Reader/progress")
     suspend fun setReaderProgress(

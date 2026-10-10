@@ -257,7 +257,20 @@ class DownloadWorker(
                 val imageUrl = "http://localhost/api/Reader/image?chapterId=$chapterId&page=$pageIdx"
                 val request = Request.Builder().url(imageUrl).build()
 
-                val response = downloadClient.newCall(request).execute()
+                val response = try {
+                    downloadClient.newCall(request).execute()
+                } catch (e: java.io.IOException) {
+                    // Transient network error — retry via WorkManager backoff
+                    Log.w(TAG, "Transient network error downloading chapter $chapterId page $pageIdx", e)
+                    val task = database.downloadDao().getDownloadByChapterId(chapterId)
+                    if (task != null) {
+                        database.downloadDao().updateDownloadTask(
+                            task.copy(status = DownloadStatus.PAUSED, errorMessage = "Network error, retrying...")
+                        )
+                    }
+                    return Result.retry()
+                }
+
                 response.use { response ->
                     val responseBody = response.body
                     if (response.isSuccessful && responseBody != null) {
@@ -309,6 +322,16 @@ class DownloadWorker(
             )
 
             Result.success()
+        } catch (e: java.io.IOException) {
+            // Transient I/O error (network drop, timeout, etc.) — retry
+            Log.w(TAG, "Transient I/O error during page-by-page download for chapter $chapterId, will retry", e)
+            val task = database.downloadDao().getDownloadByChapterId(chapterId)
+            if (task != null) {
+                database.downloadDao().updateDownloadTask(
+                    task.copy(status = DownloadStatus.PAUSED, errorMessage = "Network error, retrying...")
+                )
+            }
+            Result.retry()
         } catch (e: Exception) {
             val task = database.downloadDao().getDownloadByChapterId(chapterId)
             val errText = e.localizedMessage ?: e.message ?: e.javaClass.simpleName

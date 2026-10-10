@@ -1,13 +1,23 @@
 package com.zemmy.sigurvita.core.util
 
+// Pre-compiled regex constants to avoid recompilation on every call
+private val NATURAL_SORT_REGEX = Regex("""(\d+\.?\d*|\D+)""")
+private val CHAPTER_PATTERN_KEYWORD = Regex("""^(?:Chapter|Issue|Vol\.?)\s*#?(\d+(?:\.\d+)?[A-Za-z]*)""", RegexOption.IGNORE_CASE)
+private val CHAPTER_PATTERN_HASH = Regex("""^#?(\d+(?:\.\d+)?[A-Za-z]*)(\s*[-:].*)?""")
+private val CHAPTER_PATTERN_BARE = Regex("""^(\d+(?:\.\d+)?[A-Za-z]*)\b""")
+private val BRACKET_PREFIX_REGEX = Regex("""^\[[^]]+]\s*""")
+private val YEAR_RANGE_INLINE_REGEX = Regex("""\b\d{4}-\d{4}\b\s*""")
+private val TRAILING_PAREN_REGEX = Regex("""\s*\([^)]+\)$""")
+private val YEAR_RANGE_EXTRACT_REGEX = Regex("""(\d{4}-\d{4})""")
+private val BRACKET_EXTRACT_REGEX = Regex("""^\[([^]]+)]""")
+
 /**
  * Natural/human-friendly string comparator that sorts numeric chunks numerically.
  * e.g., "page2" < "page10" (unlike lexicographic sort).
  */
 fun naturalCompare(s1: String, s2: String): Int {
-    val regex = Regex("""(\d+\.?\d*|\D+)""")
-    val chunks1 = regex.findAll(s1).map { it.value }.toList()
-    val chunks2 = regex.findAll(s2).map { it.value }.toList()
+    val chunks1 = NATURAL_SORT_REGEX.findAll(s1).map { it.value }.toList()
+    val chunks2 = NATURAL_SORT_REGEX.findAll(s2).map { it.value }.toList()
 
     val size = minOf(chunks1.size, chunks2.size)
     for (i in 0 until size) {
@@ -41,11 +51,7 @@ fun extractChapterNumber(number: String, title: String): String {
     val candidateText = title.trim()
     if (candidateText.isBlank()) return trimmedNum.ifBlank { "0" }
 
-    val patterns = listOf(
-        Regex("""^(?:Chapter|Issue|Vol\.?)\s*#?(\d+(?:\.\d+)?[A-Za-z]*)""", RegexOption.IGNORE_CASE),
-        Regex("""^#?(\d+(?:\.\d+)?[A-Za-z]*)(\s*[-:].*)?"""),
-        Regex("""^(\d+(?:\.\d+)?[A-Za-z]*)\b""")
-    )
+    val patterns = listOf(CHAPTER_PATTERN_KEYWORD, CHAPTER_PATTERN_HASH, CHAPTER_PATTERN_BARE)
 
     for (pattern in patterns) {
         val match = pattern.find(candidateText)
@@ -105,14 +111,14 @@ fun cleanReadingListTitle(title: String): String {
     var result = title.trim()
 
     // 1. Strip bracket prefix like [Marvel] or [DC] or [Star Wars]
-    result = result.replace(Regex("""^\[[^]]+]\s*"""), "")
+    result = result.replace(BRACKET_PREFIX_REGEX, "")
 
     // 2. Strip year range like 2012-2015 or 1961-1970
-    result = result.replace(Regex("""\b\d{4}-\d{4}\b\s*"""), "")
+    result = result.replace(YEAR_RANGE_INLINE_REGEX, "")
 
     // 3. Repeatedly strip trailing parenthetical suffixes like (2012), (WEB-CBRO), (v1), (MG), etc.
-    while (result.contains(Regex("""\s*\([^)]+\)$"""))) {
-        result = result.replace(Regex("""\s*\([^)]+\)$"""), "").trim()
+    while (result.contains(TRAILING_PAREN_REGEX)) {
+        result = result.replace(TRAILING_PAREN_REGEX, "").trim()
     }
 
     // 4. Strip leading separators like "- " or ": " left after removing year ranges
@@ -142,8 +148,7 @@ fun extractEraInfo(title: String): EraCategory {
     }
 
     // Year range matching
-    val yearRangeRegex = Regex("""(\d{4}-\d{4})""")
-    val yearMatch = yearRangeRegex.find(cleanTitle)?.groupValues?.get(1)
+    val yearMatch = YEAR_RANGE_EXTRACT_REGEX.find(cleanTitle)?.groupValues?.get(1)
 
     if (yearMatch != null) {
         val name = when (yearMatch) {
@@ -163,8 +168,7 @@ fun extractEraInfo(title: String): EraCategory {
     }
 
     // Bracket prefix
-    val bracketRegex = Regex("""^\[([^]]+)]""")
-    val bracketMatch = bracketRegex.find(cleanTitle)?.groupValues?.get(1)
+    val bracketMatch = BRACKET_EXTRACT_REGEX.find(cleanTitle)?.groupValues?.get(1)
     if (bracketMatch != null && !bracketMatch.equals("Marvel", ignoreCase = true)) {
         return EraCategory(name = bracketMatch, years = null)
     }

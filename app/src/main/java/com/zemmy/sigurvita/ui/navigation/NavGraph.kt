@@ -242,6 +242,8 @@ fun SigurvitaNavGraph(
                                 scope.launch { drawerState.close() }
                                 navController.navigate(Screen.Home.route) {
                                     popUpTo(Screen.Home.route) { inclusive = false }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
                             },
                             modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
@@ -256,7 +258,10 @@ fun SigurvitaNavGraph(
                             selected = currentRoute?.startsWith("library") == true,
                             onClick = {
                                 scope.launch { drawerState.close() }
-                                navController.navigate(Screen.Library.createRoute(0))
+                                navController.navigate(Screen.Library.createRoute(0)) {
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             },
                             modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                         )
@@ -277,7 +282,10 @@ fun SigurvitaNavGraph(
                                 .clickable {
                                     if (draggingItemId == null) {
                                         scope.launch { drawerState.close() }
-                                        navController.navigate(Screen.Library.createRoute(library.id))
+                                        navController.navigate(Screen.Library.createRoute(library.id)) {
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
                                     }
                                 }
                                 .padding(horizontal = 24.dp, vertical = 12.dp),
@@ -346,7 +354,10 @@ fun SigurvitaNavGraph(
                                 .fillMaxWidth()
                                 .clickable {
                                     scope.launch { drawerState.close() }
-                                    navController.navigate(Screen.ReadingLists.route)
+                                    navController.navigate(Screen.ReadingLists.route) {
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
                                 }
                                 .padding(horizontal = 24.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -396,7 +407,10 @@ fun SigurvitaNavGraph(
                                         .fillMaxWidth()
                                         .clickable {
                                             scope.launch { drawerState.close() }
-                                            navController.navigate(Screen.ReadingListDetail.createRoute(rl.id))
+                                            navController.navigate(Screen.ReadingListDetail.createRoute(rl.id)) {
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
                                         }
                                         .padding(start = 40.dp, end = 24.dp, top = 8.dp, bottom = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -419,7 +433,10 @@ fun SigurvitaNavGraph(
                             selected = currentRoute == Screen.Downloads.route,
                             onClick = {
                                 scope.launch { drawerState.close() }
-                                navController.navigate(Screen.Downloads.route)
+                                navController.navigate(Screen.Downloads.route) {
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             },
                             modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                         )
@@ -433,7 +450,10 @@ fun SigurvitaNavGraph(
                             selected = currentRoute == Screen.MarkedPages.route,
                             onClick = {
                                 scope.launch { drawerState.close() }
-                                navController.navigate(Screen.MarkedPages.route)
+                                navController.navigate(Screen.MarkedPages.route) {
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             },
                             modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                         )
@@ -447,7 +467,10 @@ fun SigurvitaNavGraph(
                             selected = currentRoute == Screen.Settings.route,
                             onClick = {
                                 scope.launch { drawerState.close() }
-                                navController.navigate(Screen.Settings.route)
+                                navController.navigate(Screen.Settings.route) {
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             },
                             modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                         )

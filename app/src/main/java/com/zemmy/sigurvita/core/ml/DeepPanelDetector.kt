@@ -37,6 +37,10 @@ class DeepPanelDetector(private val context: Context) {
     private var interpreter: Interpreter? = null
     private val modelInputImageSize = 224
 
+    // Reusable buffers to avoid per-frame GC pressure
+    private var reuseInputBuffer: ByteBuffer? = null
+    private var reusePixels: IntArray? = null
+
     private suspend fun getInterpreter(): Interpreter = withContext(singleThreadDispatcher) {
         if (interpreter == null) {
             val fileDescriptor = context.assets.openFd("deeppanel.tflite")
@@ -89,11 +93,21 @@ class DeepPanelDetector(private val context: Context) {
             canvas.drawBitmap(bitmap, matrix, Paint(Paint.FILTER_BITMAP_FLAG))
 
             // Preprocess float32 RGB / 255
-            val inputBuffer = ByteBuffer.allocateDirect(1 * modelInputImageSize * modelInputImageSize * 3 * 4)
+            val bufferSize = 1 * modelInputImageSize * modelInputImageSize * 3 * 4
+            val inputBuffer = if (reuseInputBuffer != null && reuseInputBuffer!!.capacity() == bufferSize) {
+                reuseInputBuffer!!.also { it.rewind() }
+            } else {
+                ByteBuffer.allocateDirect(bufferSize).also { reuseInputBuffer = it }
+            }
             inputBuffer.order(ByteOrder.nativeOrder())
             inputBuffer.rewind()
 
-            val pixels = IntArray(modelInputImageSize * modelInputImageSize)
+            val pixelCount = modelInputImageSize * modelInputImageSize
+            val pixels = if (reusePixels != null && reusePixels!!.size == pixelCount) {
+                reusePixels!!
+            } else {
+                IntArray(pixelCount).also { reusePixels = it }
+            }
             letterboxedBitmap.getPixels(pixels, 0, modelInputImageSize, 0, 0, modelInputImageSize, modelInputImageSize)
 
             for (pixel in pixels) {
@@ -119,7 +133,8 @@ class DeepPanelDetector(private val context: Context) {
                 }
             }
 
-            // Step 2: 4-connected Hoshen-Kopelman component labeling
+            // Step 2: 8-connected Hoshen-Kopelman component labeling
+            // Checks top-left, top, top-right, and left neighbors to handle diagonal borders
             val maxLabels = (modelInputImageSize * modelInputImageSize) / 2
             val parent = IntArray(maxLabels) { it }
 
@@ -148,21 +163,24 @@ class DeepPanelDetector(private val context: Context) {
             for (j in 0 until modelInputImageSize) {
                 for (i in 0 until modelInputImageSize) {
                     if (rawMatrix[i][j] != 0) {
-                        val up = if (i == 0) 0 else labeled[i - 1][j]
-                        val left = if (j == 0) 0 else labeled[i][j - 1]
+                        // Gather non-zero neighbor labels (8-connected: top-left, top, top-right, left)
+                        val neighbors = mutableListOf<Int>()
+                        if (i > 0 && labeled[i - 1][j] != 0) neighbors.add(labeled[i - 1][j])           // top
+                        if (j > 0 && labeled[i][j - 1] != 0) neighbors.add(labeled[i][j - 1])           // left
+                        if (i > 0 && j > 0 && labeled[i - 1][j - 1] != 0) neighbors.add(labeled[i - 1][j - 1])  // top-left
+                        if (i > 0 && j < modelInputImageSize - 1 && labeled[i - 1][j + 1] != 0) neighbors.add(labeled[i - 1][j + 1])  // top-right
 
-                        when ((if (up != 0) 1 else 0) + (if (left != 0) 1 else 0)) {
-                            0 -> {
-                                val l = nextLabel++
-                                parent[l] = l
-                                labeled[i][j] = l
+                        if (neighbors.isEmpty()) {
+                            val l = nextLabel++
+                            parent[l] = l
+                            labeled[i][j] = l
+                        } else {
+                            // Union all neighbor labels and assign the canonical root
+                            var root = neighbors[0]
+                            for (k in 1 until neighbors.size) {
+                                root = ufUnion(root, neighbors[k])
                             }
-                            1 -> {
-                                labeled[i][j] = if (up != 0) up else left
-                            }
-                            2 -> {
-                                labeled[i][j] = ufUnion(up, left)
-                            }
+                            labeled[i][j] = ufFind(root)
                         }
                     }
                 }

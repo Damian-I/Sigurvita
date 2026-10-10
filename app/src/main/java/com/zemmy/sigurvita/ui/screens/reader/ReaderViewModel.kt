@@ -16,6 +16,8 @@ import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
 import com.zemmy.sigurvita.core.util.orderBubbles
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -317,13 +319,21 @@ class ReaderViewModel : ViewModel() {
 
             val bitmap = com.zemmy.sigurvita.core.ml.PageBitmapLoader.decodeForInference(app, page)
 
-            val panelMap = if (isPanelAware && bitmap != null) {
-                app.panelRepository.getPanelMap(chapterId, page, bitmap)
-            } else null
+            // Run panel and bubble detection concurrently — each uses its own single-thread dispatcher
+            val (panelMap, pageBubbles) = coroutineScope {
+                val panelDeferred = if (isPanelAware && bitmap != null) {
+                    async { app.panelRepository.getPanelMap(chapterId, page, bitmap) }
+                } else null
 
-            val pageBubbles = if (bitmap != null) {
-                app.bubbleRepository.getPageBubbles(chapterId, page, state.settings.speechBubbleConfidence)
-            } else null
+                val bubbleDeferred = if (bitmap != null) {
+                    async { app.bubbleRepository.getPageBubbles(chapterId, page, state.settings.speechBubbleConfidence) }
+                } else null
+
+                Pair(
+                    panelDeferred?.await() as? com.zemmy.sigurvita.core.util.PanelMap,
+                    bubbleDeferred?.await() as? com.zemmy.sigurvita.core.model.PageBubbles
+                )
+            }
 
             if (pageBubbles != null) {
                 val sortedBubbles = pageBubbles.copy(

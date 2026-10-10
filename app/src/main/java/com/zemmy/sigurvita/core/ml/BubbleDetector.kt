@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.RectF
 import android.util.Log
 import com.zemmy.sigurvita.core.model.LetterboxParams
 import com.zemmy.sigurvita.core.model.PageBubbles
@@ -19,7 +21,6 @@ import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 import java.util.concurrent.Executors
 import androidx.core.graphics.createBitmap
-import androidx.core.graphics.scale
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -52,6 +53,11 @@ class BubbleDetector(
     private var detQuantZeroPoint: Int = 0
     private var protoQuantScale: Float = 0f
     private var protoQuantZeroPoint: Int = 0
+
+    // Reusable buffers to avoid per-frame GC pressure (~7 MB for 640×640 input)
+    private var reuseInputBuffer: ByteBuffer? = null
+    private var reusePixels: IntArray? = null
+    private var lastInputBufferSize: Int = 0
 
     private suspend fun getInterpreter(): Interpreter = withContext(singleThreadDispatcher) {
         if (interpreter == null) {
@@ -141,20 +147,34 @@ class BubbleDetector(
 
         val destW = (origW * gain).toInt()
         val destH = (origH * gain).toInt()
-        val scaled = bitmap.scale(destW, destH, filter = true)
-        canvas.drawBitmap(scaled, padX, padY, Paint(Paint.FILTER_BITMAP_FLAG))
+        val srcRect = Rect(0, 0, origW, origH)
+        val dstRect = RectF(padX, padY, padX + destW, padY + destH)
+        canvas.drawBitmap(bitmap, srcRect, dstRect, Paint(Paint.FILTER_BITMAP_FLAG))
 
         // Preprocess input bitmap
         val isInputFloat = inputDataType == DataType.FLOAT32
-        val inputBuffer = if (isInputFloat) {
-            ByteBuffer.allocateDirect(1 * inputSize * inputSize * 3 * 4)
+        val requiredBufferSize = if (isInputFloat) {
+            1 * inputSize * inputSize * 3 * 4
         } else {
-            ByteBuffer.allocateDirect(1 * inputSize * inputSize * 3)
+            1 * inputSize * inputSize * 3
+        }
+        val inputBuffer = if (reuseInputBuffer != null && lastInputBufferSize == requiredBufferSize) {
+            reuseInputBuffer!!.also { it.rewind() }
+        } else {
+            ByteBuffer.allocateDirect(requiredBufferSize).also {
+                reuseInputBuffer = it
+                lastInputBufferSize = requiredBufferSize
+            }
         }
         inputBuffer.order(ByteOrder.nativeOrder())
         inputBuffer.rewind()
 
-        val pixels = IntArray(inputSize * inputSize)
+        val pixelCount = inputSize * inputSize
+        val pixels = if (reusePixels != null && reusePixels!!.size == pixelCount) {
+            reusePixels!!
+        } else {
+            IntArray(pixelCount).also { reusePixels = it }
+        }
         letterboxedBitmap.getPixels(pixels, 0, inputSize, 0, 0, inputSize, inputSize)
 
         if (isInputFloat) {
@@ -261,11 +281,12 @@ class BubbleDetector(
             }
         }
 
-        // Transpose detections if shape is [1, 8400, 37] instead of [1, 37, 8400]
-        if (detArray != null && detArray[0].size == 8400 && detArray[0][0].isNotEmpty() && detArray[0][0].size < 8400) {
+        // Transpose detections if shape is [1, anchors, channels] instead of [1, channels, anchors]
+        if (detArray != null && detArray[0].size > detArray[0][0].size && detArray[0][0].isNotEmpty()) {
+            val numAnchors = detArray[0].size
             val numC = detArray[0][0].size
-            val transposed = Array(1) { Array(numC) { FloatArray(8400) } }
-            for (i in 0 until 8400) {
+            val transposed = Array(1) { Array(numC) { FloatArray(numAnchors) } }
+            for (i in 0 until numAnchors) {
                 for (j in 0 until numC) {
                     transposed[0][j][i] = detArray[0][i][j]
                 }
