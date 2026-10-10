@@ -363,29 +363,24 @@ class SeriesDetailViewModel : ViewModel() {
     fun downloadBulk(count: Int, unreadOnly: Boolean) {
         val series = _uiState.value.series ?: return
         val allChapters = _uiState.value.volumes.flatMap { v -> v.chapters }
-        val eligibleChapters = if (unreadOnly) {
-            allChapters.filter { !it.isRead }
-        } else {
-            allChapters
+        val bulkItems = allChapters.map { chapter ->
+            val itemLabel = if (_uiState.value.isMangaLibrary) "Chapter ${chapter.chapterNumber}" else "Issue ${chapter.chapterNumber}"
+            com.zemmy.sigurvita.core.data.repository.BulkDownloadItem(
+                chapterId = chapter.id,
+                seriesId = series.id,
+                volumeId = chapter.volumeId,
+                title = chapter.title.ifBlank { itemLabel },
+                coverUrl = chapter.coverUrl ?: series.coverUrl,
+                totalPages = chapter.pages,
+                libraryName = _uiState.value.libraryName,
+                seriesName = series.name,
+                chapterNumber = chapter.chapterNumber,
+                isRead = chapter.isRead
+            )
         }
 
-        val chaptersToDownload = eligibleChapters.take(count)
-
         viewModelScope.launch {
-            chaptersToDownload.forEach { chapter ->
-                val itemLabel = if (_uiState.value.isMangaLibrary) "Chapter ${chapter.chapterNumber}" else "Issue ${chapter.chapterNumber}"
-                downloadRepository.enqueueDownload(
-                    chapterId = chapter.id,
-                    seriesId = series.id,
-                    volumeId = chapter.volumeId,
-                    title = chapter.title.ifBlank { itemLabel },
-                    coverUrl = chapter.coverUrl ?: series.coverUrl,
-                    totalPages = chapter.pages,
-                    libraryName = _uiState.value.libraryName,
-                    seriesName = series.name,
-                    chapterNumber = chapter.chapterNumber
-                )
-            }
+            downloadRepository.enqueueBulkDownloads(bulkItems, count, unreadOnly)
         }
     }
 

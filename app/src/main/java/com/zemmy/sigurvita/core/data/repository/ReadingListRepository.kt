@@ -4,7 +4,6 @@ import com.zemmy.sigurvita.core.data.api.KavitaApi
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListDto
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListItemDto
 import com.zemmy.sigurvita.core.data.db.SigurvitaDatabase
-import com.zemmy.sigurvita.core.data.db.entity.CachedReadingListEntity
 import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.model.ReadingListItem
@@ -40,19 +39,6 @@ class ReadingListRepository(
                     promoted = dto.promoted
                 )
             } ?: emptyList()
-
-            if (lists.isNotEmpty()) {
-                database.readingListDao().insertReadingLists(lists.map {
-                    CachedReadingListEntity(
-                        id = it.id,
-                        title = it.title,
-                        summary = it.summary,
-                        itemCount = it.itemCount,
-                        coverUrl = it.coverUrl,
-                        promoted = it.promoted
-                    )
-                })
-            }
 
             Result.success(lists)
         } catch (e: Exception) {
@@ -94,24 +80,16 @@ class ReadingListRepository(
 
                     var resolvedTitle = dto.title ?: ""
                     if (dto.chapterId > 0) {
-                        val cachedChapter = database.chapterDao().getChapterById(dto.chapterId)
-                        if (cachedChapter != null) {
-                            if (pages <= 0) pages = cachedChapter.pages
-                            if (pagesRead <= 0) pagesRead = cachedChapter.pagesRead
-                            isRead = isRead || cachedChapter.isRead
-                            resolvedTitle = formatChapterDisplayTitle(cachedChapter.title, cachedChapter.chapterNumber)
-                        } else {
-                            try {
-                                val cRes = api.getChapterById(dto.chapterId)
-                                if (cRes.isSuccessful && cRes.body() != null) {
-                                    val cBody = cRes.body()!!
-                                    if (pages <= 0) pages = cBody.pages
-                                    if (pagesRead <= 0) pagesRead = cBody.pagesRead
-                                    isRead = isRead || (cBody.pages > 0 && cBody.pagesRead >= cBody.pages)
-                                    resolvedTitle = formatChapterDisplayTitle(cBody.titleName ?: cBody.title ?: "", cBody.number ?: "")
-                                }
-                            } catch (_: Exception) {}
-                        }
+                        try {
+                            val cRes = api.getChapterById(dto.chapterId)
+                            if (cRes.isSuccessful && cRes.body() != null) {
+                                val cBody = cRes.body()!!
+                                if (pages <= 0) pages = cBody.pages
+                                if (pagesRead <= 0) pagesRead = cBody.pagesRead
+                                isRead = isRead || (cBody.pages > 0 && cBody.pagesRead >= cBody.pages)
+                                resolvedTitle = formatChapterDisplayTitle(cBody.titleName ?: cBody.title ?: "", cBody.number ?: "")
+                            }
+                        } catch (_: Exception) {}
                     } else {
                         isRead = pages in 1..pagesRead
                     }

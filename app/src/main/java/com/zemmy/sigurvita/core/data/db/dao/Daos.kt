@@ -5,8 +5,6 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
-import com.zemmy.sigurvita.core.data.db.entity.CachedChapterEntity
-import com.zemmy.sigurvita.core.data.db.entity.CachedReadingListEntity
 import com.zemmy.sigurvita.core.data.db.entity.CachedSeriesEntity
 import com.zemmy.sigurvita.core.data.db.entity.DownloadTaskEntity
 import com.zemmy.sigurvita.core.model.DownloadStatus
@@ -22,24 +20,6 @@ interface SeriesDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertSeries(series: List<CachedSeriesEntity>)
-}
-
-@Dao
-interface ChapterDao {
-    @Query("SELECT * FROM cached_chapters WHERE id = :chapterId")
-    fun getChapterById(chapterId: Int): CachedChapterEntity?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insertChapters(chapters: List<CachedChapterEntity>)
-
-    @Query("UPDATE cached_chapters SET isDownloaded = :isDownloaded, localPath = :localPath WHERE id = :chapterId")
-    fun updateDownloadStatus(chapterId: Int, isDownloaded: Boolean, localPath: String?): Int
-}
-
-@Dao
-interface ReadingListDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insertReadingLists(lists: List<CachedReadingListEntity>)
 }
 
 @Dao

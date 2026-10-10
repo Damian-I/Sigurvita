@@ -26,7 +26,7 @@ class ReaderRepository(
     suspend fun getPages(chapterId: Int, totalPages: Int): List<ReaderPage> = withContext(Dispatchers.IO) {
         val config = preferencesRepository.serverConfigFlow.first()
         val downloadTask = database.downloadDao().getDownloadByChapterId(chapterId)
-        val localPath = downloadTask?.localPath ?: database.chapterDao().getChapterById(chapterId)?.localPath
+        val localPath = downloadTask?.localPath
 
         fun isSupportedImage(filename: String): Boolean {
             val lower = filename.lowercase()

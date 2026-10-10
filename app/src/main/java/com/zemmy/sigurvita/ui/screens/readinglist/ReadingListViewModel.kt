@@ -319,28 +319,24 @@ class ReadingListViewModel : ViewModel() {
 
     fun downloadBulk(count: Int, unreadOnly: Boolean) {
         val allItems = _uiState.value.selectedListItems
-        val eligibleItems = if (unreadOnly) {
-            allItems.filter { !it.isRead && it.chapterId != null && it.chapterId > 0 }
-        } else {
-            allItems.filter { it.chapterId != null && it.chapterId > 0 }
+        val validItems = allItems.filter { it.chapterId != null && it.chapterId > 0 }
+        val bulkItems = validItems.map { item ->
+            val targetLibrary = item.libraryName?.takeIf { it.isNotBlank() } ?: "Comics"
+            com.zemmy.sigurvita.core.data.repository.BulkDownloadItem(
+                chapterId = item.chapterId!!,
+                seriesId = item.seriesId,
+                volumeId = item.volumeId ?: 0,
+                title = "${item.seriesName} - ${item.title}",
+                coverUrl = item.coverUrl,
+                totalPages = item.pages,
+                libraryName = targetLibrary,
+                seriesName = item.seriesName,
+                isRead = item.isRead
+            )
         }
 
-        val itemsToDownload = eligibleItems.take(count)
-
         viewModelScope.launch {
-            itemsToDownload.forEach { item ->
-                val targetLibrary = item.libraryName?.takeIf { it.isNotBlank() } ?: "Comics"
-                downloadRepository.enqueueDownload(
-                    chapterId = item.chapterId!!,
-                    seriesId = item.seriesId,
-                    volumeId = item.volumeId ?: 0,
-                    title = "${item.seriesName} - ${item.title}",
-                    coverUrl = item.coverUrl,
-                    totalPages = item.pages,
-                    libraryName = targetLibrary,
-                    seriesName = item.seriesName
-                )
-            }
+            downloadRepository.enqueueBulkDownloads(bulkItems, count, unreadOnly)
         }
     }
 }

@@ -19,31 +19,6 @@ data class CachedSeriesEntity(
     val lastUpdated: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "cached_chapters")
-data class CachedChapterEntity(
-    @PrimaryKey val id: Int,
-    val volumeId: Int,
-    val seriesId: Int,
-    val chapterNumber: String,
-    val title: String,
-    val pages: Int,
-    val pagesRead: Int,
-    val isRead: Boolean,
-    val isDownloaded: Boolean,
-    val localPath: String?
-)
-
-@Entity(tableName = "cached_reading_lists")
-data class CachedReadingListEntity(
-    @PrimaryKey val id: Int,
-    val title: String,
-    val summary: String?,
-    val itemCount: Int,
-    val coverUrl: String?,
-    val promoted: Boolean,
-    val lastModified: Long = System.currentTimeMillis()
-)
-
 @Entity(tableName = "download_tasks")
 data class DownloadTaskEntity(
     @PrimaryKey val chapterId: Int,

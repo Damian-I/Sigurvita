@@ -206,6 +206,25 @@ class BubbleRepository(
         }
 
         try {
+            // Check sidecar detections.json if reading a local chapter
+            if (page.isLocal || page.imageUrl.startsWith("/") || page.imageUrl.startsWith("file://")) {
+                val filePath = page.imageUrl.removePrefix("file://")
+                val localFile = java.io.File(filePath)
+                val dir = if (localFile.isDirectory) localFile else localFile.parentFile
+                if (dir != null && dir.exists()) {
+                    val cacheFile = java.io.File(dir, "detections.json")
+                    if (cacheFile.exists()) {
+                        val sidecarCache = com.zemmy.sigurvita.core.ml.DetectionsCacheHelper.loadCache(cacheFile)
+                        val pageData = sidecarCache?.pages?.find { it.pageIndex == page.index }
+                        if (sidecarCache != null && pageData != null) {
+                            val result = com.zemmy.sigurvita.core.ml.DetectionsCacheHelper.toPageBubbles(pageData, page.index)
+                            cache.put(key, result)
+                            return@withContext result
+                        }
+                    }
+                }
+            }
+
             val bitmap = PageBitmapLoader.decodeForInference(context, page) ?: return@withContext null
             val result = detector.detect(bitmap, page.index, confidence)
             cache.put(key, result)

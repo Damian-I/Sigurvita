@@ -197,12 +197,8 @@ class DownloadWorker(
                             downloadedPages = totalPages,
                             status = DownloadStatus.COMPLETED
                         )
-                        database.chapterDao().updateDownloadStatus(
-                            chapterId = chapterId,
-                            isDownloaded = true,
-                            localPath = cbzFile.absolutePath
-                        )
                         Log.i(TAG, "Native download succeeded: ${cbzFile.absolutePath} (${cbzFile.length()} bytes)")
+                        performPostDownloadMlScan(chapterId, targetFolder, totalPages)
                         return Result.success()
                     } else {
                         Log.w(TAG, "Native download produced empty/missing file for chapter $chapterId")
@@ -315,12 +311,8 @@ class DownloadWorker(
                 downloadedPages = totalPages,
                 status = DownloadStatus.COMPLETED
             )
-            database.chapterDao().updateDownloadStatus(
-                chapterId = chapterId,
-                isDownloaded = true,
-                localPath = finalPath
-            )
 
+            performPostDownloadMlScan(chapterId, pageTargetDir, totalPages)
             Result.success()
         } catch (e: java.io.IOException) {
             // Transient I/O error (network drop, timeout, etc.) — retry
@@ -345,5 +337,54 @@ class DownloadWorker(
         }
     }
 
+    private fun performPostDownloadMlScan(chapterId: Int, targetFolder: File, totalPages: Int) {
+        try {
+            val cacheFile = File(targetFolder, "detections.json")
+            if (cacheFile.exists()) return
 
+            Log.i(TAG, "Starting background post-download ML scan for chapter $chapterId")
+            val bubbleDetector = com.zemmy.sigurvita.core.ml.BubbleDetector(context)
+            val deepPanelDetector = com.zemmy.sigurvita.core.ml.DeepPanelDetector(context)
+
+            val pageDataList = mutableListOf<com.zemmy.sigurvita.core.ml.PageDetectionData>()
+
+            for (pageIdx in 0 until totalPages) {
+                val dummyPage = com.zemmy.sigurvita.core.model.ReaderPage(
+                    index = pageIdx,
+                    pageNumber = pageIdx + 1,
+                    imageUrl = targetFolder.absolutePath,
+                    isLocal = true
+                )
+                val bitmap = kotlinx.coroutines.runBlocking {
+                    com.zemmy.sigurvita.core.ml.PageBitmapLoader.decodeForInference(context, dummyPage)
+                } ?: continue
+
+                val pageBubbles = try {
+                    kotlinx.coroutines.runBlocking { bubbleDetector.detect(bitmap, pageIdx) }
+                } catch (_: Exception) { null }
+
+                val panelMap = try {
+                    kotlinx.coroutines.runBlocking { deepPanelDetector.detect(bitmap) }
+                } catch (_: Exception) { null }
+
+                val pageData = com.zemmy.sigurvita.core.ml.DetectionsCacheHelper.fromPageData(pageIdx, pageBubbles, panelMap)
+                pageDataList.add(pageData)
+            }
+
+            if (pageDataList.isNotEmpty()) {
+                val cache = com.zemmy.sigurvita.core.ml.PageDetectionsCache(
+                    chapterId = chapterId,
+                    confidence = 0.10f,
+                    pages = pageDataList
+                )
+                com.zemmy.sigurvita.core.ml.DetectionsCacheHelper.saveCache(cacheFile, cache)
+                Log.i(TAG, "Background post-download ML scan completed for chapter $chapterId (${pageDataList.size} pages)")
+            }
+
+            try { bubbleDetector.close() } catch (_: Exception) {}
+            try { deepPanelDetector.close() } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.w(TAG, "Post-download ML scan skipped/failed for chapter $chapterId", e)
+        }
+    }
 }

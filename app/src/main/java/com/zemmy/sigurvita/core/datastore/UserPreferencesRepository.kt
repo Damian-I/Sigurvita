@@ -20,8 +20,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "sigurvita_settings")
 
@@ -131,6 +133,20 @@ class UserPreferencesRepository(private val context: Context) {
                 currentServerConfig = config
             }
         }
+    }
+
+    /**
+     * Synchronously returns [currentServerConfig] if already populated, or blocks
+     * briefly on cold start to read the initial configuration from DataStore.
+     */
+    fun getServerConfigSync(): ServerConfig {
+        val cached = currentServerConfig
+        if (cached.serverUrl.isNotBlank() && (cached.apiKey.isNotBlank() || cached.jwtToken.isNotBlank())) {
+            return cached
+        }
+        return runBlocking(Dispatchers.IO) {
+            serverConfigFlow.first()
+        }.also { currentServerConfig = it }
     }
 
     suspend fun saveServerConfig(

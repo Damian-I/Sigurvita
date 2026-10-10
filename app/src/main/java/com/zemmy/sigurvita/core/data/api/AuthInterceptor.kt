@@ -11,7 +11,7 @@ class AuthInterceptor(
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
-        val serverConfig = userPreferencesRepository.currentServerConfig
+        val serverConfig = userPreferencesRepository.getServerConfigSync()
 
         val requestBuilder = originalRequest.newBuilder()
 

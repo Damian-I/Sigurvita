@@ -20,6 +20,19 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
 
+data class BulkDownloadItem(
+    val chapterId: Int,
+    val seriesId: Int,
+    val volumeId: Int,
+    val title: String,
+    val coverUrl: String?,
+    val totalPages: Int,
+    val libraryName: String,
+    val seriesName: String,
+    val chapterNumber: String = "",
+    val isRead: Boolean
+)
+
 class DownloadRepository(
     private val database: SigurvitaDatabase,
     private val context: Context
@@ -114,6 +127,27 @@ class DownloadRepository(
         )
     }
 
+    suspend fun enqueueBulkDownloads(
+        items: List<BulkDownloadItem>,
+        count: Int,
+        unreadOnly: Boolean
+    ) = withContext(Dispatchers.IO) {
+        val eligible = if (unreadOnly) items.filter { !it.isRead } else items
+        eligible.take(count).forEach { item ->
+            enqueueDownload(
+                chapterId = item.chapterId,
+                seriesId = item.seriesId,
+                volumeId = item.volumeId,
+                title = item.title,
+                coverUrl = item.coverUrl,
+                totalPages = item.totalPages,
+                libraryName = item.libraryName,
+                seriesName = item.seriesName,
+                chapterNumber = item.chapterNumber
+            )
+        }
+    }
+
     suspend fun pauseDownload(chapterId: Int) = withContext(Dispatchers.IO) {
         WorkManager.getInstance(context).cancelAllWorkByTag("download_$chapterId")
         database.downloadDao().updateStatus(chapterId, DownloadStatus.PAUSED)
@@ -177,7 +211,7 @@ class DownloadRepository(
 
     suspend fun deleteLocalChapter(chapterId: Int) = withContext(Dispatchers.IO) {
         val task = database.downloadDao().getDownloadByChapterId(chapterId)
-        val localPath = task?.localPath ?: database.chapterDao().getChapterById(chapterId)?.localPath
+        val localPath = task?.localPath
         if (localPath != null) {
             val file = File(localPath)
             if (file.exists()) {
@@ -193,7 +227,6 @@ class DownloadRepository(
         } catch (_: Exception) {}
 
         database.downloadDao().deleteDownloadTask(chapterId)
-        database.chapterDao().updateDownloadStatus(chapterId, false, null)
     }
 
     suspend fun validateExternalDeletions() = withContext(Dispatchers.IO) {
@@ -219,7 +252,6 @@ class DownloadRepository(
 
                 if (!isFileValid && (task.status == DownloadStatus.COMPLETED || !path.isNullOrBlank())) {
                     database.downloadDao().deleteDownloadTask(task.chapterId)
-                    database.chapterDao().updateDownloadStatus(task.chapterId, false, null)
                     try {
                         val cbzCacheDir = File(context.cacheDir, "cbz_extracted/${task.chapterId}")
                         if (cbzCacheDir.exists()) {
