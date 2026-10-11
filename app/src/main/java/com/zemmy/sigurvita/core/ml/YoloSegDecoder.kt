@@ -195,7 +195,7 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
     }
 
     /**
-     * Merges overlapping or connected bubble detections into single unified bubbles.
+     * Merges overlapping or mask-connected bubble detections into single unified bubbles.
      */
     private fun mergeConnectedBubbles(bubbles: List<DetectedBubble>): List<DetectedBubble> {
         if (bubbles.size <= 1) return bubbles
@@ -214,9 +214,9 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
 
                     val iou = calculateRectIoU(b1.box, b2.box)
                     val minAreaOverlap = calculateIntersectionOverMinArea(b1.box, b2.box)
-                    val maskOverlap = doMasksOverlap(b1.mask, b2.mask)
+                    val masksTouch = doMasksTouch(b1.mask, b2.mask)
 
-                    if (iou >= 0.15f || minAreaOverlap >= 0.25f || maskOverlap) {
+                    if (iou >= 0.18f || minAreaOverlap >= 0.35f || masksTouch) {
                         val mergedBox = NormRect(
                             left = min(b1.box.left, b2.box.left),
                             top = min(b1.box.top, b2.box.top),
@@ -254,6 +254,33 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
         return list.mapIndexed { index, b -> b.copy(id = index) }
     }
 
+    private fun doMasksTouch(m1: BubbleMask, m2: BubbleMask): Boolean {
+        val sz = m1.size
+        if (sz != m2.size || sz == 0) return false
+        var sharedPixels = 0
+
+        for (y in 0 until sz) {
+            val rowOffset = y * sz
+            for (x in 0 until sz) {
+                val p1 = m1.probs[rowOffset + x].toInt() and 0xFF
+                if (p1 < 35) continue
+
+                // Check 4-connected 1-pixel neighbors (center, up, down, left, right)
+                val p2Center = m2.probs[rowOffset + x].toInt() and 0xFF
+                val p2Up = if (y > 0) m2.probs[(y - 1) * sz + x].toInt() and 0xFF else 0
+                val p2Down = if (y < sz - 1) m2.probs[(y + 1) * sz + x].toInt() and 0xFF else 0
+                val p2Left = if (x > 0) m2.probs[rowOffset + x - 1].toInt() and 0xFF else 0
+                val p2Right = if (x < sz - 1) m2.probs[rowOffset + x + 1].toInt() and 0xFF else 0
+
+                if (p2Center >= 35 || p2Up >= 35 || p2Down >= 35 || p2Left >= 35 || p2Right >= 35) {
+                    sharedPixels++
+                    if (sharedPixels >= 6) return true
+                }
+            }
+        }
+        return false
+    }
+
     private fun calculateRectIoU(r1: NormRect, r2: NormRect): Float {
         val interLeft = max(r1.left, r2.left)
         val interTop = max(r1.top, r2.top)
@@ -286,21 +313,6 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
         val minArea = min(area1, area2)
 
         return if (minArea > 0f) interArea / minArea else 0f
-    }
-
-    private fun doMasksOverlap(m1: BubbleMask, m2: BubbleMask): Boolean {
-        val sz = m1.size
-        if (sz != m2.size || sz == 0) return false
-        var sharedPixels = 0
-        for (i in 0 until sz * sz) {
-            val p1 = m1.probs[i].toInt() and 0xFF
-            val p2 = m2.probs[i].toInt() and 0xFF
-            if (p1 >= 40 && p2 >= 40) {
-                sharedPixels++
-                if (sharedPixels >= 8) return true
-            }
-        }
-        return false
     }
 
     private fun calculateIoU(c1: Candidate, c2: Candidate): Float {

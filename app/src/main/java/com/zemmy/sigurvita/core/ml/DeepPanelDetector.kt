@@ -122,10 +122,19 @@ class DeepPanelDetector(private val context: Context) {
             val prediction = Array(1) { Array(modelInputImageSize) { Array(modelInputImageSize) { FloatArray(3) } } }
             interp.run(inputBuffer, prediction)
 
-            // Step 1: Content mask with x/y index swap matching deep-panel-android.cpp
+            // Step 1: Content mask with x/y index swap, letterbox padding guard, and border suppression
             val rawMatrix = Array(modelInputImageSize) { IntArray(modelInputImageSize) }
+            val minValidX = (padX - 1f).toInt().coerceAtLeast(0)
+            val maxValidX = (modelInputImageSize - padX + 1f).toInt().coerceAtMost(modelInputImageSize - 1)
+            val minValidY = (padY - 1f).toInt().coerceAtLeast(0)
+            val maxValidY = (modelInputImageSize - padY + 1f).toInt().coerceAtMost(modelInputImageSize - 1)
+
             for (i in 0 until modelInputImageSize) {
                 for (j in 0 until modelInputImageSize) {
+                    if (i < minValidX || i > maxValidX || j < minValidY || j > maxValidY) {
+                        rawMatrix[i][j] = 0
+                        continue
+                    }
                     val pixelScores = prediction[0][j][i]
                     val bg = pixelScores[0]
                     val border = pixelScores[1]
@@ -135,8 +144,8 @@ class DeepPanelDetector(private val context: Context) {
                 }
             }
 
-            // Step 2: 8-connected Hoshen-Kopelman component labeling
-            // Checks top-left, top, top-right, and left neighbors to handle diagonal borders
+            // Step 2: 4-connected Hoshen-Kopelman component labeling
+            // 4-connectivity prevents thin frame border gaps from bridging adjacent panels
             val maxLabels = (modelInputImageSize * modelInputImageSize) / 2
             val parent = IntArray(maxLabels) { it }
 
@@ -165,24 +174,21 @@ class DeepPanelDetector(private val context: Context) {
             for (j in 0 until modelInputImageSize) {
                 for (i in 0 until modelInputImageSize) {
                     if (rawMatrix[i][j] != 0) {
-                        // Gather non-zero neighbor labels (8-connected: top-left, top, top-right, left)
-                        val neighbors = mutableListOf<Int>()
-                        if (i > 0 && labeled[i - 1][j] != 0) neighbors.add(labeled[i - 1][j])           // top
-                        if (j > 0 && labeled[i][j - 1] != 0) neighbors.add(labeled[i][j - 1])           // left
-                        if (i > 0 && j > 0 && labeled[i - 1][j - 1] != 0) neighbors.add(labeled[i - 1][j - 1])  // top-left
-                        if (i > 0 && j < modelInputImageSize - 1 && labeled[i - 1][j + 1] != 0) neighbors.add(labeled[i - 1][j + 1])  // top-right
+                        val up = if (i == 0) 0 else labeled[i - 1][j]
+                        val left = if (j == 0) 0 else labeled[i][j - 1]
 
-                        if (neighbors.isEmpty()) {
-                            val l = nextLabel++
-                            parent[l] = l
-                            labeled[i][j] = l
-                        } else {
-                            // Union all neighbor labels and assign the canonical root
-                            var root = neighbors[0]
-                            for (k in 1 until neighbors.size) {
-                                root = ufUnion(root, neighbors[k])
+                        when ((if (up != 0) 1 else 0) + (if (left != 0) 1 else 0)) {
+                            0 -> {
+                                val l = nextLabel++
+                                parent[l] = l
+                                labeled[i][j] = l
                             }
-                            labeled[i][j] = ufFind(root)
+                            1 -> {
+                                labeled[i][j] = if (up != 0) up else left
+                            }
+                            2 -> {
+                                labeled[i][j] = ufUnion(up, left)
+                            }
                         }
                     }
                 }
@@ -243,7 +249,7 @@ class DeepPanelDetector(private val context: Context) {
                 }
             }
 
-            // Step 4: Build PanelInfo list
+            // Step 4: Build PanelInfo list with dimension and aspect ratio filtering
             val panelInfos = mutableListOf<PanelInfo>()
             for (l in 1..currentNormLabel) {
                 val minGx = minXMap[l] ?: 0
@@ -254,16 +260,23 @@ class DeepPanelDetector(private val context: Context) {
                 val (normLeft, normTop) = letterbox.letterboxToNorm(minGx.toFloat(), minGy.toFloat())
                 val (normRight, normBottom) = letterbox.letterboxToNorm((maxGx + 1).toFloat(), (maxGy + 1).toFloat())
 
+                val normWidth = normRight - normLeft
+                val normHeight = normBottom - normTop
+
+                // Filter out thin phantom edge strips or extreme border artifacts
+                if (normWidth < 0.03f || normHeight < 0.03f) continue
+                if (normWidth / normHeight > 12f || normHeight / normWidth > 12f) continue
+
                 val count = countMap[l] ?: 1
                 val avgGx = (sumXMap[l] ?: 0f) / count
                 val avgGy = (sumYMap[l] ?: 0f) / count
                 val (cx, cy) = letterbox.letterboxToNorm(avgGx, avgGy)
 
-                val boxArea = (normRight - normLeft) * (normBottom - normTop)
+                val boxArea = normWidth * normHeight
 
                 panelInfos.add(
                     PanelInfo(
-                        label = l,
+                        label = panelInfos.size + 1,
                         box = NormRect(normLeft, normTop, normRight, normBottom),
                         cx = cx,
                         cy = cy,

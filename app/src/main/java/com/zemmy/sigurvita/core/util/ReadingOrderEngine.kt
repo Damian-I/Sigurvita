@@ -140,6 +140,9 @@ fun <T> readingOrder(
             val minArea = minOf(areaA, areaB).coerceAtLeast(1e-6f)
             val isInsetOverlap = (interArea / minArea) >= 0.70f && abs(areaA - areaB) > 0.05f
 
+            val cyDiff = abs(a.cy - b.cy)
+            val minH = minOf(a.box.height, b.box.height).coerceAtLeast(1e-6f)
+
             val aFirst = if (isInsetOverlap) {
                 // Inset / container relationship:
                 val smallerIsA = areaA < areaB
@@ -148,9 +151,11 @@ fun <T> readingOrder(
                 // If smaller panel sits in the upper part of larger panel (or top < larger.cy)
                 val smallerFirst = smaller.cy < larger.cy || smaller.box.top < larger.cy
                 if (smallerIsA) smallerFirst else !smallerFirst
+            } else if (cyDiff > maxOf(0.04f, minH * 0.40f)) {
+                // Distinct top-to-bottom vertical separation
+                a.cy < b.cy
             } else {
-                val vOv = span(a.box.top, a.box.bottom, b.box.top, b.box.bottom) /
-                        minOf(a.box.height, b.box.height).coerceAtLeast(1e-6f)
+                val vOv = span(a.box.top, a.box.bottom, b.box.top, b.box.bottom) / minH
                 val hOv = span(a.box.left, a.box.right, b.box.left, b.box.right) /
                         minOf(a.box.width, b.box.width).coerceAtLeast(1e-6f)
                 val aLeads = if (rtl) a.cx > b.cx else a.cx < b.cx
@@ -287,9 +292,9 @@ fun orderBubbles(
                 if (currentCluster.isEmpty()) {
                     currentCluster.add(b)
                 } else {
-                    val prevMaxBottom = currentCluster.maxOf { it.box.bottom }
-                    val prevMinTop = currentCluster.minOf { it.box.top }
-                    if (b.box.top <= prevMaxBottom + 0.08f || abs(b.box.top - prevMinTop) <= 0.12f) {
+                    val prevCy = currentCluster.map { (it.box.top + it.box.bottom) / 2f }.average().toFloat()
+                    val curCy = (b.box.top + b.box.bottom) / 2f
+                    if (abs(curCy - prevCy) <= 0.07f || b.box.top <= currentCluster.maxOf { it.box.bottom } + 0.02f) {
                         currentCluster.add(b)
                     } else {
                         clusters.add(currentCluster)
@@ -355,3 +360,4 @@ fun orderBubbles(
 
     return result
 }
+
