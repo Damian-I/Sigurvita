@@ -84,7 +84,10 @@ data class Series(
     val totalPages: Int = 0,
     val isCompleted: Boolean = false,
     val userRating: Float = 0f
-)
+) {
+    val isFullyRead: Boolean
+        get() = (totalPages in 1..pagesRead) || isCompleted
+}
 
 data class Volume(
     val id: Int,

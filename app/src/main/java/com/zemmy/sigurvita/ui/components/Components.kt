@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
@@ -125,13 +126,43 @@ fun SeriesCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column {
-            CoverImage(
-                url = series.coverUrl,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(0.7f),
-                contentDescription = series.name
-            )
+            Box {
+                CoverImage(
+                    url = series.coverUrl,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.7f),
+                    contentDescription = series.name
+                )
+                if (series.isFullyRead) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.95f),
+                        shape = RoundedCornerShape(bottomStart = 8.dp),
+                        modifier = Modifier.align(Alignment.TopEnd)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = "Completely Read",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "READ",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 9.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = series.name,
@@ -142,9 +173,10 @@ fun SeriesCard(
             )
             if (series.totalPages > 0) {
                 Text(
-                    text = "${series.pagesRead} / ${series.totalPages} pgs",
+                    text = if (series.isFullyRead) "Completely Read" else "${series.pagesRead} / ${series.totalPages} pgs",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (series.isFullyRead) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (series.isFullyRead) FontWeight.Bold else FontWeight.Normal,
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }

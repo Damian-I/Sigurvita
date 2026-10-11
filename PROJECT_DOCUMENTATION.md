@@ -420,7 +420,7 @@ Shows every page flagged from the reader's bookmark toggle (stored in `marked_pa
 
 ### 5.11 Shared components (`ui.components`)
 
-- `CoverImage` (Coil `SubcomposeAsyncImage` with automatic placeholder fallback when missing/404, crossfade, rounded 8 dp, `ContentScale.Crop`), `SeriesCard` (0.7 cover aspect ratio, name, `read / total pgs`), `LoadingState`, `ErrorState` (message + optional Retry), `ReadStatusBadge` (unified pill badge with check/unchecked icon and read/unread status label).
+- `CoverImage` (Coil `SubcomposeAsyncImage` with automatic placeholder fallback when missing/404, crossfade, rounded 8 dp, `ContentScale.Crop`), `SeriesCard` (0.7 cover aspect ratio, name, page progress / "Completely Read" indicator, top-right "READ" checkmark badge overlay when `series.isFullyRead`), `LoadingState`, `ErrorState` (message + optional Retry), `ReadStatusBadge` (unified pill badge with check/unchecked icon and read/unread status label).
 - `DownloadStatusButton`: reusable download status, progress indicator, and action button.
 - `ReadingListBadges`: shared reading list era and part badges (`ListBadge`, `ReadingListBadgeRow`, `IntegratedReadingListBadge`).
 - `IssueCards`: reusable `IssueRow`, `IssueGridCard`, and `IssueUi` models for chapter/issue lists and grids.
