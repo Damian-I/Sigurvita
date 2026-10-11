@@ -22,6 +22,7 @@ import java.nio.channels.FileChannel
 import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.min
+import androidx.core.graphics.createBitmap
 
 private const val TAG = "DeepPanelDetector"
 
@@ -52,6 +53,7 @@ class DeepPanelDetector(private val context: Context) {
 
             val options = Interpreter.Options().apply {
                 setNumThreads(4)
+                setUseXNNPACK(true)
             }
             interpreter = Interpreter(modelBuffer, options)
             Log.i(TAG, "DeepPanel interpreter loaded successfully")
@@ -79,7 +81,7 @@ class DeepPanelDetector(private val context: Context) {
             )
 
             // Letterbox original bitmap to 224x224 black background
-            val letterboxedBitmap = Bitmap.createBitmap(modelInputImageSize, modelInputImageSize, Bitmap.Config.ARGB_8888)
+            val letterboxedBitmap = createBitmap(modelInputImageSize, modelInputImageSize)
             val canvas = Canvas(letterboxedBitmap)
             val paint = Paint().apply { color = Color.BLACK }
             canvas.drawRect(0f, 0f, modelInputImageSize.toFloat(), modelInputImageSize.toFloat(), paint)

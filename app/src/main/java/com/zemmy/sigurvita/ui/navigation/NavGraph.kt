@@ -39,6 +39,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -117,8 +118,10 @@ fun SigurvitaNavGraph(
         }
     }
 
-    LaunchedEffect(Unit) {
-        scope.launch {
+    val serverConfig by prefsRepo.serverConfigFlow.collectAsState(initial = com.zemmy.sigurvita.core.model.ServerConfig())
+
+    LaunchedEffect(serverConfig.isLoggedIn, serverConfig.serverUrl) {
+        if (serverConfig.isLoggedIn) {
             val libRes = libraryRepo.getLibraries()
             if (libRes.isSuccess) libraries = libRes.getOrDefault(emptyList())
 
@@ -127,7 +130,6 @@ fun SigurvitaNavGraph(
                 val fetchedLists = rlRes.getOrDefault(emptyList())
                 readingLists = fetchedLists
 
-                // Concurrently check progress for all reading lists in parallel using fast endpoint
                 val deferreds = fetchedLists.map { rl ->
                     async {
                         if (readingListRepo.hasReadingListProgress(rl.id)) {
@@ -138,6 +140,10 @@ fun SigurvitaNavGraph(
                 val inProgressIds = deferreds.awaitAll().filterNotNull()
                 inProgressReadingListIds = inProgressIds.toSet()
             }
+        } else {
+            libraries = emptyList()
+            readingLists = emptyList()
+            inProgressReadingListIds = emptySet()
         }
     }
 

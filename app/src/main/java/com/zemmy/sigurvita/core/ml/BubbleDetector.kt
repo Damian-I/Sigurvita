@@ -70,6 +70,7 @@ class BubbleDetector(
 
             val options = Interpreter.Options().apply {
                 setNumThreads(4)
+                setUseXNNPACK(true)
             }
             val interp = Interpreter(modelBuffer, options)
 

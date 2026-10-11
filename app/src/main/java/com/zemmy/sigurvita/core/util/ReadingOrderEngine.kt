@@ -5,8 +5,6 @@ import com.zemmy.sigurvita.core.model.LetterboxParams
 import com.zemmy.sigurvita.core.model.NormRect
 import com.zemmy.sigurvita.core.model.PageBubbles
 import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.min
 
 data class PanelInfo(
     val label: Int,          // 1..n, equals value in label map
@@ -32,16 +30,24 @@ data class PanelMap(
         return if (idx in labels.indices) labels[idx].toInt() else 0
     }
 
-    fun nearestPanel(box: NormRect): Int {
+    fun nearestPanel(box: NormRect, rtl: Boolean = false): Int {
         if (panels.isEmpty()) return -1
-        var minSqDist = Float.MAX_VALUE
+        var minScore = Float.MAX_VALUE
         var bestLabel = -1
+        val bcx = (box.left + box.right) / 2f
+
         for (p in panels) {
             val dx = maxOf(0f, maxOf(p.box.left - box.right, box.left - p.box.right))
             val dy = maxOf(0f, maxOf(p.box.top - box.bottom, box.top - p.box.bottom))
             val sqDist = dx * dx + dy * dy
-            if (sqDist < minSqDist) {
-                minSqDist = sqDist
+
+            // Directional bias for gutter bubbles (prefer panel following reading flow if distance is tied)
+            val hDiff = if (rtl) (bcx - p.cx) else (p.cx - bcx)
+            val readingBias = if (hDiff >= 0) -0.002f else 0.002f
+
+            val score = sqDist + readingBias
+            if (score < minScore) {
+                minScore = score
                 bestLabel = p.label
             }
         }
@@ -173,10 +179,15 @@ fun orderPanels(panels: List<PanelInfo>, rtl: Boolean, isSpread: Boolean): List<
     return if (rtl) one(right) + one(left) else one(left) + one(right)
 }
 
-fun panelOfBubble(b: DetectedBubble, bubbleLb: LetterboxParams, map: PanelMap): Int {
+fun panelOfBubble(
+    b: DetectedBubble,
+    bubbleLb: LetterboxParams,
+    map: PanelMap,
+    rtl: Boolean = false
+): Int {
     val sz = b.mask.size
     if (sz <= 0 || b.mask.probs.size < sz * sz || map.panels.isEmpty()) {
-        return map.nearestPanel(b.box)
+        return map.nearestPanel(b.box, rtl)
     }
     val scale = bubbleLb.inputSize.toFloat() / sz
     val votes = IntArray(map.panels.size + 1)
@@ -204,7 +215,7 @@ fun panelOfBubble(b: DetectedBubble, bubbleLb: LetterboxParams, map: PanelMap): 
         return topCandidates.minByOrNull { map.panels[it - 1].area } ?: topCandidates[0]
     }
 
-    return map.nearestPanel(b.box)
+    return map.nearestPanel(b.box, rtl)
 }
 
 private data class ReadingUnit(
@@ -244,7 +255,7 @@ fun orderBubbles(
     var unassignedCount = 0
 
     for (b in bubbles) {
-        val label = panelOfBubble(b, pageBubbles.letterbox, reorderedMap)
+        val label = panelOfBubble(b, pageBubbles.letterbox, reorderedMap, rtl)
         if (label in 1..reorderedMap.panels.size) {
             panelToBubbles[label].add(b)
         } else {

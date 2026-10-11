@@ -333,11 +333,12 @@ data class BubbleCropResult(
             val relTipX = ((anchorNormX - cropLeftNorm) / cropWNorm).coerceIn(0f, 1f)
             val relTipY = ((anchorNormY - cropTopNorm) / cropHNorm).coerceIn(0f, 1f)
 
-            val crop = Bitmap.createBitmap(fullBitmap, left, top, cropW, cropH)
-            val masked = maskAndOutlineBubble(
-                crop = crop,
-                cropLeft = left,
-                cropTop = top,
+            val masked = maskAndOutlineBubbleDirect(
+                fullBitmap = fullBitmap,
+                left = left,
+                top = top,
+                right = right,
+                bottom = bottom,
                 pageW = w,
                 pageH = h,
                 normPoints = normPoints,
@@ -362,31 +363,35 @@ data class BubbleCropResult(
         }
     }
 
-    private fun maskAndOutlineBubble(
-        crop: Bitmap,
-        cropLeft: Int,
-        cropTop: Int,
+    private fun maskAndOutlineBubbleDirect(
+        fullBitmap: Bitmap,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
         pageW: Float,
         pageH: Float,
         normPoints: List<Pair<Float, Float>>,
         drawOutline: Boolean
     ): Bitmap {
-        val w = crop.width
-        val h = crop.height
-        if (w <= 0 || h <= 0) return crop
+        val cropW = right - left
+        val cropH = bottom - top
+        if (cropW <= 0 || cropH <= 0) return fullBitmap
 
-        val maskedBmp = createBitmap(w, h)
+        val maskedBmp = createBitmap(cropW, cropH)
         val canvas = android.graphics.Canvas(maskedBmp)
+        val srcRect = android.graphics.Rect(left, top, right, bottom)
+        val dstRect = android.graphics.RectF(0f, 0f, cropW.toFloat(), cropH.toFloat())
 
         if (normPoints.size >= 3) {
             val localPoints = normPoints.map { (normX, normY) ->
-                Pair(normX * pageW - cropLeft, normY * pageH - cropTop)
+                Pair(normX * pageW - left, normY * pageH - top)
             }
 
             // Inflate path outward from centroid to ensure speech bubble edges and tails are never clipped
             val cx = localPoints.map { it.first }.average().toFloat()
             val cy = localPoints.map { it.second }.average().toFloat()
-            val expandPx = (minOf(w, h) * 0.05f).coerceIn(8f, 16f)
+            val expandPx = (minOf(cropW, cropH) * 0.05f).coerceIn(8f, 16f)
 
             val inflatedPoints = localPoints.map { (px, py) ->
                 val dx = px - cx
@@ -417,10 +422,10 @@ data class BubbleCropResult(
             val antiAliasPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
 
             canvas.clipPath(path)
-            canvas.drawBitmap(crop, 0f, 0f, antiAliasPaint)
+            canvas.drawBitmap(fullBitmap, srcRect, dstRect, antiAliasPaint)
 
             if (drawOutline) {
-                val strokeScale = (minOf(w, h) / 150f).coerceIn(1.5f, 4.0f)
+                val strokeScale = (minOf(cropW, cropH) / 150f).coerceIn(1.5f, 4.0f)
 
                 val strokePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                     style = android.graphics.Paint.Style.STROKE
@@ -437,7 +442,7 @@ data class BubbleCropResult(
             }
         } else {
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
-            canvas.drawBitmap(crop, 0f, 0f, paint)
+            canvas.drawBitmap(fullBitmap, srcRect, dstRect, paint)
         }
 
         return maskedBmp
