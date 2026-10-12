@@ -16,6 +16,7 @@ import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.core.model.Series
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -38,12 +39,14 @@ class DownloadRepository(
     private val context: Context
 ) {
     val downloadedSeriesFlow: Flow<List<Series>> = database.downloadDao().getAllDownloads().map { entities ->
+        val cachedMap = database.seriesDao().getAllSeriesList().associateBy { it.id }
         entities.filter { it.status == DownloadStatus.COMPLETED && it.seriesId > 0 }
             .groupBy { it.seriesId }
             .map { (seriesId, tasks) ->
                 val firstTask = tasks.first()
                 val totalPages = tasks.sumOf { it.totalPages }
-                val pagesRead = tasks.sumOf { it.downloadedPages }
+                val cachedSeries = cachedMap[seriesId]
+                val pagesRead = cachedSeries?.pagesRead ?: 0
                 Series(
                     id = seriesId,
                     libraryId = 0,
@@ -53,7 +56,7 @@ class DownloadRepository(
                     pagesRead = pagesRead
                 )
             }
-    }
+    }.flowOn(Dispatchers.IO)
 
     val downloadsFlow: Flow<List<DownloadTask>> = database.downloadDao().getAllDownloads().map { entities ->
         entities.map { entity ->
@@ -73,7 +76,7 @@ class DownloadRepository(
                 localPath = entity.localPath
             )
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
     suspend fun enqueueDownload(
         chapterId: Int,

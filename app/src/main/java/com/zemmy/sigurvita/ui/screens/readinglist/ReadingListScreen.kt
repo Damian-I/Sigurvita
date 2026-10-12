@@ -18,10 +18,12 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
@@ -50,8 +52,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -334,6 +338,15 @@ fun ReadingListScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
+                                if (state.totalPages > 0 || state.totalIssues > 0) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    com.zemmy.sigurvita.ui.components.SeriesReadIndicator(
+                                        pagesRead = state.pagesRead,
+                                        totalPages = state.totalPages,
+                                        issuesRead = state.issuesRead,
+                                        totalIssues = state.totalIssues
+                                    )
+                                }
 
                                 val nextItem = if (nextUnreadIndex in itemsList.indices) itemsList[nextUnreadIndex] else itemsList.firstOrNull()
                                 if (nextItem?.chapterId != null && nextItem.chapterId > 0) {
@@ -458,7 +471,8 @@ fun ReadingListScreen(
                 ) {
                     items(lists, key = { it.id }) { list ->
                         val eraInfo = extractEraInfo(list.title)
-                        val displayTitle = cleanReadingListTitle(list.title)
+                        val badge = com.zemmy.sigurvita.ui.components.toListBadge(list.id, list.title)
+                        val displayTitle = badge.partName.ifBlank { cleanReadingListTitle(list.title) }
                         val isPinned = state.chosenReadingListIds.contains(list.id)
                         Card(
                             modifier = Modifier
@@ -466,35 +480,93 @@ fun ReadingListScreen(
                                 .clickable { viewModel.loadListDetail(list.id, list.title) },
                             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                CoverImage(
-                                    url = list.coverUrl,
-                                    modifier = Modifier
-                                        .width(60.dp)
-                                        .height(90.dp)
-                                )
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = displayTitle,
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CoverImage(
+                                        url = list.coverUrl,
+                                        modifier = Modifier
+                                            .width(60.dp)
+                                            .height(90.dp)
                                     )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "${eraInfo.name} • ${list.itemCount} items",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = displayTitle,
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                            modifier = Modifier.padding(end = 28.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = eraInfo.name,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (list.totalPages > 0 || list.itemCount > 0) {
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            com.zemmy.sigurvita.ui.components.SeriesReadIndicator(
+                                                pagesRead = list.pagesRead,
+                                                totalPages = list.totalPages,
+                                                issuesRead = list.issuesRead,
+                                                totalIssues = if (list.itemCount > 0) list.itemCount else 0,
+                                                compact = true
+                                            )
+                                        }
+                                    }
+                                    IconButton(onClick = { viewModel.togglePin(list.id) }) {
+                                        Icon(
+                                            imageVector = if (isPinned) Icons.Default.Bookmark else Icons.Outlined.Bookmark,
+                                            contentDescription = if (isPinned) "Unpin from sidebar" else "Pin to sidebar",
+                                            tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
-                                IconButton(onClick = { viewModel.togglePin(list.id) }) {
-                                    Icon(
-                                        imageVector = if (isPinned) Icons.Default.Bookmark else Icons.Outlined.Bookmark,
-                                        contentDescription = if (isPinned) "Unpin from sidebar" else "Pin to sidebar",
-                                        tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+
+                                if (list.totalPages > 0 && list.pagesRead >= list.totalPages) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.95f),
+                                        shape = RoundedCornerShape(bottomStart = 8.dp),
+                                        modifier = Modifier.align(Alignment.TopEnd)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.CheckCircle,
+                                                contentDescription = "Completely Read",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = "READ",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 9.sp
+                                                ),
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+                                    }
+                                } else if (list.pagesRead > 0 && list.totalPages > 0) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.95f),
+                                        shape = RoundedCornerShape(bottomStart = 8.dp),
+                                        modifier = Modifier.align(Alignment.TopEnd)
+                                    ) {
+                                        Text(
+                                            text = "${(list.pagesRead * 100 / list.totalPages)}%",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 9.sp
+                                            ),
+                                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
                                 }
                             }
                         }

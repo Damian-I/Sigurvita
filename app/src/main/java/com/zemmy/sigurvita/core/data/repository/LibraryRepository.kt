@@ -12,6 +12,9 @@ import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import com.zemmy.sigurvita.core.model.Library
 import com.zemmy.sigurvita.core.model.Series
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
@@ -66,6 +69,8 @@ class LibraryRepository(
                 summary = entity.summary,
                 pagesRead = entity.pagesRead,
                 totalPages = entity.totalPages,
+                totalIssues = entity.totalIssues,
+                issuesRead = entity.issuesRead,
                 isCompleted = entity.isCompleted,
                 userRating = entity.userRating
             )
@@ -79,20 +84,79 @@ class LibraryRepository(
             .groupBy { it.seriesId }
             .map { (seriesId, tasks) ->
                 val first = tasks.first()
+                val cachedSeries = database.seriesDao().getSeriesById(seriesId)
                 Series(
                     id = seriesId,
                     libraryId = if (libraryId > 0) libraryId else 1,
                     name = first.seriesName.ifBlank { first.title },
                     coverUrl = first.coverUrl,
                     totalPages = tasks.sumOf { it.totalPages },
-                    pagesRead = tasks.sumOf { it.downloadedPages }
+                    pagesRead = cachedSeries?.pagesRead ?: 0
                 )
             }
     }
 
+    private suspend fun resolveSeriesIssueCounts(seriesDtos: List<SeriesDto>): List<Series> = coroutineScope {
+        val config = preferencesRepository.serverConfigFlow.first()
+        val cachedMap = database.seriesDao().getAllSeriesList().associateBy { it.id }
+
+        val deferreds = seriesDtos.map { dto ->
+            async {
+                val cached = cachedMap[dto.id]
+                var totalIssues = cached?.totalIssues ?: 0
+                var issuesRead = cached?.issuesRead ?: 0
+
+                if (totalIssues == 0) {
+                    try {
+                        val detailRes = api.getSeriesDetail(dto.id)
+                        if (detailRes.isSuccessful && detailRes.body() != null) {
+                            val detail = detailRes.body()!!
+                            totalIssues = detail.totalCount
+                            issuesRead = (detail.totalCount - detail.unreadCount).coerceAtLeast(0)
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                Series(
+                    id = dto.id,
+                    libraryId = dto.libraryId,
+                    name = dto.name,
+                    localizedName = dto.localizedName,
+                    coverUrl = config.getSeriesCoverUrl(dto.id),
+                    summary = dto.summary,
+                    pagesRead = dto.pagesRead,
+                    totalPages = dto.pages,
+                    totalIssues = totalIssues,
+                    issuesRead = issuesRead,
+                    userRating = dto.userRating
+                )
+            }
+        }
+        val seriesList = deferreds.awaitAll()
+
+        if (seriesList.isNotEmpty()) {
+            database.seriesDao().insertSeries(seriesList.map {
+                CachedSeriesEntity(
+                    id = it.id,
+                    libraryId = it.libraryId,
+                    name = it.name,
+                    localizedName = it.localizedName,
+                    coverUrl = it.coverUrl,
+                    summary = it.summary,
+                    pagesRead = it.pagesRead,
+                    totalPages = it.totalPages,
+                    totalIssues = it.totalIssues,
+                    issuesRead = it.issuesRead,
+                    isCompleted = it.isCompleted,
+                    userRating = it.userRating
+                )
+            })
+        }
+        seriesList
+    }
+
     suspend fun getOnDeckSeries(): Result<List<Series>> = withContext(Dispatchers.IO) {
         try {
-            val config = preferencesRepository.serverConfigFlow.first()
             val onDeckRes = api.getOnDeckSeries()
             var dtoList = if (onDeckRes.isSuccessful) onDeckRes.body() else null
 
@@ -103,36 +167,8 @@ class LibraryRepository(
                 }
             }
 
-            val seriesList = dtoList?.filter { it.id > 0 && it.name.isNotBlank() }?.map { dto ->
-                Series(
-                    id = dto.id,
-                    libraryId = dto.libraryId,
-                    name = dto.name,
-                    localizedName = dto.localizedName,
-                    coverUrl = config.getSeriesCoverUrl(dto.id),
-                    summary = dto.summary,
-                    pagesRead = dto.pagesRead,
-                    totalPages = dto.pages,
-                    userRating = dto.userRating
-                )
-            } ?: emptyList()
-
-            if (seriesList.isNotEmpty()) {
-                database.seriesDao().insertSeries(seriesList.map {
-                    CachedSeriesEntity(
-                        id = it.id,
-                        libraryId = it.libraryId,
-                        name = it.name,
-                        localizedName = it.localizedName,
-                        coverUrl = it.coverUrl,
-                        summary = it.summary,
-                        pagesRead = it.pagesRead,
-                        totalPages = it.totalPages,
-                        isCompleted = it.isCompleted,
-                        userRating = it.userRating
-                    )
-                })
-            }
+            val validDtos = dtoList?.filter { it.id > 0 && it.name.isNotBlank() } ?: emptyList()
+            val seriesList = resolveSeriesIssueCounts(validDtos)
 
             Result.success(seriesList)
         } catch (e: Exception) {
@@ -146,30 +182,24 @@ class LibraryRepository(
             val config = preferencesRepository.serverConfigFlow.first()
             val groupedRes = api.getRecentlyUpdatedSeries()
             val seriesList = if (groupedRes.isSuccessful && !groupedRes.body().isNullOrEmpty()) {
+                val cachedMap = database.seriesDao().getAllSeriesList().associateBy { it.id }
                 groupedRes.body()!!.filter { it.seriesId > 0 && !it.seriesName.isNullOrBlank() }.map { dto ->
+                    val cached = cachedMap[dto.seriesId]
                     Series(
                         id = dto.seriesId,
                         libraryId = dto.libraryId,
                         name = dto.seriesName ?: "",
                         localizedName = dto.localizedSeriesName,
-                        coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}"
+                        coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}",
+                        pagesRead = cached?.pagesRead ?: 0,
+                        totalPages = cached?.totalPages ?: 0,
+                        totalIssues = if (dto.count > 0) dto.count else cached?.totalIssues ?: 0,
+                        issuesRead = cached?.issuesRead ?: 0
                     )
                 }
             } else {
-                val fallbackList = api.getSeriesV2(filter = FilterV2Dto(), pageNumber = 1, pageSize = 20).body()
-                fallbackList?.filter { it.id > 0 && it.name.isNotBlank() }?.map { dto ->
-                    Series(
-                        id = dto.id,
-                        libraryId = dto.libraryId,
-                        name = dto.name,
-                        localizedName = dto.localizedName,
-                        coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
-                        summary = dto.summary,
-                        pagesRead = dto.pagesRead,
-                        totalPages = dto.pages,
-                        userRating = dto.userRating
-                    )
-                } ?: emptyList()
+                val fallbackList = api.getSeriesV2(filter = FilterV2Dto(), pageNumber = 1, pageSize = 20).body() ?: emptyList()
+                resolveSeriesIssueCounts(fallbackList.filter { it.id > 0 && it.name.isNotBlank() })
             }
 
             Result.success(seriesList)
@@ -181,7 +211,6 @@ class LibraryRepository(
 
     suspend fun getNewlyAddedSeries(): Result<List<Series>> = withContext(Dispatchers.IO) {
         try {
-            val config = preferencesRepository.serverConfigFlow.first()
             val filter = FilterV2Dto(
                 sortOptions = SortOptionsDto(sortField = 2, isAscending = false)
             )
@@ -195,19 +224,8 @@ class LibraryRepository(
                 }
             }
 
-            val seriesList = dtoList?.filter { it.id > 0 && it.name.isNotBlank() }?.map { dto ->
-                Series(
-                    id = dto.id,
-                    libraryId = dto.libraryId,
-                    name = dto.name,
-                    localizedName = dto.localizedName,
-                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
-                    summary = dto.summary,
-                    pagesRead = dto.pagesRead,
-                    totalPages = dto.pages,
-                    userRating = dto.userRating
-                )
-            } ?: emptyList()
+            val validDtos = dtoList?.filter { it.id > 0 && it.name.isNotBlank() } ?: emptyList()
+            val seriesList = resolveSeriesIssueCounts(validDtos)
 
             Result.success(seriesList)
         } catch (e: Exception) {
@@ -218,7 +236,6 @@ class LibraryRepository(
 
     suspend fun getSeriesForLibrary(libraryId: Int): Result<List<Series>> = withContext(Dispatchers.IO) {
         try {
-            val config = preferencesRepository.serverConfigFlow.first()
             var dtoList: List<SeriesDto>? = null
 
             if (libraryId > 0) {
@@ -257,36 +274,8 @@ class LibraryRepository(
                 }
             }
 
-            val seriesList = dtoList?.filter { it.id > 0 && it.name.isNotBlank() }?.map { dto ->
-                Series(
-                    id = dto.id,
-                    libraryId = dto.libraryId,
-                    name = dto.name,
-                    localizedName = dto.localizedName,
-                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
-                    summary = dto.summary,
-                    pagesRead = dto.pagesRead,
-                    totalPages = dto.pages,
-                    userRating = dto.userRating
-                )
-            } ?: emptyList()
-
-            if (seriesList.isNotEmpty()) {
-                database.seriesDao().insertSeries(seriesList.map {
-                    CachedSeriesEntity(
-                        id = it.id,
-                        libraryId = it.libraryId,
-                        name = it.name,
-                        localizedName = it.localizedName,
-                        coverUrl = it.coverUrl,
-                        summary = it.summary,
-                        pagesRead = it.pagesRead,
-                        totalPages = it.totalPages,
-                        isCompleted = it.isCompleted,
-                        userRating = it.userRating
-                    )
-                })
-            }
+            val validDtos = dtoList?.filter { it.id > 0 && it.name.isNotBlank() } ?: emptyList()
+            val seriesList = resolveSeriesIssueCounts(validDtos)
 
             Result.success(seriesList)
         } catch (e: Exception) {

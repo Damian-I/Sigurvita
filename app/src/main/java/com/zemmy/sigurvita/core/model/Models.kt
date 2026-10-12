@@ -82,11 +82,13 @@ data class Series(
     val summary: String? = null,
     val pagesRead: Int = 0,
     val totalPages: Int = 0,
+    val totalIssues: Int = 0,
+    val issuesRead: Int = 0,
     val isCompleted: Boolean = false,
     val userRating: Float = 0f
 ) {
     val isFullyRead: Boolean
-        get() = (totalPages in 1..pagesRead) || isCompleted
+        get() = (totalPages in 1..pagesRead) || (totalIssues in 1..issuesRead) || isCompleted
 }
 
 data class Volume(

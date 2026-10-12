@@ -3,6 +3,7 @@ package com.zemmy.sigurvita.ui.navigation
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -421,11 +422,18 @@ fun SigurvitaNavGraph(
                                         .padding(start = 40.dp, end = 24.dp, top = 8.dp, bottom = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = "• ${cleanReadingListTitle(rl.title)}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "• ${cleanReadingListTitle(rl.title)}",
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        com.zemmy.sigurvita.ui.components.SidebarReadingListIndicator(
+                                            pagesRead = rl.pagesRead,
+                                            totalPages = rl.totalPages,
+                                            issuesRead = rl.issuesRead,
+                                            totalIssues = if (rl.itemCount > 0) rl.itemCount else 0
+                                        )
+                                    }
                                 }
                             }
                         }

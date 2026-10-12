@@ -33,6 +33,10 @@ class SeriesRepository(
             val resById = api.getSeriesById(seriesId)
             if (resById.isSuccessful && resById.body() != null) {
                 val dto = resById.body()!!
+                val resDetail = try { api.getSeriesDetail(seriesId) } catch (_: Exception) { null }
+                val detailDto = if (resDetail?.isSuccessful == true) resDetail.body() else null
+                val totalIssues = detailDto?.totalCount ?: 0
+                val issuesRead = detailDto?.let { (it.totalCount - it.unreadCount).coerceAtLeast(0) } ?: 0
                 series = Series(
                     id = dto.id,
                     libraryId = dto.libraryId,
@@ -42,12 +46,16 @@ class SeriesRepository(
                     summary = summary?.takeIf { it.isNotBlank() } ?: dto.summary,
                     pagesRead = dto.pagesRead,
                     totalPages = dto.pages,
+                    totalIssues = totalIssues,
+                    issuesRead = issuesRead,
                     userRating = dto.userRating
                 )
             } else {
                 val resDetail = api.getSeriesDetail(seriesId)
                 if (resDetail.isSuccessful && resDetail.body() != null) {
                     val dto = resDetail.body()!!
+                    val totalIssues = dto.totalCount
+                    val issuesRead = (dto.totalCount - dto.unreadCount).coerceAtLeast(0)
                     series = Series(
                         id = dto.id,
                         libraryId = dto.libraryId,
@@ -56,6 +64,8 @@ class SeriesRepository(
                         summary = summary?.takeIf { it.isNotBlank() } ?: dto.summary,
                         pagesRead = dto.pagesRead,
                         totalPages = dto.pages,
+                        totalIssues = totalIssues,
+                        issuesRead = issuesRead,
                         isCompleted = dto.isCompleted
                     )
                 }
@@ -72,6 +82,8 @@ class SeriesRepository(
                         summary = series.summary,
                         pagesRead = series.pagesRead,
                         totalPages = series.totalPages,
+                        totalIssues = series.totalIssues,
+                        issuesRead = series.issuesRead,
                         isCompleted = series.isCompleted,
                         userRating = series.userRating
                     )
@@ -90,6 +102,8 @@ class SeriesRepository(
                             summary = cached.summary,
                             pagesRead = cached.pagesRead,
                             totalPages = cached.totalPages,
+                            totalIssues = cached.totalIssues,
+                            issuesRead = cached.issuesRead,
                             isCompleted = cached.isCompleted,
                             userRating = cached.userRating
                         )
@@ -111,6 +125,8 @@ class SeriesRepository(
                         summary = cached.summary,
                         pagesRead = cached.pagesRead,
                         totalPages = cached.totalPages,
+                        totalIssues = cached.totalIssues,
+                        issuesRead = cached.issuesRead,
                         isCompleted = cached.isCompleted,
                         userRating = cached.userRating
                     )
@@ -119,6 +135,8 @@ class SeriesRepository(
                 val completedTasks = database.downloadDao().getCompletedDownloadsForSeries(seriesId)
                 if (completedTasks.isNotEmpty()) {
                     val first = completedTasks.first()
+                    val cachedSeries = database.seriesDao().getSeriesById(seriesId)
+                    val totalIssues = completedTasks.map { it.chapterId }.distinct().size
                     Result.success(
                         Series(
                             id = seriesId,
@@ -126,7 +144,9 @@ class SeriesRepository(
                             name = first.seriesName.ifBlank { first.title },
                             coverUrl = first.coverUrl,
                             totalPages = completedTasks.sumOf { it.totalPages },
-                            pagesRead = completedTasks.sumOf { it.downloadedPages }
+                            pagesRead = cachedSeries?.pagesRead ?: 0,
+                            totalIssues = totalIssues,
+                            issuesRead = cachedSeries?.issuesRead ?: 0
                         )
                     )
                 } else {
@@ -137,6 +157,7 @@ class SeriesRepository(
     }
 
     private fun buildVolumesFromDownloads(seriesId: Int, tasks: List<DownloadTaskEntity>): List<Volume> {
+        val cachedSeries = database.seriesDao().getSeriesById(seriesId)
         return tasks.groupBy { it.volumeId }.map { (volId, taskGroup) ->
             val chapters = taskGroup.map { task ->
                 Chapter(
@@ -146,7 +167,7 @@ class SeriesRepository(
                     chapterNumber = task.chapterNumber.ifBlank { "1" },
                     title = task.title,
                     pages = task.totalPages,
-                    pagesRead = task.downloadedPages,
+                    pagesRead = 0,
                     isRead = false,
                     isDownloaded = true,
                     localPath = task.localPath,
@@ -158,7 +179,7 @@ class SeriesRepository(
                 seriesId = seriesId,
                 name = if (volId > 0) "Volume $volId" else "Downloaded Issues",
                 number = volId.toFloat(),
-                pagesRead = chapters.sumOf { it.pagesRead },
+                pagesRead = cachedSeries?.pagesRead ?: 0,
                 totalPages = chapters.sumOf { it.pages },
                 chapters = chapters
             )

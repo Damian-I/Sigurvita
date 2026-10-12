@@ -14,6 +14,8 @@ data class CachedSeriesEntity(
     val summary: String?,
     val pagesRead: Int,
     val totalPages: Int,
+    val totalIssues: Int = 0,
+    val issuesRead: Int = 0,
     val isCompleted: Boolean,
     val userRating: Float,
     val lastUpdated: Long = System.currentTimeMillis()

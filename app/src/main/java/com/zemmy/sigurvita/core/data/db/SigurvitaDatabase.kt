@@ -19,7 +19,7 @@ import com.zemmy.sigurvita.core.data.db.entity.MarkedPageEntity
         DownloadTaskEntity::class,
         MarkedPageEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class SigurvitaDatabase : RoomDatabase() {
@@ -39,6 +39,13 @@ abstract class SigurvitaDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE cached_series ADD COLUMN totalIssues INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE cached_series ADD COLUMN issuesRead INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getDatabase(context: Context): SigurvitaDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -46,7 +53,7 @@ abstract class SigurvitaDatabase : RoomDatabase() {
                     SigurvitaDatabase::class.java,
                     "sigurvita_db"
                 )
-                    .addMigrations(MIGRATION_3_4)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()
                 INSTANCE = instance

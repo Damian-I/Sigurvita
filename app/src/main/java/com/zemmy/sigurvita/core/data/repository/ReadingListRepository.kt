@@ -29,17 +29,45 @@ class ReadingListRepository(
                 dtoList = resPost.body()
             }
 
-            val lists = dtoList?.filter { it.id > 0 && !it.title.isNullOrBlank() }?.map { dto ->
-                ReadingList(
-                    id = dto.id,
-                    title = dto.title ?: "",
-                    summary = dto.summary,
-                    itemCount = dto.itemCount,
-                    coverUrl = dto.coverImage?.let { "${config.serverUrl}/$it" },
-                    promoted = dto.promoted
-                )
-            } ?: emptyList()
+            val validDtos = dtoList?.filter { it.id > 0 && !it.title.isNullOrBlank() } ?: emptyList()
 
+            val listsDeferred = validDtos.map { dto ->
+                async {
+                    var totalPages = 0
+                    var pagesRead = 0
+                    var issuesRead = 0
+
+                    try {
+                        val itemsRes = api.getReadingListItems(dto.id)
+                        if (itemsRes.isSuccessful && !itemsRes.body().isNullOrEmpty()) {
+                            val items = itemsRes.body()!!
+                            for (item in items) {
+                                val itemPages = if (item.pagesTotal > 0) item.pagesTotal else item.pages
+                                val itemPagesRead = item.pagesRead
+                                totalPages += itemPages
+                                pagesRead += itemPagesRead
+                                if (itemPages in 1..itemPagesRead) {
+                                    issuesRead++
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+
+                    ReadingList(
+                        id = dto.id,
+                        title = dto.title ?: "",
+                        summary = dto.summary,
+                        itemCount = if (dto.itemCount > 0) dto.itemCount else 0,
+                        coverUrl = dto.coverImage?.let { "${config.serverUrl}/$it" },
+                        promoted = dto.promoted,
+                        totalPages = totalPages,
+                        pagesRead = pagesRead,
+                        issuesRead = issuesRead
+                    )
+                }
+            }
+
+            val lists = listsDeferred.awaitAll()
             Result.success(lists)
         } catch (e: Exception) {
             Result.failure(e)

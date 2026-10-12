@@ -20,6 +20,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -114,6 +115,127 @@ fun CoverPlaceholder(
 }
 
 @Composable
+fun SeriesReadIndicator(
+    pagesRead: Int,
+    totalPages: Int,
+    issuesRead: Int = 0,
+    totalIssues: Int = 0,
+    isRead: Boolean = totalPages in 1..pagesRead,
+    showProgressBar: Boolean = true,
+    compact: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val progress = if (totalPages > 0) (pagesRead.toFloat() / totalPages).coerceIn(0f, 1f) else 0f
+    val isPartiallyRead = (pagesRead > 0 || issuesRead > 0) && !isRead
+
+    Column(modifier = modifier) {
+        if (showProgressBar && totalPages > 0) {
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (compact) 3.dp else 4.dp)
+                    .clip(RoundedCornerShape(2.dp)),
+                color = when {
+                    isRead -> MaterialTheme.colorScheme.primary
+                    isPartiallyRead -> MaterialTheme.colorScheme.tertiary
+                    else -> MaterialTheme.colorScheme.surfaceVariant
+                },
+                trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = if (compact) 2.dp else 6.dp, vertical = 2.dp)
+        ) {
+            val issuePart = if (totalIssues > 0) {
+                if (isRead) "#$totalIssues"
+                else if (isPartiallyRead) "#$issuesRead/$totalIssues"
+                else "#$totalIssues"
+            } else ""
+
+            val pagePart = if (totalPages > 0) {
+                if (isRead) ""
+                else if (isPartiallyRead) "$pagesRead/${totalPages}p"
+                else "${totalPages}p"
+            } else ""
+
+            val textStr = when {
+                isRead -> if (issuePart.isNotEmpty()) "Completely Read ($issuePart)" else "Completely Read"
+                isPartiallyRead -> listOf(issuePart, pagePart).filter { it.isNotEmpty() }.joinToString(" • ")
+                totalPages > 0 || totalIssues > 0 -> listOf(issuePart, pagePart).filter { it.isNotEmpty() }.joinToString(" • ")
+                else -> "Unread"
+            }
+
+            Text(
+                text = textStr,
+                style = if (compact) MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)
+                        else MaterialTheme.typography.labelSmall,
+                color = when {
+                    isRead -> MaterialTheme.colorScheme.primary
+                    isPartiallyRead -> MaterialTheme.colorScheme.tertiary
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                fontWeight = if (isRead || isPartiallyRead) FontWeight.Bold else FontWeight.Normal
+            )
+        }
+    }
+}
+
+@Composable
+fun SidebarReadingListIndicator(
+    pagesRead: Int,
+    totalPages: Int,
+    issuesRead: Int = 0,
+    totalIssues: Int = 0,
+    modifier: Modifier = Modifier
+) {
+    if (totalPages <= 0 && totalIssues <= 0) return
+    val isRead = (totalPages in 1..pagesRead) || (totalIssues in 1..issuesRead)
+    val isPartiallyRead = (pagesRead > 0 || issuesRead > 0) && !isRead
+    val progress = if (totalPages > 0) (pagesRead.toFloat() / totalPages).coerceIn(0f, 1f) else 0f
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.padding(top = 2.dp)
+    ) {
+        if (isRead) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = "Read",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(12.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = if (totalIssues > 0) "READ (#$totalIssues)" else "READ",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
+                color = MaterialTheme.colorScheme.primary
+            )
+        } else if (isPartiallyRead) {
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(1.5.dp)),
+                color = MaterialTheme.colorScheme.tertiary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            val label = if (totalIssues > 0) "#$issuesRead/$totalIssues" else "${(progress * 100).toInt()}%"
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.tertiary
+            )
+        }
+    }
+}
+
+@Composable
 fun SeriesCard(
     series: Series,
     onClick: () -> Unit,
@@ -161,6 +283,22 @@ fun SeriesCard(
                             )
                         }
                     }
+                } else if (series.pagesRead > 0 && series.totalPages > 0) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.95f),
+                        shape = RoundedCornerShape(bottomStart = 8.dp),
+                        modifier = Modifier.align(Alignment.TopEnd)
+                    ) {
+                        Text(
+                            text = "${(series.pagesRead * 100 / series.totalPages)}%",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(6.dp))
@@ -171,16 +309,14 @@ fun SeriesCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 6.dp)
             )
-            if (series.totalPages > 0) {
-                Text(
-                    text = if (series.isFullyRead) "Completely Read" else "${series.pagesRead} / ${series.totalPages} pgs",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (series.isFullyRead) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = if (series.isFullyRead) FontWeight.Bold else FontWeight.Normal,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(6.dp))
+            SeriesReadIndicator(
+                pagesRead = series.pagesRead,
+                totalPages = series.totalPages,
+                issuesRead = series.issuesRead,
+                totalIssues = series.totalIssues,
+                isRead = series.isFullyRead,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
         }
     }
 }
