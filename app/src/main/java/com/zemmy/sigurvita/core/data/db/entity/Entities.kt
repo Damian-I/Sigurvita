@@ -50,5 +50,6 @@ data class MarkedPageEntity(
     val seriesName: String = "",
     val chapterTitle: String = "",
     val imageUrl: String = "",
+    val reviewTag: String = "DEBUG",
     val createdAt: Long = System.currentTimeMillis()
 )

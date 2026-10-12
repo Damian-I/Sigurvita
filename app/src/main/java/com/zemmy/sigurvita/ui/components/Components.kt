@@ -55,11 +55,14 @@ import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.zemmy.sigurvita.core.model.Series
 
+import androidx.compose.ui.graphics.Shape
+
 @Composable
 fun CoverImage(
     url: String?,
     modifier: Modifier = Modifier,
-    contentDescription: String? = null
+    contentDescription: String? = null,
+    shape: Shape = RoundedCornerShape(8.dp)
 ) {
     val context = LocalContext.current
     if (!url.isNullOrBlank()) {
@@ -72,29 +75,30 @@ fun CoverImage(
         val state = painter.state
 
         if (state is AsyncImagePainter.State.Error) {
-            CoverPlaceholder(title = contentDescription, modifier = modifier)
+            CoverPlaceholder(title = contentDescription, modifier = modifier, shape = shape)
         } else {
             Image(
                 painter = painter,
                 contentDescription = contentDescription,
                 modifier = modifier
-                    .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 0.dp, bottomEnd = 0.dp)),
+                    .clip(shape),
                 contentScale = ContentScale.Crop
             )
         }
     } else {
-        CoverPlaceholder(title = contentDescription, modifier = modifier)
+        CoverPlaceholder(title = contentDescription, modifier = modifier, shape = shape)
     }
 }
 
 @Composable
 fun CoverPlaceholder(
     title: String?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(8.dp)
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 0.dp, bottomEnd = 0.dp),
+        shape = shape,
         modifier = modifier
     ) {
         Box(
@@ -294,7 +298,8 @@ fun SeriesCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(0.7f),
-                    contentDescription = series.name
+                    contentDescription = series.name,
+                    shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
                 )
 
                 val isListContext = readContext?.originType == "READING_LIST"
@@ -308,7 +313,7 @@ fun SeriesCard(
                     Surface(
                         color = if (isListContext) MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.95f)
                                 else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.95f),
-                        shape = RoundedCornerShape(bottomEnd = 8.dp),
+                        shape = RoundedCornerShape(topStart = 8.dp, bottomEnd = 8.dp),
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .widthIn(max = 80.dp)

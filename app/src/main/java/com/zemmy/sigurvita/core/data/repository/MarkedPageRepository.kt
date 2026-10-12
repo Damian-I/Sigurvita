@@ -49,6 +49,15 @@ class MarkedPageRepository(private val database: SigurvitaDatabase) {
         database.markedPageDao().deleteMarkedPageById(id)
     }
 
+    suspend fun updateReviewTag(id: Int, reviewTag: String) = withContext(Dispatchers.IO) {
+        database.markedPageDao().updateReviewTag(id, reviewTag)
+    }
+
+    suspend fun toggleReviewTag(id: Int, currentTag: String) = withContext(Dispatchers.IO) {
+        val newTag = if (currentTag == "REMOVE") "DEBUG" else "REMOVE"
+        database.markedPageDao().updateReviewTag(id, newTag)
+    }
+
     suspend fun clearAll() = withContext(Dispatchers.IO) {
         database.markedPageDao().clearAllMarkedPages()
     }

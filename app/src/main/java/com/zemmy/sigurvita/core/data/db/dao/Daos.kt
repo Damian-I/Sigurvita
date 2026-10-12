@@ -81,6 +81,9 @@ interface MarkedPageDao {
     @Query("DELETE FROM marked_pages WHERE id = :id")
     fun deleteMarkedPageById(id: Int): Int
 
+    @Query("UPDATE marked_pages SET reviewTag = :reviewTag WHERE id = :id")
+    fun updateReviewTag(id: Int, reviewTag: String): Int
+
     @Query("DELETE FROM marked_pages")
     fun clearAllMarkedPages(): Int
 }

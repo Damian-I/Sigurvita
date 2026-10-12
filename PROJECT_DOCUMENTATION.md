@@ -412,7 +412,11 @@ Tasks are grouped by series into expandable cards with summary metrics (`library
 
 ### 5.9 Page Review (`MarkedPagesScreen`)
 
-Shows every page flagged from the reader's bookmark toggle (stored in `marked_pages` with chapter/series IDs, page index, total pages, series name, chapter title and the page's `imageUrl`). Features: search by series/chapter, thumbnail, click-to-enlarge full-screen preview dialog (series, chapter, "Page N of M"), open in reader (`onOpenReader`), per-item delete, and "Clear All" with a confirmation dialog. The top bar shows the count.
+Shows every page flagged from the reader's bookmark toggle (stored in `marked_pages` with chapter/series IDs, page index, total pages, series name, chapter title, `reviewTag` [`DEBUG` or `REMOVE`], and `imageUrl`). Designed as a testing and cleanup workspace for flagging problematic comic pages.
+- **Review Tags**: Pages are tagged as `DEBUG` or `TO REMOVE`. Tapping the tag badge chip on any card or preview toggles the review tag.
+- **Filtering, Grouping & Sorting**: Filter by review tag (`All`, `Debug`, `To Remove`), group by `Flat List`, `By Series`, or `By Tag` (with header counts), and sort by `Newest First`, `Oldest First`, `Series Name`, or `Page Number`.
+- **ML Detection Testing Tools**: Evaluates on-device ML models directly on marked pages. Automatically executes TFLite speech bubble and DeepPanel map detection on demand, displaying detected speech bubble count and panel map count overlays.
+- **Full-Screen Preview & Reader**: Click-to-enlarge full-screen preview with ML detection controls, toggleable tag badges, open in reader (`onOpenReader`), per-item mark removal, and a top-bar "Clear All" action.
 
 ### 5.10 Settings (`SettingsScreen`)
 
