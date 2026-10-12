@@ -1,5 +1,6 @@
 package com.zemmy.sigurvita.ui.components
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -148,8 +149,13 @@ fun IssueGridCard(
             Text(
                 text = issue.title,
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                minLines = 2,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.basicMarquee(
+                    iterations = Int.MAX_VALUE,
+                    repeatDelayMillis = 2000
+                )
             )
             if (issue.badges.isNotEmpty()) {
                 Spacer(Modifier.height(2.dp))

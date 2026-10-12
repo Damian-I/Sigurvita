@@ -1,5 +1,6 @@
 package com.zemmy.sigurvita.ui.screens.readinglist
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -496,7 +497,12 @@ fun ReadingListScreen(
                                         Text(
                                             text = displayTitle,
                                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                            modifier = Modifier.padding(end = 28.dp)
+                                            modifier = Modifier
+                                                .padding(end = 28.dp)
+                                                .basicMarquee(
+                                                    iterations = Int.MAX_VALUE,
+                                                    repeatDelayMillis = 2000
+                                                )
                                         )
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(

@@ -424,7 +424,7 @@ Shows every page flagged from the reader's bookmark toggle (stored in `marked_pa
 
 ### 5.11 Shared components (`ui.components`)
 
-- `CoverImage` (Coil `SubcomposeAsyncImage` with automatic placeholder fallback when missing/404, crossfade, rounded 8 dp, `ContentScale.Crop`), `SeriesCard` (0.7 cover aspect ratio, name, modular read indicator `#X/Y • A/Bp`, top-right "READ" checkmark or percentage badge overlay), `SeriesReadIndicator` (linear progress bar, concise issue and page counts `#X/Y • A/Bp`), `SidebarReadingListIndicator` (compact drawer progress indicator with `#X/Y` issue counts), `LoadingState`, `ErrorState` (message + optional Retry), `ReadStatusBadge` (unified pill badge with check/unchecked icon and read/unread status label).
+- `CoverImage` (Coil `SubcomposeAsyncImage` with automatic placeholder fallback when missing/404, crossfade, rounded 8 dp, `ContentScale.Crop`), `SeriesCard` (0.7 cover aspect ratio, name, modular read indicator, top-right "READ" checkmark or percentage badge overlay, top-left Smart On Deck origin badge), `SeriesReadIndicator` (linear progress bar, compact `SpaceBetween` left/right progress labels `#X/Y issues` on left, `A/B pgs` on right), `SidebarReadingListIndicator` (compact drawer progress indicator with `#X/Y issues`), `LoadingState`, `ErrorState` (message + optional Retry), `ReadStatusBadge` (unified pill badge with check/unchecked icon and read/unread status label).
 - `DownloadStatusButton`: reusable download status, progress indicator, and action button.
 - `ReadingListBadges`: shared reading list era and part badges (`ListBadge`, `ReadingListBadgeRow`, `IntegratedReadingListBadge`).
 - `IssueCards`: reusable `IssueRow`, `IssueGridCard`, and `IssueUi` models for chapter/issue lists and grids.

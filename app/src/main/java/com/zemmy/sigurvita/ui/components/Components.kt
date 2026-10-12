@@ -1,8 +1,10 @@
 package com.zemmy.sigurvita.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
@@ -21,10 +24,12 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import com.zemmy.sigurvita.core.datastore.SeriesReadContext
+import com.zemmy.sigurvita.core.util.cleanReadingListTitle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -73,7 +78,7 @@ fun CoverImage(
                 painter = painter,
                 contentDescription = contentDescription,
                 modifier = modifier
-                    .clip(RoundedCornerShape(8.dp)),
+                    .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 0.dp, bottomEnd = 0.dp)),
                 contentScale = ContentScale.Crop
             )
         }
@@ -89,7 +94,7 @@ fun CoverPlaceholder(
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 0.dp, bottomEnd = 0.dp),
         modifier = modifier
     ) {
         Box(
@@ -133,57 +138,76 @@ fun SeriesReadIndicator(
     val progress = if (totalPages > 0) (pagesRead.toFloat() / totalPages).coerceIn(0f, 1f) else 0f
     val isPartiallyRead = (pagesRead > 0 || issuesRead > 0) && !isRead
 
-    Column(modifier = modifier) {
-        if (showProgressBar && totalPages > 0) {
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(if (compact) 3.dp else 4.dp)
-                    .clip(RoundedCornerShape(2.dp)),
-                color = when {
-                    isRead -> MaterialTheme.colorScheme.primary
-                    isPartiallyRead -> MaterialTheme.colorScheme.tertiary
-                    else -> MaterialTheme.colorScheme.surfaceVariant
-                },
-                trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-        }
-
+    Column(modifier = modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = if (compact) 2.dp else 6.dp, vertical = 2.dp)
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = if (compact) 2.dp else 6.dp)
         ) {
             val issuePart = if (totalIssues > 0) {
-                if (isRead) "#$totalIssues"
-                else if (isPartiallyRead) "#$issuesRead/$totalIssues"
-                else "#$totalIssues"
+                if (isRead) "#$totalIssues issues"
+                else if (isPartiallyRead) "$issuesRead/$totalIssues issues"
+                else "#$totalIssues issues"
             } else ""
 
             val pagePart = if (totalPages > 0) {
                 if (isRead) ""
-                else if (isPartiallyRead) "$pagesRead/${totalPages}p"
-                else "${totalPages}p"
+                else if (isPartiallyRead) "$pagesRead/$totalPages pgs"
+                else "$totalPages pgs"
             } else ""
 
-            val textStr = when {
-                isRead -> if (issuePart.isNotEmpty()) "Completely Read ($issuePart)" else "Completely Read"
-                isPartiallyRead -> listOf(issuePart, pagePart).filter { it.isNotEmpty() }.joinToString(" • ")
-                totalPages > 0 || totalIssues > 0 -> listOf(issuePart, pagePart).filter { it.isNotEmpty() }.joinToString(" • ")
-                else -> "Unread"
+            val leftText = when {
+                isRead -> if (issuePart.isNotEmpty()) "Read ($issuePart)" else "Read"
+                isPartiallyRead -> issuePart.ifEmpty { "$pagesRead pgs" }
+                else -> issuePart.ifEmpty { "Unread" }
+            }
+
+            val rightText = when {
+                isRead -> ""
+                isPartiallyRead -> pagePart
+                else -> pagePart
             }
 
             Text(
-                text = textStr,
-                style = if (compact) MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)
-                        else MaterialTheme.typography.labelSmall,
+                text = leftText,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                 color = when {
                     isRead -> MaterialTheme.colorScheme.primary
                     isPartiallyRead -> MaterialTheme.colorScheme.tertiary
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 },
                 fontWeight = if (isRead || isPartiallyRead) FontWeight.Bold else FontWeight.Normal
+            )
+
+            if (rightText.isNotEmpty()) {
+                Text(
+                    text = rightText,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                    color = when {
+                        isRead -> MaterialTheme.colorScheme.primary
+                        isPartiallyRead -> MaterialTheme.colorScheme.tertiary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    fontWeight = if (isRead || isPartiallyRead) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+        }
+
+        if (showProgressBar && totalPages > 0) {
+            Spacer(modifier = Modifier.height(2.dp))
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (compact) 1.5.dp else 2.dp),
+                color = when {
+                    isRead -> MaterialTheme.colorScheme.primary
+                    isPartiallyRead -> MaterialTheme.colorScheme.tertiary
+                    else -> MaterialTheme.colorScheme.surfaceVariant
+                },
+                trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
             )
         }
     }
@@ -215,7 +239,7 @@ fun SidebarReadingListIndicator(
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = if (totalIssues > 0) "READ (#$totalIssues)" else "READ",
+                text = if (totalIssues > 0) "READ ($totalIssues issues)" else "READ",
                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
                 color = MaterialTheme.colorScheme.primary
             )
@@ -230,7 +254,7 @@ fun SidebarReadingListIndicator(
                 trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
             )
             Spacer(modifier = Modifier.width(6.dp))
-            val label = if (totalIssues > 0) "#$issuesRead/$totalIssues" else "${(progress * 100).toInt()}%"
+            val label = if (totalIssues > 0) "#$issuesRead/$totalIssues issues" else "${(progress * 100).toInt()}%"
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
@@ -275,10 +299,7 @@ fun SeriesCard(
 
                 val isListContext = readContext?.originType == "READING_LIST"
                 val contextLabel = when {
-                    isListContext -> {
-                        val title = readContext.readingListTitle.ifBlank { "List" }
-                        if (title.length > 10) "List: ${title.take(8)}…" else "List: $title"
-                    }
+                    isListContext -> cleanReadingListTitle(readContext.readingListTitle).ifBlank { "List" }
                     readContext?.originType == "LIBRARY" -> "Library"
                     else -> null
                 }
@@ -288,7 +309,9 @@ fun SeriesCard(
                         color = if (isListContext) MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.95f)
                                 else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.95f),
                         shape = RoundedCornerShape(bottomEnd = 8.dp),
-                        modifier = Modifier.align(Alignment.TopStart)
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .widthIn(max = 80.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -302,14 +325,21 @@ fun SeriesCard(
                                 modifier = Modifier.size(10.dp)
                             )
                             Spacer(modifier = Modifier.width(3.dp))
+                            val displayText = if (isListContext) "List: $contextLabel" else contextLabel
                             Text(
-                                text = contextLabel,
+                                text = displayText,
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 8.sp
                                 ),
                                 color = if (isListContext) MaterialTheme.colorScheme.onTertiaryContainer
-                                       else MaterialTheme.colorScheme.onSecondaryContainer
+                                       else MaterialTheme.colorScheme.onSecondaryContainer,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.basicMarquee(
+                                    iterations = Int.MAX_VALUE,
+                                    repeatDelayMillis = 2000
+                                )
                             )
                         }
                     }
@@ -360,21 +390,36 @@ fun SeriesCard(
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = series.name,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp
+                ),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .padding(horizontal = 6.dp)
+                    .basicMarquee(
+                        iterations = Int.MAX_VALUE,
+                        repeatDelayMillis = 2000
+                    )
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                thickness = 1.dp,
                 modifier = Modifier.padding(horizontal = 6.dp)
             )
+            Spacer(modifier = Modifier.height(1.dp))
             SeriesReadIndicator(
                 pagesRead = series.pagesRead,
                 totalPages = series.totalPages,
                 issuesRead = series.issuesRead,
                 totalIssues = series.totalIssues,
-                isRead = series.isFullyRead,
-                modifier = Modifier.padding(bottom = 4.dp)
+                isRead = series.isFullyRead
             )
         }
     }
