@@ -145,7 +145,7 @@ class ReaderViewModel : ViewModel() {
         viewModelScope.launch {
             val userSettings = preferencesRepository.readerSettingsFlow.first()
 
-            var targetSeriesId = seriesId
+            val targetSeriesId = seriesId
             var targetVolumeId = volumeId
             var fetchedSeriesName = ""
             var fetchedChapterTitle = ""
@@ -218,7 +218,7 @@ class ReaderViewModel : ViewModel() {
             } catch (_: Exception) { null }
             val isDownloadedLocal = downloadTask?.status == DownloadStatus.COMPLETED
 
-            val finalChapter = (fetchedChapter ?: Chapter(
+            val finalChapter = fetchedChapter ?: Chapter(
                 id = chapterId,
                 volumeId = targetVolumeId,
                 seriesId = targetSeriesId,
@@ -231,19 +231,33 @@ class ReaderViewModel : ViewModel() {
                 isDownloaded = isDownloadedLocal,
                 localPath = downloadTask?.localPath,
                 coverUrl = null
-            )).let { ch ->
-                if (isDownloadedLocal) {
-                    ch.copy(isDownloaded = true, localPath = downloadTask?.localPath)
-                } else {
-                    ch
-                }
-            }
+            )
 
             val activeReadingMode = sessionReadingModeOverride ?: defaultMode
             val effectiveSettings = userSettings.copy(
                 readingMode = activeReadingMode,
                 isIncognitoMode = userSettings.isIncognitoMode
             )
+
+            if (targetSeriesId > 0) {
+                if (readingListId > 0) {
+                    val listTitle = try {
+                        val listRes = app.readingListRepository.getReadingLists()
+                        listRes.getOrNull()?.find { it.id == readingListId }?.title ?: ""
+                    } catch (_: Exception) { "" }
+                    preferencesRepository.saveSeriesReadContext(
+                        seriesId = targetSeriesId,
+                        originType = "READING_LIST",
+                        readingListId = readingListId,
+                        readingListTitle = listTitle
+                    )
+                } else {
+                    preferencesRepository.saveSeriesReadContext(
+                        seriesId = targetSeriesId,
+                        originType = "LIBRARY"
+                    )
+                }
+            }
 
             _uiState.value = _uiState.value.copy(
                 isLoading = true,
@@ -319,8 +333,8 @@ class ReaderViewModel : ViewModel() {
                 } else null
 
                 Pair(
-                    panelDeferred?.await() as? com.zemmy.sigurvita.core.util.PanelMap,
-                    bubbleDeferred?.await() as? com.zemmy.sigurvita.core.model.PageBubbles
+                    panelDeferred?.await(),
+                    bubbleDeferred?.await()
                 )
             }
 
@@ -474,6 +488,7 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun onBubbleLongPress(
         pageIndex: Int,
         bubbleId: Int,

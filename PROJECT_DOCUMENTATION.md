@@ -344,6 +344,10 @@ Libraries and reading lists for the drawer are loaded once when `SigurvitaNavGra
 
 - Loads libraries, On Deck, Recently Updated, Newly Added, and the full series list **concurrently** (`async`/`await`). Reloads on every `ON_RESUME`.
 - Shows horizontal rows (110 dp cards): **Downloaded** (series with offline downloaded chapters), **On Deck**, **Recently Updated**, **Newly Added**.
+- **Smart On Deck**: Automatically tracks whether a series was last read from a **Reading List** or the **Library/Series order** (stored in `SeriesReadContext` DataStore).
+  - Displays a top-left overlay badge on cover images: `List: [Name]` (tertiary container) or `Library` (secondary container).
+  - **Default Tap**: Continues directly with the next unread issue in that reading list if last read from a list, or opens series order if last read from Library.
+  - **Long-Press (Hold Down)**: Displays `OnDeckContextSelectionDialog` allowing the user to explicitly select whether to continue from Library Order or any Reading List containing that series. Tapping an option updates the series preference and launches that context immediately.
 - Top bar: tapping the title opens the drawer; the search action turns the title into a focused text field that filters the whole series list **client-side** by name/localized name and shows results in a 3-column grid; an eye icon toggles Incognito mode.
 - Shows an **Offline Mode Warning Banner** when network connection to Kavita fails and cached/downloaded data is displayed.
 - Shows an Incognito banner when Incognito is active.

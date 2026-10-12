@@ -18,11 +18,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,6 +34,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
@@ -38,7 +42,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.zemmy.sigurvita.core.datastore.SeriesReadContext
+import com.zemmy.sigurvita.core.model.ReadingList
+import com.zemmy.sigurvita.core.model.Series
+import com.zemmy.sigurvita.core.util.cleanReadingListTitle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -58,10 +68,35 @@ import com.zemmy.sigurvita.ui.components.SeriesCard
 fun HomeScreen(
     onSeriesClick: (Int) -> Unit,
     onOpenDrawer: () -> Unit,
+    onNavigateToReader: (chapterId: Int, totalPages: Int, seriesId: Int, volumeId: Int, readingListId: Int) -> Unit = { _, _, _, _, _ -> },
+    onNavigateToReadingListDetail: (readingListId: Int) -> Unit = {},
     viewModel: HomeViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
     val focusRequester = remember { FocusRequester() }
+
+    var dialogSeries by remember { mutableStateOf<Series?>(null) }
+    var dialogReadingLists by remember { mutableStateOf<List<ReadingList>>(emptyList()) }
+
+    dialogSeries?.let { series ->
+        val currentContext = state.seriesReadContexts[series.id]
+        OnDeckContextSelectionDialog(
+            seriesName = series.name,
+            currentContext = currentContext,
+            availableReadingLists = dialogReadingLists,
+            onSelectLibrary = {
+                viewModel.updateSeriesReadContext(series.id, "LIBRARY")
+                dialogSeries = null
+                onSeriesClick(series.id)
+            },
+            onSelectReadingList = { listId, listTitle ->
+                viewModel.updateSeriesReadContext(series.id, "READING_LIST", listId, listTitle)
+                dialogSeries = null
+                viewModel.onOnDeckClick(series, onNavigateToReader, onSeriesClick, onNavigateToReadingListDetail)
+            },
+            onDismissRequest = { dialogSeries = null }
+        )
+    }
 
     com.zemmy.sigurvita.ui.util.OnResumeEffect {
         viewModel.loadData()
@@ -256,9 +291,24 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             items(state.onDeckSeries, key = { it.id }) { series ->
+                                val readContext = state.seriesReadContexts[series.id]
                                 SeriesCard(
                                     series = series,
-                                    onClick = { onSeriesClick(series.id) },
+                                    readContext = readContext,
+                                    onClick = {
+                                        viewModel.onOnDeckClick(
+                                            series = series,
+                                            onNavigateToReader = onNavigateToReader,
+                                            onNavigateToSeriesDetail = onSeriesClick,
+                                            onNavigateToReadingListDetail = onNavigateToReadingListDetail
+                                        )
+                                    },
+                                    onLongClick = {
+                                        dialogSeries = series
+                                        viewModel.getAvailableReadingListsForNextChapter(series.id) { lists ->
+                                            dialogReadingLists = lists
+                                        }
+                                    },
                                     modifier = Modifier.width(110.dp)
                                 )
                             }
@@ -329,5 +379,106 @@ private fun SectionHeader(title: String) {
         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+    )
+}
+
+@Composable
+fun OnDeckContextSelectionDialog(
+    seriesName: String,
+    currentContext: SeriesReadContext?,
+    availableReadingLists: List<ReadingList>,
+    onSelectLibrary: () -> Unit,
+    onSelectReadingList: (readingListId: Int, readingListTitle: String) -> Unit,
+    onDismissRequest: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text("Choose Reading Context") },
+        text = {
+            Column {
+                Text(
+                    text = "Select how you want to continue reading \"$seriesName\":",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                val isLibrarySelected = currentContext?.originType != "READING_LIST"
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelectLibrary() },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isLibrarySelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Library Order",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                            )
+                            Text(
+                                text = "Continue sequentially through issues in series order",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                if (availableReadingLists.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Reading List for Next Issue:",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    availableReadingLists.forEach { list ->
+                        val isListSelected = currentContext?.originType == "READING_LIST" && currentContext.readingListId == list.id
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable { onSelectReadingList(list.id, list.title) },
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isListSelected) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Bookmark, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = cleanReadingListTitle(list.title),
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                    Text(
+                                        text = "${list.itemCount} items in list",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text("Cancel")
+            }
+        }
     )
 }

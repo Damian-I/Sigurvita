@@ -1,6 +1,8 @@
 package com.zemmy.sigurvita.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,8 +16,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import com.zemmy.sigurvita.core.datastore.SeriesReadContext
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -118,12 +123,12 @@ fun CoverPlaceholder(
 fun SeriesReadIndicator(
     pagesRead: Int,
     totalPages: Int,
+    modifier: Modifier = Modifier,
     issuesRead: Int = 0,
     totalIssues: Int = 0,
     isRead: Boolean = totalPages in 1..pagesRead,
     showProgressBar: Boolean = true,
-    compact: Boolean = false,
-    modifier: Modifier = Modifier
+    compact: Boolean = false
 ) {
     val progress = if (totalPages > 0) (pagesRead.toFloat() / totalPages).coerceIn(0f, 1f) else 0f
     val isPartiallyRead = (pagesRead > 0 || issuesRead > 0) && !isRead
@@ -188,9 +193,9 @@ fun SeriesReadIndicator(
 fun SidebarReadingListIndicator(
     pagesRead: Int,
     totalPages: Int,
+    modifier: Modifier = Modifier,
     issuesRead: Int = 0,
-    totalIssues: Int = 0,
-    modifier: Modifier = Modifier
+    totalIssues: Int = 0
 ) {
     if (totalPages <= 0 && totalIssues <= 0) return
     val isRead = (totalPages in 1..pagesRead) || (totalIssues in 1..issuesRead)
@@ -235,15 +240,26 @@ fun SidebarReadingListIndicator(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SeriesCard(
     series: Series,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    readContext: SeriesReadContext? = null
 ) {
+    val clickModifier = if (onLongClick != null) {
+        modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
+    } else {
+        modifier.clickable(onClick = onClick)
+    }
+
     Card(
-        modifier = modifier
-            .clickable { onClick() },
+        modifier = clickModifier,
         shape = RoundedCornerShape(8.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -256,6 +272,49 @@ fun SeriesCard(
                         .aspectRatio(0.7f),
                     contentDescription = series.name
                 )
+
+                val isListContext = readContext?.originType == "READING_LIST"
+                val contextLabel = when {
+                    isListContext -> {
+                        val title = readContext.readingListTitle.ifBlank { "List" }
+                        if (title.length > 10) "List: ${title.take(8)}…" else "List: $title"
+                    }
+                    readContext?.originType == "LIBRARY" -> "Library"
+                    else -> null
+                }
+
+                if (!contextLabel.isNullOrBlank()) {
+                    Surface(
+                        color = if (isListContext) MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.95f)
+                                else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.95f),
+                        shape = RoundedCornerShape(bottomEnd = 8.dp),
+                        modifier = Modifier.align(Alignment.TopStart)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isListContext) Icons.Default.Bookmark else Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = if (isListContext) MaterialTheme.colorScheme.onTertiaryContainer
+                                       else MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = contextLabel,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 8.sp
+                                ),
+                                color = if (isListContext) MaterialTheme.colorScheme.onTertiaryContainer
+                                       else MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                }
+
                 if (series.isFullyRead) {
                     Surface(
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.95f),
@@ -333,9 +392,9 @@ fun LoadingState(modifier: Modifier = Modifier) {
 
 @Composable
 fun ErrorState(
+    modifier: Modifier = Modifier,
     message: String,
-    onRetry: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    onRetry: (() -> Unit)? = null
 ) {
     Box(
         modifier = modifier.fillMaxSize(),

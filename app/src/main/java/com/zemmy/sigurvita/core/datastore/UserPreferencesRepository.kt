@@ -24,6 +24,17 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+
+@Serializable
+data class SeriesReadContext(
+    val seriesId: Int,
+    val originType: String, // "LIBRARY" or "READING_LIST"
+    val readingListId: Int = 0,
+    val readingListTitle: String = "",
+    val timestamp: Long = System.currentTimeMillis(),
+)
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "sigurvita_settings")
 
@@ -54,6 +65,7 @@ class UserPreferencesRepository(private val context: Context) {
         val COMPLETED_CHAPTER_HISTORY = stringPreferencesKey("completed_chapter_history")
         val LIBRARY_ORDER = stringPreferencesKey("library_order")
         val CHOSEN_READING_LISTS = stringPreferencesKey("chosen_reading_lists")
+        val SERIES_READ_CONTEXTS = stringPreferencesKey("series_read_contexts")
     }
 
     @Volatile
@@ -339,6 +351,48 @@ class UserPreferencesRepository(private val context: Context) {
                 list.remove(listId)
                 preferences[Keys.CHOSEN_READING_LISTS] = list.joinToString(",")
             }
+        }
+    }
+
+    val seriesReadContextsFlow: Flow<Map<Int, SeriesReadContext>> = context.dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { preferences ->
+            val jsonStr = preferences[Keys.SERIES_READ_CONTEXTS] ?: ""
+            if (jsonStr.isBlank()) emptyMap()
+            else {
+                try {
+                    Json.decodeFromString<Map<Int, SeriesReadContext>>(jsonStr)
+                } catch (_: Exception) {
+                    emptyMap()
+                }
+            }
+        }
+
+    suspend fun saveSeriesReadContext(
+        seriesId: Int,
+        originType: String,
+        readingListId: Int = 0,
+        readingListTitle: String = ""
+    ) {
+        if (seriesId <= 0) return
+        context.dataStore.edit { preferences ->
+            val jsonStr = preferences[Keys.SERIES_READ_CONTEXTS] ?: ""
+            val currentMap = if (jsonStr.isBlank()) mutableMapOf()
+            else {
+                try {
+                    Json.decodeFromString<Map<Int, SeriesReadContext>>(jsonStr).toMutableMap()
+                } catch (_: Exception) {
+                    mutableMapOf()
+                }
+            }
+            currentMap[seriesId] = SeriesReadContext(
+                seriesId = seriesId,
+                originType = originType,
+                readingListId = readingListId,
+                readingListTitle = readingListTitle,
+                timestamp = System.currentTimeMillis()
+            )
+            preferences[Keys.SERIES_READ_CONTEXTS] = Json.encodeToString(currentMap)
         }
     }
 }

@@ -3,7 +3,9 @@ package com.zemmy.sigurvita.ui.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
+import com.zemmy.sigurvita.core.datastore.SeriesReadContext
 import com.zemmy.sigurvita.core.model.Library
+import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.model.Series
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
@@ -12,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 data class HomeUiState(
     val libraries: List<Library> = emptyList(),
@@ -20,6 +23,7 @@ data class HomeUiState(
     val recentlyUpdatedSeries: List<Series> = emptyList(),
     val newlyAddedSeries: List<Series> = emptyList(),
     val allSeries: List<Series> = emptyList(),
+    val seriesReadContexts: Map<Int, SeriesReadContext> = emptyMap(),
     val searchQuery: String = "",
     val debouncedQuery: String = "",
     val isSearchActive: Boolean = false,
@@ -50,7 +54,7 @@ class HomeViewModel : ViewModel() {
     init {
         viewModelScope.launch {
             searchQueryFlow
-                .debounce(200L)
+                .debounce(200L.milliseconds)
                 .collect { query ->
                     _uiState.value = _uiState.value.copy(debouncedQuery = query)
                 }
@@ -66,6 +70,13 @@ class HomeViewModel : ViewModel() {
             downloadRepository.downloadedSeriesFlow.collect { downloaded ->
                 _uiState.value = _uiState.value.copy(
                     downloadedSeries = downloaded
+                )
+            }
+        }
+        viewModelScope.launch {
+            preferencesRepository.seriesReadContextsFlow.collect { contexts ->
+                _uiState.value = _uiState.value.copy(
+                    seriesReadContexts = contexts
                 )
             }
         }
@@ -141,6 +152,74 @@ class HomeViewModel : ViewModel() {
         val newMode = !_uiState.value.isIncognitoMode
         viewModelScope.launch {
             preferencesRepository.updateIncognitoMode(newMode)
+        }
+    }
+
+    fun updateSeriesReadContext(seriesId: Int, originType: String, readingListId: Int = 0, readingListTitle: String = "") {
+        viewModelScope.launch {
+            preferencesRepository.saveSeriesReadContext(seriesId, originType, readingListId, readingListTitle)
+        }
+    }
+
+    fun onOnDeckClick(
+        series: Series,
+        onNavigateToReader: (chapterId: Int, totalPages: Int, seriesId: Int, volumeId: Int, readingListId: Int) -> Unit,
+        onNavigateToSeriesDetail: (seriesId: Int) -> Unit,
+        onNavigateToReadingListDetail: (readingListId: Int) -> Unit
+    ) {
+        val context = _uiState.value.seriesReadContexts[series.id]
+        if ((context?.originType == "READING_LIST") && (context.readingListId > 0)) {
+            viewModelScope.launch {
+                try {
+                    val itemsRes = app.readingListRepository.getReadingListItems(context.readingListId)
+                    val items = itemsRes.getOrDefault(emptyList())
+                    val unreadItem = items.find { it.seriesId == series.id && !it.isRead && it.chapterId != null && it.chapterId > 0 }
+                        ?: items.find { !it.isRead && it.chapterId != null && it.chapterId > 0 }
+                    unreadItem?.chapterId?.let { chapterId ->
+                        onNavigateToReader(chapterId, unreadItem.pages, series.id, unreadItem.volumeId ?: 0, context.readingListId)
+                    } ?: run {
+                        onNavigateToReadingListDetail(context.readingListId)
+                    }
+                } catch (_: Exception) {
+                    onNavigateToReadingListDetail(context.readingListId)
+                }
+            }
+        } else {
+            onNavigateToSeriesDetail(series.id)
+        }
+    }
+
+    fun getAvailableReadingListsForNextChapter(seriesId: Int, onResult: (List<ReadingList>) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val volumesRes = app.seriesRepository.getSeriesVolumes(seriesId)
+                val chapters = volumesRes.getOrNull()?.flatMap { it.chapters } ?: emptyList()
+
+                val nextChapter = chapters.find { it.pagesRead > 0 && !it.isRead }
+                    ?: chapters.find { !it.isRead }
+                    ?: chapters.firstOrNull()
+
+                val targetChapterId = nextChapter?.id ?: 0
+
+                val chapterListMap = app.readingListRepository.getChapterReadingLists(seriesId)
+                val matchingListsInfo = if (targetChapterId > 0 && chapterListMap.containsKey(targetChapterId)) {
+                    chapterListMap[targetChapterId] ?: emptyList()
+                } else {
+                    chapterListMap.values.flatten().distinctBy { it.first }
+                }
+
+                if (matchingListsInfo.isNotEmpty()) {
+                    val matchingIds = matchingListsInfo.map { it.first }.toSet()
+                    val allListsRes = app.readingListRepository.getReadingLists()
+                    val allLists = allListsRes.getOrDefault(emptyList())
+                    val filteredLists = allLists.filter { matchingIds.contains(it.id) }
+                    onResult(filteredLists)
+                } else {
+                    onResult(emptyList())
+                }
+            } catch (_: Exception) {
+                onResult(emptyList())
+            }
         }
     }
 }

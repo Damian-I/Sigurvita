@@ -5,6 +5,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import com.zemmy.sigurvita.ui.components.SidebarReadingListIndicator
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -514,6 +515,12 @@ fun SigurvitaNavGraph(
                     },
                     onOpenDrawer = {
                         scope.launch { drawerState.open() }
+                    },
+                    onNavigateToReader = { chapterId, totalPages, seriesId, volumeId, readingListId ->
+                        navController.navigate(Screen.Reader.createRoute(chapterId, totalPages, seriesId, volumeId, readingListId))
+                    },
+                    onNavigateToReadingListDetail = { listId ->
+                        navController.navigate(Screen.ReadingListDetail.createRoute(listId))
                     }
                 )
             }
