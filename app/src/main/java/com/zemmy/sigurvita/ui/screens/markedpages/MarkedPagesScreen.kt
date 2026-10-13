@@ -121,6 +121,7 @@ fun MarkedPagesScreen(
             onUpdateSpeechBubbleBoxes = { viewModel.updateSpeechBubbleBoxesEnabled(it) },
             onUpdateSpeechBubbleConfidence = { viewModel.updateSpeechBubbleConfidence(it) },
             onUpdateFitMode = { viewModel.updateFitMode(it) },
+            onUpdatePanelAwareOrder = { viewModel.updatePanelAwareOrder(it) },
             onUpdatePanelDebugOverlay = { viewModel.updatePanelDebugOverlay(it) },
             onDismissRequest = { showSettingsSheet = false }
         )
@@ -592,6 +593,7 @@ private fun PageReviewSettingsSheet(
     onUpdateSpeechBubbleBoxes: (Boolean) -> Unit,
     onUpdateSpeechBubbleConfidence: (Float) -> Unit,
     onUpdateFitMode: (FitMode) -> Unit,
+    onUpdatePanelAwareOrder: (Boolean) -> Unit,
     onUpdatePanelDebugOverlay: (Boolean) -> Unit,
     onDismissRequest: () -> Unit
 ) {
@@ -630,7 +632,7 @@ private fun PageReviewSettingsSheet(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-            // Speech Bubble Detection Switch
+            // 1. Feature: Speech Bubble AI Detection
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -652,6 +654,7 @@ private fun PageReviewSettingsSheet(
             if (settings.speechBubbleDetectionEnabled) {
                 Spacer(modifier = Modifier.height(12.dp))
 
+                // 2. Feature: Speech Bubble Highlight Boxes
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -672,6 +675,7 @@ private fun PageReviewSettingsSheet(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+                // 3. Feature Tuning: Detection Confidence Threshold
                 var sliderVal by remember(settings.speechBubbleConfidence) { mutableFloatStateOf(settings.speechBubbleConfidence) }
                 Text(
                     text = "Detection Confidence Threshold: ${(sliderVal * 100).toInt()}%",
@@ -684,11 +688,32 @@ private fun PageReviewSettingsSheet(
                     valueRange = 0.02f..0.50f,
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 4. Feature Option: Panel-Aware Reading Order
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Panel-Aware Reading Order", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Order speech bubbles and panels logically",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = settings.panelAwareOrderEnabled,
+                        onCheckedChange = onUpdatePanelAwareOrder
+                    )
+                }
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-            // Panel Map Outlines Switch
+            // 5. Debug After: Panel Map Detection / Debug Overlay
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically

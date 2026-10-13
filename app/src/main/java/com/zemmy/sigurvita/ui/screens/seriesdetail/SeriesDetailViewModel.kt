@@ -189,6 +189,7 @@ data class SeriesDetailUiState(
         }
 }
 
+@OptIn(FlowPreview::class)
 class SeriesDetailViewModel : ViewModel() {
 
     private val app = SigurvitaApp.instance

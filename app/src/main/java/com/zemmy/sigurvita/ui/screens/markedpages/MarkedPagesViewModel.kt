@@ -193,14 +193,6 @@ class MarkedPagesViewModel : ViewModel() {
         }
     }
 
-    fun toggleShowBubblesOverlay() {
-        _uiState.value = _uiState.value.copy(showBubblesOverlay = !_uiState.value.showBubblesOverlay)
-    }
-
-    fun toggleShowPanelsOverlay() {
-        _uiState.value = _uiState.value.copy(showPanelsOverlay = !_uiState.value.showPanelsOverlay)
-    }
-
     fun updateSpeechBubbleDetectionEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.updateSpeechBubbleDetectionEnabled(enabled)
@@ -228,6 +220,12 @@ class MarkedPagesViewModel : ViewModel() {
     fun updatePanelDebugOverlay(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.updatePanelDebugOverlay(enabled)
+        }
+    }
+
+    fun updatePanelAwareOrder(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updatePanelAwareOrder(enabled)
         }
     }
 

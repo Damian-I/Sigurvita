@@ -5,7 +5,6 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import com.zemmy.sigurvita.ui.components.SidebarReadingListIndicator
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -67,6 +66,7 @@ import com.zemmy.sigurvita.core.model.Library
 import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.util.cleanReadingListTitle
 import com.zemmy.sigurvita.core.util.parseReadingListHierarchy
+import com.zemmy.sigurvita.ui.components.SidebarReadingListIndicator
 import com.zemmy.sigurvita.ui.screens.auth.AuthScreen
 import com.zemmy.sigurvita.ui.screens.downloads.DownloadQueueScreen
 import com.zemmy.sigurvita.ui.screens.home.HomeScreen
