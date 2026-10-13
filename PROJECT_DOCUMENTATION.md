@@ -161,7 +161,7 @@ app/src/main/java/com/zemmy/sigurvita/
 ### 4.3 Authentication flow
 
 1. `AuthScreen` collects **server URL** and **API key** (masked field). There are no username/password fields.
-2. `AuthRepository.testConnectionAndSave` trims/saves the config, then calls `POST /api/Plugin/authenticate` (`pluginName = "Sigurvita"`). If a token is returned it is stored as `jwtToken`. Otherwise it falls back to `GET /api/Account` and stores `userId`.
+2. `AuthRepository.testConnectionAndSave` trims/saves the config, then calls `POST /api/Plugin/authenticate` (`pluginName = "Sigurvita"`). If a token is returned it is stored as `jwtToken`. Otherwise, it falls back to `GET /api/Account` and stores `userId`.
 3. `ServerConfig.isLoggedIn` is `serverUrl` non-blank **and** (`apiKey` or `jwtToken` non-blank).
 4. `MainActivity` collects `serverConfigFlow`; while it is still `null` it shows `LoadingState`, then starts at `Screen.Home` if logged in, else `Screen.Auth`.
 5. Logout (Settings) calls `clearServerConfig()` (removes URL, API key, JWT, user ID only) and navigates to `Auth` with `popUpTo(0)`. It does not clear the Room database, downloaded files, or other preferences.
@@ -226,7 +226,7 @@ Repositories wrap `KavitaApi` calls in `withContext(Dispatchers.IO)` and return 
 
 `getProgress(chapterId)` returns `pageNum` from `GET /api/Reader/get-progress` (0 on failure, including offline).
 
-`saveProgress(...)` is a no-op in Incognito mode. Otherwise it resolves a missing `volumeId` (via the chapter) and `libraryId` (cached, else via series, else first library, else `1`), posts a `ProgressDto` to `POST /api/Reader/progress` with `lastModifiedUtc`, and if `pageNum >= totalPages` also calls `mark-multiple-read`.
+`saveProgress(...)` is a no-op in Incognito mode. Otherwise, it resolves a missing `volumeId` (via the chapter) and `libraryId` (cached, else via series, else first library, else `1`), posts a `ProgressDto` to `POST /api/Reader/progress` with `lastModifiedUtc`, and if `pageNum >= totalPages` also calls `mark-multiple-read`.
 
 ### 4.7 `DownloadRepository` & `DownloadWorker`
 
@@ -243,7 +243,7 @@ Queue operations (`DownloadRepository`):
 1. Validates server config; sets progress to `DOWNLOADING`; fetches the page count from the API if it was not provided.
 2. **Download root**: App-specific external storage `getExternalFilesDir(DIRECTORY_DOWNLOADS)` (or `filesDir/downloads`), ensuring full read/write reliability without scoped storage permission errors.
 3. Target folder: `<root>/<Library>/<Series>/` where Library is the sanitized library label (`Manga`, `Comics`, or the library name for series-detail downloads; the literal `Reading Lists` for reading-list downloads) and Series is the sanitized series name.
-4. **Attempt 1, native archive**: `GET http://localhost/api/Download/chapter?chapterId=..` (rewritten by `AuthInterceptor`; client timeouts 30 s connect / 120 s read). The filename comes from `Content-Disposition`, else `<title>.cbz`. The body is buffered to a temp file in `cacheDir` and then copied to the target (with a fallback to the app-specific folder). On success it writes `localPath` = the `.cbz` path, `COMPLETED`.
+4. **Attempt 1, native archive**: `GET http://localhost/api/Download/chapter?chapterId=..` (rewritten by `AuthInterceptor`; client timeouts 30 s connect / 120 s read). The filename comes from `Content-Disposition`, else `<title>.cbz`. The body is buffered to a temp file in `cacheDir` and then copied to the target (with a fallback to the app-specific folder). On success, it writes `localPath` = the `.cbz` path, `COMPLETED`.
 5. **Attempt 2, page by page**: for each page `GET /api/Reader/image?chapterId=..&page=..`, saved as `<Title> p%03d.webp` in `<Series>/<Title>/`, updating progress per page. If the worker is stopped it sets `PAUSED` and returns `retry`. HTTP errors set `FAILED` with the message.
 6. Temp-file buffering is used in both paths to avoid OkHttp single-read body problems.
 
@@ -271,7 +271,7 @@ Queue operations (`DownloadRepository`):
   | 2021-2024 | Timeless |
 
 ### 4.9 On-device speech bubble detection
-
+|---|---|
 **Model.** A single-class YOLOv8m-seg model ([kitsumed/yolov8m_seg-speech-bubble](https://huggingface.co/kitsumed/yolov8m_seg-speech-bubble) on Hugging Face; the page lists the licence as GPL-3.0, so check what that means for distributing the app). It is bundled as `app/src/main/assets/model.tflite` and run with TensorFlow Lite (`org.tensorflow:tensorflow-lite` 2.17.0) on 4 CPU threads. `BubbleDetector.getInterpreter()` opens the asset by that file name; if you export a new model (see below), keep the name or change it there.
 
 **Git LFS.** The model is a float32 export of about 109 MB (104 MiB), above GitHub's 100 MB limit for normal files, so it is tracked with Git LFS (`.gitattributes`). Cloning needs `git lfs` installed (without it the file is a ~130-byte text pointer and the app will fail to load the model). GitHub's free LFS tier has a monthly storage and bandwidth allowance, and each full clone or CI checkout downloads the model again.
@@ -333,7 +333,7 @@ A `ModalNavigationDrawer` wraps the `NavHost`. Swipe gestures are enabled on eve
 
 1. **Home**.
 2. **Libraries (All)** (opens `library/0`), followed by each library, ordered by the saved `library_order` (unknown/new libraries appended). Each row has a drag handle (hamburger icon); dragging reorders live with animated neighbor displacement and saves the new order to DataStore on drop.
-3. **Reading Lists** header (opens the overview) with a **+** button that opens a checkbox dialog to choose which lists are shown. Beneath it, lists are shown **only if** they are chosen (`chosen_reading_lists`, also toggled by the bookmark icon on the reading-list overview) **or** in progress (any item with `pagesRead > 0`). They are grouped by era (`extractEraInfo`), eras sorted alphabetically, lists naturally sorted by cleaned title, each era collapsible and expanded by default.
+3. **Reading Lists** header (opens the overview) with a **+** button that opens a checkbox dialog to choose which lists are shown. Beneath it, lists are shown **only if** they are chosen (`chosen_reading_lists`, also toggled by the bookmark icon on the reading-list overview) **or** in progress (any item with `pagesRead > 0`). They are organized in a **hierarchical tree view**: grouped by **Era** (`extractEraInfo`), then by **Collapsible Major Part** (`Part 1`, `Part 2`, parsed via `parsePartAndSubpart`), and finally **Subparts** (e.g. `1.1 Marvel Next`, formatted concisely). Both eras and parts are collapsible to reduce clutter.
 4. **Downloads**.
 5. **Page Review**.
 6. **Settings**.
@@ -401,7 +401,7 @@ Progress & read state:
 
 ### 5.7 Reading lists (`ReadingListScreen` / `ReadingListViewModel`)
 
-- **Overview**: search field (below the top bar), era filter chips (`All` + discovered eras, with a "Years: ..." subtitle for the selected era), a **sort** dropdown (`Title (A-Z)`, `Title (Z-A)`, `Most Items`, `Fewest Items`), a bookmark button per list to pin/unpin it to the drawer, and an Incognito toggle. Search matches title, cleaned title and summary. Tapping a list opens its detail (inside the same screen; the back arrow returns to the overview).
+- **Overview**: search field (below the top bar), era filter chips (`All` + discovered eras, with a "Years: ..." subtitle for the selected era), a **sort** dropdown (`Title (A-Z)`, `Title (Z-A)`, `Most Items`, `Fewest Items`), a bookmark button per list to pin/unpin it to the drawer, and an Incognito toggle. Search matches title, cleaned title and summary. Organized in a **hierarchical tree view**: grouped by **Era**, then by **Collapsible Major Part** (`Part 1`, `Part 2`, parsed via `parsePartAndSubpart`), and finally **Subparts** (e.g. `1.1 Marvel Next`). Both eras and parts are collapsible to reduce clutter. Tapping a list opens its detail (inside the same screen; the back arrow returns to the overview).
 - **Detail** (`selectedListTitle != null`): summary card with `issuesRead / totalIssues` and `(pagesRead / totalPages pages)`; a **"Next to Resume"** card (cover, series, issue, progress, Resume button) for the first unread item (or the first item); item cards with cover, formatted title, clickable series name (opens series detail), a read/unread badge (tap toggles read via `markChapterRead/Unread`, then reloads the list), the next-unread highlight, and per-item download state (progress ring/cancel, retry, completed/delete, download). A **Mass Download** action in the top bar opens `MassDownloadDialog`. Reading-list downloads use the library label `Reading Lists`.
 - Opening an item starts the reader with the list's `readingListId`, so auto-advance follows the list order.
 - Reloads on every `ON_RESUME`.

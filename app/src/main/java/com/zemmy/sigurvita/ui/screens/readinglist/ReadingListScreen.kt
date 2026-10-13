@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
@@ -37,7 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.zemmy.sigurvita.R
 import com.zemmy.sigurvita.core.model.Chapter
 import com.zemmy.sigurvita.core.model.ReadingListItem
-import com.zemmy.sigurvita.core.util.extractEraInfo
+import com.zemmy.sigurvita.core.util.parseReadingListHierarchy
 import com.zemmy.sigurvita.ui.components.IssueDetailBottomSheet
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -458,6 +460,10 @@ fun ReadingListScreen(
                 val lists = state.filteredReadingLists
                 val overviewListState = rememberLazyListState()
 
+                val hierarchy = remember(lists) { parseReadingListHierarchy(lists) }
+                var expandedEras by remember(hierarchy) { mutableStateOf(hierarchy.map { it.eraName }.toSet()) }
+                var expandedParts by remember(hierarchy) { mutableStateOf(hierarchy.flatMap { era -> era.parts.map { "${era.eraName}_${it.partName}" } }.toSet()) }
+
                 LaunchedEffect(state.sortOption) {
                     if (overviewListState.firstVisibleItemIndex == 0) {
                         overviewListState.scrollToItem(0, 0)
@@ -470,108 +476,176 @@ fun ReadingListScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(lists, key = { it.id }) { list ->
-                        val eraInfo = extractEraInfo(list.title)
-                        val badge = com.zemmy.sigurvita.ui.components.toListBadge(list.id, list.title)
-                        val displayTitle = badge.partName.ifBlank { cleanReadingListTitle(list.title) }
-                        val isPinned = state.chosenReadingListIds.contains(list.id)
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { viewModel.loadListDetail(list.id, list.title) },
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                        ) {
-                            Box(modifier = Modifier.fillMaxWidth()) {
-                                Row(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    CoverImage(
-                                        url = list.coverUrl,
-                                        modifier = Modifier
-                                            .width(60.dp)
-                                            .height(90.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(16.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = displayTitle,
-                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                            modifier = Modifier
-                                                .padding(end = 28.dp)
-                                                .basicMarquee(
-                                                    iterations = Int.MAX_VALUE,
-                                                    repeatDelayMillis = 2000
-                                                )
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = eraInfo.name,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        if (list.totalPages > 0 || list.itemCount > 0) {
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            com.zemmy.sigurvita.ui.components.SeriesReadIndicator(
-                                                pagesRead = list.pagesRead,
-                                                totalPages = list.totalPages,
-                                                issuesRead = list.issuesRead,
-                                                totalIssues = if (list.itemCount > 0) list.itemCount else 0,
-                                                compact = true
-                                            )
-                                        }
+                    hierarchy.forEach { eraGroup ->
+                        val isEraExpanded = expandedEras.contains(eraGroup.eraName)
+                        item(key = "era_${eraGroup.eraName}") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        expandedEras = if (isEraExpanded) expandedEras - eraGroup.eraName else expandedEras + eraGroup.eraName
                                     }
-                                    IconButton(onClick = { viewModel.togglePin(list.id) }) {
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (isEraExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "${eraGroup.eraName} (${eraGroup.parts.sumOf { it.subparts.size }})",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        if (isEraExpanded) {
+                            eraGroup.parts.forEach { partGroup ->
+                                val partKey = "${eraGroup.eraName}_${partGroup.partName}"
+                                val isPartExpanded = expandedParts.contains(partKey)
+                                item(key = "part_$partKey") {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                expandedParts = if (isPartExpanded) expandedParts - partKey else expandedParts + partKey
+                                            }
+                                            .padding(start = 16.dp, top = 6.dp, bottom = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         Icon(
-                                            imageVector = if (isPinned) Icons.Default.Bookmark else Icons.Outlined.Bookmark,
-                                            contentDescription = if (isPinned) "Unpin from sidebar" else "Pin to sidebar",
-                                            tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            imageVector = if (isPartExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp),
+                                            tint = MaterialTheme.colorScheme.secondary
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "${partGroup.partDisplayName} (${partGroup.subparts.size})",
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.secondary,
+                                            modifier = Modifier.weight(1f)
                                         )
                                     }
                                 }
 
-                                if (list.totalPages > 0 && list.pagesRead >= list.totalPages) {
-                                    Surface(
-                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.95f),
-                                        shape = RoundedCornerShape(bottomStart = 8.dp),
-                                        modifier = Modifier.align(Alignment.TopEnd)
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                if (isPartExpanded) {
+                                    items(partGroup.subparts, key = { sub -> sub.list.id }) { sub ->
+                                        val list = sub.list
+                                        val displayTitle = sub.subpartDisplayTitle
+                                        val isPinned = state.chosenReadingListIds.contains(list.id)
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(start = 32.dp)
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Default.CheckCircle,
-                                                contentDescription = "Completely Read",
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(12.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(3.dp))
-                                            Text(
-                                                text = "READ",
-                                                style = MaterialTheme.typography.labelSmall.copy(
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 9.sp
-                                                ),
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                                            )
+                                            Card(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { viewModel.loadListDetail(list.id, list.title) },
+                                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                            ) {
+                                                Box(modifier = Modifier.fillMaxWidth()) {
+                                                    Row(
+                                                        modifier = Modifier.padding(16.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        CoverImage(
+                                                            url = list.coverUrl,
+                                                            modifier = Modifier
+                                                                .width(60.dp)
+                                                                .height(90.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(16.dp))
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Text(
+                                                                text = displayTitle,
+                                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                                                modifier = Modifier
+                                                                    .padding(end = 28.dp)
+                                                                    .basicMarquee(
+                                                                        iterations = Int.MAX_VALUE,
+                                                                        repeatDelayMillis = 2000
+                                                                    )
+                                                            )
+                                                            Spacer(modifier = Modifier.height(4.dp))
+                                                            Text(
+                                                                text = eraGroup.eraName,
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                            if (list.totalPages > 0 || list.itemCount > 0) {
+                                                                Spacer(modifier = Modifier.height(6.dp))
+                                                                com.zemmy.sigurvita.ui.components.SeriesReadIndicator(
+                                                                    pagesRead = list.pagesRead,
+                                                                    totalPages = list.totalPages,
+                                                                    issuesRead = list.issuesRead,
+                                                                    totalIssues = if (list.itemCount > 0) list.itemCount else 0,
+                                                                    compact = true
+                                                                )
+                                                            }
+                                                        }
+                                                        IconButton(onClick = { viewModel.togglePin(list.id) }) {
+                                                            Icon(
+                                                                imageVector = if (isPinned) Icons.Default.Bookmark else Icons.Outlined.Bookmark,
+                                                                contentDescription = if (isPinned) "Unpin from sidebar" else "Pin to sidebar",
+                                                                tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                        }
+                                                    }
+
+                                                    if (list.totalPages > 0 && list.pagesRead >= list.totalPages) {
+                                                        Surface(
+                                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.95f),
+                                                            shape = RoundedCornerShape(bottomStart = 8.dp),
+                                                            modifier = Modifier.align(Alignment.TopEnd)
+                                                        ) {
+                                                            Row(
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.CheckCircle,
+                                                                    contentDescription = "Completely Read",
+                                                                    tint = MaterialTheme.colorScheme.primary,
+                                                                    modifier = Modifier.size(12.dp)
+                                                                )
+                                                                Spacer(modifier = Modifier.width(3.dp))
+                                                                Text(
+                                                                    text = "READ",
+                                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        fontSize = 9.sp
+                                                                    ),
+                                                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                                )
+                                                            }
+                                                        }
+                                                    } else if (list.pagesRead > 0 && list.totalPages > 0) {
+                                                        Surface(
+                                                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.95f),
+                                                            shape = RoundedCornerShape(bottomStart = 8.dp),
+                                                            modifier = Modifier.align(Alignment.TopEnd)
+                                                        ) {
+                                                            Text(
+                                                                text = "${(list.pagesRead * 100 / list.totalPages)}%",
+                                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    fontSize = 9.sp
+                                                                ),
+                                                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
-                                    }
-                                } else if (list.pagesRead > 0 && list.totalPages > 0) {
-                                    Surface(
-                                        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.95f),
-                                        shape = RoundedCornerShape(bottomStart = 8.dp),
-                                        modifier = Modifier.align(Alignment.TopEnd)
-                                    ) {
-                                        Text(
-                                            text = "${(list.pagesRead * 100 / list.totalPages)}%",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 9.sp
-                                            ),
-                                            color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
                                     }
                                 }
                             }

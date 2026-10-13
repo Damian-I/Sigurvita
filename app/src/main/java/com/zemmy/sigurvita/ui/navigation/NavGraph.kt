@@ -66,8 +66,7 @@ import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.model.Library
 import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.util.cleanReadingListTitle
-import com.zemmy.sigurvita.core.util.extractEraInfo
-import com.zemmy.sigurvita.core.util.naturalCompare
+import com.zemmy.sigurvita.core.util.parseReadingListHierarchy
 import com.zemmy.sigurvita.ui.screens.auth.AuthScreen
 import com.zemmy.sigurvita.ui.screens.downloads.DownloadQueueScreen
 import com.zemmy.sigurvita.ui.screens.home.HomeScreen
@@ -210,19 +209,17 @@ fun SigurvitaNavGraph(
         )
     }
 
-    // Reading lists sorted by era, then alphanumerically inside each era
-    val readingListsByEra = remember(readingLists, chosenReadingListIds, inProgressReadingListIds) {
+    // Reading lists hierarchy: Era -> Collapsible Part -> Subparts
+    val readingListsHierarchy = remember(readingLists, chosenReadingListIds, inProgressReadingListIds) {
         val activeLists = readingLists.filter { chosenReadingListIds.contains(it.id) || inProgressReadingListIds.contains(it.id) }
-        val grouped = activeLists.groupBy { extractEraInfo(it.title).name }
-        grouped.entries
-            .sortedBy { it.key }
-            .associate { (era, lists) ->
-                era to lists.sortedWith { l1, l2 -> naturalCompare(cleanReadingListTitle(l1.title), cleanReadingListTitle(l2.title)) }
-            }
+        parseReadingListHierarchy(activeLists)
     }
 
-    var expandedEras by remember(readingListsByEra) {
-        mutableStateOf(readingListsByEra.keys.toSet())
+    var expandedEras by remember(readingListsHierarchy) {
+        mutableStateOf(readingListsHierarchy.map { it.eraName }.toSet())
+    }
+    var expandedParts by remember(readingListsHierarchy) {
+        mutableStateOf(readingListsHierarchy.flatMap { era -> era.parts.map { "${era.eraName}_${it.partName}" } }.toSet())
     }
 
     ModalNavigationDrawer(
@@ -379,28 +376,28 @@ fun SigurvitaNavGraph(
                         }
                     }
 
-                    // Era Folders & Reading Lists Tree View (Alphanumerically sorted)
-                    readingListsByEra.forEach { (eraName, listsInEra) ->
-                        val isExpanded = expandedEras.contains(eraName)
-                        item(key = "era_$eraName") {
+                    // Era -> Collapsible Part -> Subparts Tree View
+                    readingListsHierarchy.forEach { eraGroup ->
+                        val isEraExpanded = expandedEras.contains(eraGroup.eraName)
+                        item(key = "era_${eraGroup.eraName}") {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        expandedEras = if (isExpanded) expandedEras - eraName else expandedEras + eraName
+                                        expandedEras = if (isEraExpanded) expandedEras - eraGroup.eraName else expandedEras + eraGroup.eraName
                                     }
                                     .padding(horizontal = 24.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    imageVector = if (isEraExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                                     contentDescription = null,
                                     modifier = Modifier.size(20.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "$eraName (${listsInEra.size})",
+                                    text = "${eraGroup.eraName} (${eraGroup.parts.sumOf { it.subparts.size }})",
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                                     color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.weight(1f)
@@ -408,32 +405,65 @@ fun SigurvitaNavGraph(
                             }
                         }
 
-                        if (isExpanded) {
-                            items(listsInEra, key = { rl -> rl.id }) { rl ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            scope.launch { drawerState.close() }
-                                            navController.navigate(Screen.ReadingListDetail.createRoute(rl.id)) {
-                                                launchSingleTop = true
-                                                restoreState = true
+                        if (isEraExpanded) {
+                            eraGroup.parts.forEach { partGroup ->
+                                val partKey = "${eraGroup.eraName}_${partGroup.partName}"
+                                val isPartExpanded = expandedParts.contains(partKey)
+                                item(key = "part_$partKey") {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                expandedParts = if (isPartExpanded) expandedParts - partKey else expandedParts + partKey
+                                            }
+                                            .padding(start = 32.dp, end = 24.dp, top = 6.dp, bottom = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isPartExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.secondary
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "${partGroup.partDisplayName} (${partGroup.subparts.size})",
+                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.secondary,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+
+                                if (isPartExpanded) {
+                                    items(partGroup.subparts, key = { sub -> sub.list.id }) { sub ->
+                                        val rl = sub.list
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    scope.launch { drawerState.close() }
+                                                    navController.navigate(Screen.ReadingListDetail.createRoute(rl.id)) {
+                                                        launchSingleTop = true
+                                                        restoreState = true
+                                                    }
+                                                }
+                                                .padding(start = 56.dp, end = 24.dp, top = 6.dp, bottom = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "• ${sub.subpartDisplayTitle}",
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                                SidebarReadingListIndicator(
+                                                    pagesRead = rl.pagesRead,
+                                                    totalPages = rl.totalPages,
+                                                    issuesRead = rl.issuesRead,
+                                                    totalIssues = if (rl.itemCount > 0) rl.itemCount else 0
+                                                )
                                             }
                                         }
-                                        .padding(start = 40.dp, end = 24.dp, top = 8.dp, bottom = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "• ${cleanReadingListTitle(rl.title)}",
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                        com.zemmy.sigurvita.ui.components.SidebarReadingListIndicator(
-                                            pagesRead = rl.pagesRead,
-                                            totalPages = rl.totalPages,
-                                            issuesRead = rl.issuesRead,
-                                            totalIssues = if (rl.itemCount > 0) rl.itemCount else 0
-                                        )
                                     }
                                 }
                             }

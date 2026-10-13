@@ -175,3 +175,65 @@ fun extractEraInfo(title: String): EraCategory {
 
     return EraCategory(name = "General", years = null)
 }
+
+data class ReadingListSubpart(
+    val list: com.zemmy.sigurvita.core.model.ReadingList,
+    val subpartDisplayTitle: String
+)
+
+data class ReadingListPartGroup(
+    val partName: String,
+    val partDisplayName: String,
+    val subparts: List<ReadingListSubpart>
+)
+
+data class ReadingListEraGroup(
+    val eraName: String,
+    val parts: List<ReadingListPartGroup>
+)
+
+fun parseReadingListHierarchy(lists: List<com.zemmy.sigurvita.core.model.ReadingList>): List<ReadingListEraGroup> {
+    val eraGrouped = lists.groupBy { extractEraInfo(it.title).name }
+    return eraGrouped.entries.sortedBy { it.key }.map { (eraName, listsInEra) ->
+        val partGrouped = listsInEra.groupBy { rl ->
+            parsePartAndSubpart(rl.title).first
+        }
+        val parts = partGrouped.entries.sortedBy { it.key }.map { (majorPart, sublistsInPart) ->
+            val sortedSublists = sublistsInPart.sortedWith { l1, l2 ->
+                naturalCompare(l1.title, l2.title)
+            }.map { rl ->
+                val (_, subpartDisplay) = parsePartAndSubpart(rl.title)
+                ReadingListSubpart(rl, subpartDisplay)
+            }
+            val majorNum = majorPart.replace(Regex("""\D+"""), "").toIntOrNull() ?: 1
+            ReadingListPartGroup(
+                partName = majorPart,
+                partDisplayName = "Part $majorNum",
+                subparts = sortedSublists
+            )
+        }
+        ReadingListEraGroup(eraName, parts)
+    }
+}
+
+fun parsePartAndSubpart(title: String): Pair<String, String> {
+    val clean = cleanReadingListTitle(title)
+    val regex = Regex("""Part\s*(\d+)(?:\.(\d+))?""", RegexOption.IGNORE_CASE)
+    val match = regex.find(clean)
+    if (match != null) {
+        val majorNum = match.groupValues[1].toIntOrNull() ?: 1
+        val subNum = match.groupValues[2]
+
+        val majorPartName = "Part %02d".format(majorNum)
+
+        val remainder = clean.replace(regex, "").trimStart('-', ':', '•', ' ').trim()
+        val displaySub = if (subNum.isNotBlank()) {
+            val subInt = subNum.toIntOrNull() ?: 1
+            "$majorNum.$subInt $remainder".trim()
+        } else {
+            "$majorNum $remainder".trim()
+        }
+        return Pair(majorPartName, displaySub.ifBlank { clean })
+    }
+    return Pair("Part 01", clean)
+}
