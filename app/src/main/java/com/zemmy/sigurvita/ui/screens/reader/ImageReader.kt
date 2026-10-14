@@ -137,7 +137,7 @@ fun ImageReader(
 
             LaunchedEffect(currentPageIndex) {
                 if (pagerState.currentPage != currentPageIndex) {
-                    pagerState.animateScrollToPage(currentPageIndex)
+                    pagerState.scrollToPage(currentPageIndex)
                 }
             }
 
@@ -175,6 +175,7 @@ fun ImageReader(
 
 @Composable
 private fun ZoomableImage(
+    modifier: Modifier = Modifier,
     page: ReaderPage,
     fitMode: FitMode,
     touchEdgeNavigationEnabled: Boolean,
@@ -187,8 +188,8 @@ private fun ZoomableImage(
     onBubbleLongPress: (bubbleId: Int, centerPx: Offset, bubbleSizePx: Size) -> Unit = { _, _, _ -> },
     onNextPage: () -> Unit,
     onPreviousPage: () -> Unit,
-    onTap: () -> Unit,
-    modifier: Modifier = Modifier
+    onTap: () -> Unit
+
 ) {
     val context = LocalContext.current
     var scale by remember(page.pageNumber) { mutableFloatStateOf(1f) }

@@ -131,7 +131,7 @@ class DeepPanelDetector(private val context: Context) {
 
             for (i in 0 until modelInputImageSize) {
                 for (j in 0 until modelInputImageSize) {
-                    if (i < minValidX || i > maxValidX || j < minValidY || j > maxValidY) {
+                    if (i !in minValidX..maxValidX || j < minValidY || j > maxValidY) {
                         rawMatrix[i][j] = 0
                         continue
                     }
@@ -213,14 +213,6 @@ class DeepPanelDetector(private val context: Context) {
             // Relabel to sequential 1..N
             val canonicalToNew = mutableMapOf<Int, Int>()
             var currentNormLabel = 0
-            val minXMap = mutableMapOf<Int, Int>()
-            val maxXMap = mutableMapOf<Int, Int>()
-            val minYMap = mutableMapOf<Int, Int>()
-            val maxYMap = mutableMapOf<Int, Int>()
-            val sumXMap = mutableMapOf<Int, Float>()
-            val sumYMap = mutableMapOf<Int, Float>()
-            val countMap = mutableMapOf<Int, Int>()
-
             val finalLabels = ShortArray(modelInputImageSize * modelInputImageSize)
 
             for (j in 0 until modelInputImageSize) {
@@ -235,27 +227,51 @@ class DeepPanelDetector(private val context: Context) {
                             }
                             val newL = canonicalToNew[canonical]!!
                             finalLabels[j * modelInputImageSize + i] = newL.toShort()
-
-                            minXMap[newL] = min(minXMap[newL] ?: Int.MAX_VALUE, i)
-                            maxXMap[newL] = max(maxXMap[newL] ?: Int.MIN_VALUE, i)
-                            minYMap[newL] = min(minYMap[newL] ?: Int.MAX_VALUE, j)
-                            maxYMap[newL] = max(maxYMap[newL] ?: Int.MIN_VALUE, j)
-
-                            sumXMap[newL] = (sumXMap[newL] ?: 0f) + i.toFloat()
-                            sumYMap[newL] = (sumYMap[newL] ?: 0f) + j.toFloat()
-                            countMap[newL] = (countMap[newL] ?: 0) + 1
                         }
                     }
                 }
             }
 
-            // Step 4: Build PanelInfo list with dimension and aspect ratio filtering
+            // Step 3b: Split wide merged panels along vertical gutters
+            val (refinedLabels, totalPanelLabels) = splitWidePanels(
+                modelInputImageSize,
+                modelInputImageSize,
+                rawMatrix,
+                finalLabels,
+                currentNormLabel
+            )
+
+            // Step 4: Compute bounds and build PanelInfo list
+            val minXMap = mutableMapOf<Int, Int>()
+            val maxXMap = mutableMapOf<Int, Int>()
+            val minYMap = mutableMapOf<Int, Int>()
+            val maxYMap = mutableMapOf<Int, Int>()
+            val sumXMap = mutableMapOf<Int, Float>()
+            val sumYMap = mutableMapOf<Int, Float>()
+            val countMap = mutableMapOf<Int, Int>()
+
+            for (j in 0 until modelInputImageSize) {
+                for (i in 0 until modelInputImageSize) {
+                    val l = refinedLabels[j * modelInputImageSize + i].toInt()
+                    if (l in 1..totalPanelLabels) {
+                        minXMap[l] = min(minXMap[l] ?: Int.MAX_VALUE, i)
+                        maxXMap[l] = max(maxXMap[l] ?: Int.MIN_VALUE, i)
+                        minYMap[l] = min(minYMap[l] ?: Int.MAX_VALUE, j)
+                        maxYMap[l] = max(maxYMap[l] ?: Int.MIN_VALUE, j)
+
+                        sumXMap[l] = (sumXMap[l] ?: 0f) + i.toFloat()
+                        sumYMap[l] = (sumYMap[l] ?: 0f) + j.toFloat()
+                        countMap[l] = (countMap[l] ?: 0) + 1
+                    }
+                }
+            }
+
             val panelInfos = mutableListOf<PanelInfo>()
-            for (l in 1..currentNormLabel) {
-                val minGx = minXMap[l] ?: 0
-                val maxGx = maxXMap[l] ?: 0
-                val minGy = minYMap[l] ?: 0
-                val maxGy = maxYMap[l] ?: 0
+            for (l in 1..totalPanelLabels) {
+                val minGx = minXMap[l] ?: continue
+                val maxGx = maxXMap[l] ?: continue
+                val minGy = minYMap[l] ?: continue
+                val maxGy = maxYMap[l] ?: continue
 
                 val (normLeft, normTop) = letterbox.letterboxToNorm(minGx.toFloat(), minGy.toFloat())
                 val (normRight, normBottom) = letterbox.letterboxToNorm((maxGx + 1).toFloat(), (maxGy + 1).toFloat())
@@ -289,7 +305,7 @@ class DeepPanelDetector(private val context: Context) {
             PanelMap(
                 gridW = modelInputImageSize,
                 gridH = modelInputImageSize,
-                labels = finalLabels,
+                labels = refinedLabels,
                 letterbox = letterbox,
                 panels = panelInfos
             )
@@ -297,6 +313,76 @@ class DeepPanelDetector(private val context: Context) {
             Log.e(TAG, "Error running DeepPanel detector", e)
             null
         }
+    }
+
+    private fun splitWidePanels(
+        gridW: Int,
+        gridH: Int,
+        rawMatrix: Array<IntArray>,
+        finalLabels: ShortArray,
+        currentNormLabel: Int
+    ): Pair<ShortArray, Int> {
+        var newNormLabel = currentNormLabel
+        val updatedLabels = finalLabels.clone()
+
+        for (l in 1..currentNormLabel) {
+            var minGx = gridW
+            var maxGx = 0
+            var minGy = gridH
+            var maxGy = 0
+
+            for (j in 0 until gridH) {
+                for (i in 0 until gridW) {
+                    if (updatedLabels[j * gridW + i].toInt() == l) {
+                        if (i < minGx) minGx = i
+                        if (i > maxGx) maxGx = i
+                        if (j < minGy) minGy = j
+                        if (j > maxGy) maxGy = j
+                    }
+                }
+            }
+
+            val width = maxGx - minGx + 1
+            val height = maxGy - minGy + 1
+
+            // Only analyze wide panels that span at least 65% of grid width
+            if (width < (gridW * 0.65).toInt() || height <= 10) continue
+            if (width.toFloat() / height < 1.5f) continue
+
+            // Search for vertical gutter column in middle 35%..65% of panel
+            val searchStart = minGx + (width * 0.35).toInt()
+            val searchEnd = minGx + (width * 0.65).toInt()
+
+            var minContentCount = Int.MAX_VALUE
+            var bestSplitX = -1
+
+            for (i in searchStart..searchEnd) {
+                var contentCount = 0
+                for (j in minGy..maxGy) {
+                    if (rawMatrix[i][j] != 0) {
+                        contentCount++
+                    }
+                }
+                if (contentCount < minContentCount) {
+                    minContentCount = contentCount
+                    bestSplitX = i
+                }
+            }
+
+            // If a column in the middle section has a content dip (< 70% of panel height)
+            if (bestSplitX != -1 && minContentCount <= (height * 0.70).toInt()) {
+                val rightLabel = ++newNormLabel
+                for (j in minGy..maxGy) {
+                    for (i in (bestSplitX + 1)..maxGx) {
+                        if (updatedLabels[j * gridW + i].toInt() == l) {
+                            updatedLabels[j * gridW + i] = rightLabel.toShort()
+                        }
+                    }
+                }
+            }
+        }
+
+        return Pair(updatedLabels, newNormLabel)
     }
 
     fun close() {
