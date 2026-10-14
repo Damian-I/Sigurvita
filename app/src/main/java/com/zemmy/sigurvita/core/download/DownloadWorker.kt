@@ -103,8 +103,16 @@ class DownloadWorker(
         val seriesName = sanitizeFileName(rawSeriesName.ifBlank { "Series" })
         val title = sanitizeFileName(rawTitle)
 
-        val safeAppDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            ?: File(context.filesDir, "downloads")
+        @Suppress("DEPRECATION")
+        val safeAppDir = run {
+            val mediaDirs = context.externalMediaDirs
+            if (!mediaDirs.isNullOrEmpty() && mediaDirs[0] != null) {
+                File(mediaDirs[0], "Downloads").apply { mkdirs() }
+            } else {
+                context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                    ?: File(context.filesDir, "downloads")
+            }
+        }
 
         val targetFolder = File(safeAppDir, "$libraryName/$seriesName").apply {
             mkdirs()

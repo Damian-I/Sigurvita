@@ -14,10 +14,12 @@ import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.util.PanelMap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 
 enum class ReviewTagFilter(val displayName: String) {
     ALL("All Marks"),
@@ -122,7 +124,24 @@ class MarkedPagesViewModel : ViewModel() {
     init {
         viewModelScope.launch {
             repository.markedPagesFlow.collect { pages ->
-                _uiState.value = _uiState.value.copy(markedPages = pages)
+                val config = preferencesRepository.serverConfigFlow.first()
+                val serverUrl = config.serverUrl
+                val apiKey = config.apiKey
+                val resolvedPages = pages.map { page ->
+                    val cleanPath = page.imageUrl.removePrefix("file://")
+                    val file = File(cleanPath)
+                    if ((page.imageUrl.startsWith("/") || page.imageUrl.startsWith("file://")) && !file.exists()) {
+                        if (serverUrl.isNotBlank()) {
+                            val remoteUrl = "$serverUrl/api/Reader/image?chapterId=${page.chapterId}&page=${page.pageIndex}&apiKey=$apiKey"
+                            page.copy(imageUrl = remoteUrl)
+                        } else {
+                            page
+                        }
+                    } else {
+                        page
+                    }
+                }
+                _uiState.value = _uiState.value.copy(markedPages = resolvedPages)
             }
         }
         viewModelScope.launch {

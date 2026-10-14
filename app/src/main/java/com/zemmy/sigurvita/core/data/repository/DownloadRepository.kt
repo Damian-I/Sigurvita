@@ -171,12 +171,21 @@ class DownloadRepository(
         )
     }
 
+    @Suppress("DEPRECATION")
+    private fun getSafeDownloadDir(): File {
+        val mediaDirs = context.externalMediaDirs
+        if (!mediaDirs.isNullOrEmpty() && mediaDirs[0] != null) {
+            return File(mediaDirs[0], "Downloads").apply { mkdirs() }
+        }
+        return context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
+            ?: File(context.filesDir, "downloads")
+    }
+
     private fun cleanupEmptyDirectories(file: File?) {
         if (file == null) return
         try {
             var currentDir: File? = if (file.isDirectory) file.parentFile else file.parentFile
-            val safeAppDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
-                ?: File(context.filesDir, "downloads")
+            val safeAppDir = getSafeDownloadDir()
             val rootPath = safeAppDir.absolutePath
 
             while (currentDir != null && currentDir.exists()) {

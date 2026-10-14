@@ -72,6 +72,9 @@ interface MarkedPageDao {
     @Query("SELECT * FROM marked_pages WHERE chapterId = :chapterId AND pageIndex = :pageIndex LIMIT 1")
     fun getMarkedPage(chapterId: Int, pageIndex: Int): com.zemmy.sigurvita.core.data.db.entity.MarkedPageEntity?
 
+    @Query("SELECT * FROM marked_pages WHERE id = :id LIMIT 1")
+    fun getMarkedPageById(id: Int): com.zemmy.sigurvita.core.data.db.entity.MarkedPageEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertMarkedPage(page: com.zemmy.sigurvita.core.data.db.entity.MarkedPageEntity)
 

@@ -58,7 +58,7 @@ class SigurvitaApp : Application(), ImageLoaderFactory {
     }
 
     val markedPageRepository: com.zemmy.sigurvita.core.data.repository.MarkedPageRepository by lazy {
-        com.zemmy.sigurvita.core.data.repository.MarkedPageRepository(database)
+        com.zemmy.sigurvita.core.data.repository.MarkedPageRepository(database, this)
     }
 
     val bubbleRepository: com.zemmy.sigurvita.core.data.repository.BubbleRepository by lazy {
