@@ -6,7 +6,6 @@ import com.zemmy.sigurvita.core.model.LetterboxParams
 import com.zemmy.sigurvita.core.model.NormRect
 import com.zemmy.sigurvita.core.model.PageBubbles
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class ReadingOrderUnitTest {
@@ -217,5 +216,25 @@ class ReadingOrderUnitTest {
 
         // Expected sequence: Top-Left (1), Top-Right (2), Middle-Left in container (3), Inset Middle-Right (4), Bottom in container (5)
         assertEquals(listOf(1, 2, 3, 4, 5), ids)
+    }
+
+    @Test
+    fun testIntraPanelBubbleOrdering_LTR_and_RTL() {
+        // Bubble 1: Top-Left (0.1, 0.10)
+        val bTopLeft = createDummyBubble(1, 0.1f, 0.10f, 0.35f, 0.20f)
+        // Bubble 2: Top-Right (0.6, 0.12) - same dialogue line as Bubble 1 (high vertical overlap)
+        val bTopRight = createDummyBubble(2, 0.6f, 0.12f, 0.85f, 0.22f)
+        // Bubble 3: Bottom-Left (0.15, 0.40) - lower dialogue line
+        val bBottom = createDummyBubble(3, 0.15f, 0.40f, 0.40f, 0.50f)
+
+        val bubbles = listOf(bTopRight, bBottom, bTopLeft)
+
+        // LTR: Top-Left (1) -> Top-Right (2) -> Bottom (3)
+        val orderedLTR = orderBubblesInPanel(bubbles, rtl = false)
+        assertEquals(listOf(1, 2, 3), orderedLTR.map { it.id })
+
+        // RTL: Top-Right (2) -> Top-Left (1) -> Bottom (3)
+        val orderedRTL = orderBubblesInPanel(bubbles, rtl = true)
+        assertEquals(listOf(2, 1, 3), orderedRTL.map { it.id })
     }
 }

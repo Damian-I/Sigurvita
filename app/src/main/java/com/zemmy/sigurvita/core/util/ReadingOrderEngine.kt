@@ -32,9 +32,21 @@ data class PanelMap(
 
     fun nearestPanel(box: NormRect, rtl: Boolean = false): Int {
         if (panels.isEmpty()) return -1
+
+        val bcx = (box.left + box.right) / 2f
+        val bcy = (box.top + box.bottom) / 2f
+
+        // Check for exact enclosure: panels whose bounding box contains the bubble center
+        val enclosing = panels.filter { p ->
+            bcx >= p.box.left && bcx <= p.box.right && bcy >= p.box.top && bcy <= p.box.bottom
+        }
+        if (enclosing.isNotEmpty()) {
+            // Prefer the smallest area panel (e.g. inset panel)
+            return enclosing.minByOrNull { it.area }?.label ?: enclosing[0].label
+        }
+
         var minScore = Float.MAX_VALUE
         var bestLabel = -1
-        val bcx = (box.left + box.right) / 2f
 
         for (p in panels) {
             val dx = maxOf(0f, maxOf(p.box.left - box.right, box.left - p.box.right))
@@ -142,6 +154,11 @@ fun <T> readingOrder(
 
             val cyDiff = abs(a.cy - b.cy)
             val minH = minOf(a.box.height, b.box.height).coerceAtLeast(1e-6f)
+            val vOv = span(a.box.top, a.box.bottom, b.box.top, b.box.bottom) / minH
+            val hOv = span(a.box.left, a.box.right, b.box.left, b.box.right) /
+                    minOf(a.box.width, b.box.width).coerceAtLeast(1e-6f)
+            val aLeads = if (rtl) a.cx > b.cx else a.cx < b.cx
+            val topDiff = abs(a.box.top - b.box.top)
 
             val aFirst = if (isInsetOverlap) {
                 // Inset / container relationship:
@@ -151,16 +168,29 @@ fun <T> readingOrder(
                 // If smaller panel sits in the upper part of larger panel (or top < larger.cy)
                 val smallerFirst = smaller.cy < larger.cy || smaller.box.top < larger.cy
                 if (smallerIsA) smallerFirst else !smallerFirst
+            } else if (maxOf(areaA, areaB) >= 0.35f && minOf(areaA, areaB) < 0.10f && abs(a.cy - b.cy) > 0.10f) {
+                // Giant background/splash panel vs small header/corner panel: smaller panel in upper portion comes first
+                val smallerIsA = areaA < areaB
+                val smaller = if (smallerIsA) a else b
+                val larger = if (smallerIsA) b else a
+                val smallerFirst = smaller.cy < larger.cy
+                if (smallerIsA) smallerFirst else !smallerFirst
+            } else if (a.box.top + 0.30f <= b.box.top && a.cy + 0.15f <= b.cy && a.box.height < 0.80f) {
+                // Panel A is distinctly higher up in a separate row than Panel B
+                true
+            } else if (b.box.top + 0.30f <= a.box.top && b.cy + 0.15f <= a.cy && b.box.height < 0.80f) {
+                false
+            } else if (vOv >= rowOverlap && hOv < rowOverlap) {
+                // Side-by-side columns with vertical overlap: horizontal column order leads
+                aLeads
+            } else if (topDiff <= 0.05f && vOv >= rowOverlap) {
+                // Both panels start at nearly the same top coordinate: leading side first
+                aLeads
             } else if (cyDiff > maxOf(0.04f, minH * 0.40f)) {
                 // Distinct top-to-bottom vertical separation
                 a.cy < b.cy
             } else {
-                val vOv = span(a.box.top, a.box.bottom, b.box.top, b.box.bottom) / minH
-                val hOv = span(a.box.left, a.box.right, b.box.left, b.box.right) /
-                        minOf(a.box.width, b.box.width).coerceAtLeast(1e-6f)
-                val aLeads = if (rtl) a.cx > b.cx else a.cx < b.cx
                 when {
-                    vOv >= rowOverlap && hOv < rowOverlap -> aLeads
                     vOv < rowOverlap -> a.cy < b.cy
                     abs(a.cy - b.cy) > sameCy -> a.cy < b.cy
                     else -> aLeads
@@ -282,38 +312,58 @@ fun orderBubbles(
         if (pBubbles.isEmpty()) continue
 
         val panel = reorderedMap.panels[label - 1]
-        val isContainer = panel.area >= 0.25f && pBubbles.size > 1
+        val isContainer = (panel.area >= 0.25f || (panel.box.right - panel.box.left) >= 0.65f) && pBubbles.size > 1
 
         if (isContainer) {
-            val clusters = mutableListOf<MutableList<DetectedBubble>>()
-            var currentCluster = mutableListOf<DetectedBubble>()
+            val leftBubbles = pBubbles.filter { (it.box.left + it.box.right) / 2f < 0.50f }
+            val rightBubbles = pBubbles.filter { (it.box.left + it.box.right) / 2f >= 0.50f }
 
-            for (b in pBubbles.sortedBy { it.box.top }) {
-                if (currentCluster.isEmpty()) {
-                    currentCluster.add(b)
-                } else {
-                    val prevCy = currentCluster.map { (it.box.top + it.box.bottom) / 2f }.average().toFloat()
-                    val curCy = (b.box.top + b.box.bottom) / 2f
-                    if (abs(curCy - prevCy) <= 0.07f || b.box.top <= currentCluster.maxOf { it.box.bottom } + 0.02f) {
+            val partitions = if (leftBubbles.isNotEmpty() && rightBubbles.isNotEmpty() && (panel.box.right - panel.box.left) >= 0.65f) {
+                listOf(leftBubbles, rightBubbles)
+            } else {
+                listOf(pBubbles)
+            }
+
+            for (partBubbles in partitions) {
+                val clusters = mutableListOf<MutableList<DetectedBubble>>()
+                var currentCluster = mutableListOf<DetectedBubble>()
+
+                for (b in partBubbles.sortedBy { it.box.top }) {
+                    if (currentCluster.isEmpty()) {
                         currentCluster.add(b)
                     } else {
-                        clusters.add(currentCluster)
-                        currentCluster = mutableListOf(b)
+                        val prevCy =
+                            currentCluster.map { (it.box.top + it.box.bottom) / 2f }.average()
+                                .toFloat()
+                        val curCy = (b.box.top + b.box.bottom) / 2f
+                        if (abs(curCy - prevCy) <= 0.07f || b.box.top <= currentCluster.maxOf { it.box.bottom } + 0.02f) {
+                            currentCluster.add(b)
+                        } else {
+                            clusters.add(currentCluster)
+                            currentCluster = mutableListOf(b)
+                        }
                     }
                 }
-            }
-            if (currentCluster.isNotEmpty()) {
-                clusters.add(currentCluster)
-            }
+                if (currentCluster.isNotEmpty()) {
+                    clusters.add(currentCluster)
+                }
 
-            for (cluster in clusters) {
-                val cLeft = cluster.minOf { it.box.left }
-                val cTop = cluster.minOf { it.box.top }
-                val cRight = cluster.maxOf { it.box.right }
-                val cBottom = cluster.maxOf { it.box.bottom }
-                val cCx = (cLeft + cRight) / 2f
-                val cCy = (cTop + cBottom) / 2f
-                units.add(ReadingUnit(NormRect(cLeft, cTop, cRight, cBottom), cCx, cCy, cluster))
+                for (cluster in clusters) {
+                    val cLeft = cluster.minOf { it.box.left }
+                    val cTop = cluster.minOf { it.box.top }
+                    val cRight = cluster.maxOf { it.box.right }
+                    val cBottom = cluster.maxOf { it.box.bottom }
+                    val cCx = (cLeft + cRight) / 2f
+                    val cCy = (cTop + cBottom) / 2f
+                    units.add(
+                        ReadingUnit(
+                            NormRect(cLeft, cTop, cRight, cBottom),
+                            cCx,
+                            cCy,
+                            cluster
+                        )
+                    )
+                }
             }
         } else {
             units.add(ReadingUnit(panel.box, panel.cx, panel.cy, pBubbles))
@@ -327,19 +377,10 @@ fun orderBubbles(
         rtl = rtl
     )
 
-    // Flatten bubbles from ordered units
+    // Flatten bubbles from ordered units using intra-panel bubble row-banding
     val result = mutableListOf<DetectedBubble>()
     for (unit in orderedUnits) {
-        val orderedInUnit = readingOrder(
-            unit.bubbles,
-            spot = { b ->
-                val cx = (b.box.left + b.box.right) / 2f
-                val cy = (b.box.top + b.box.bottom) / 2f
-                Spot(b.box, cx, cy)
-            },
-            rtl = rtl,
-            rowOverlap = 0.40f
-        )
+        val orderedInUnit = orderBubblesInPanel(unit.bubbles, rtl)
         result.addAll(orderedInUnit)
     }
 
@@ -348,16 +389,55 @@ fun orderBubbles(
         val addedIds = result.map { it.id }.toSet()
         val remaining = bubbles.filter { it.id !in addedIds }
         if (remaining.isNotEmpty()) {
-            val orderedRemaining = readingOrder(
-                remaining,
-                spot = { b -> Spot(b.box, (b.box.left + b.box.right) / 2f, (b.box.top + b.box.bottom) / 2f) },
-                rtl = rtl,
-                rowOverlap = 0.40f
-            )
+            val orderedRemaining = orderBubblesInPanel(remaining, rtl)
             result.addAll(orderedRemaining)
         }
     }
 
     return result
+}
+
+fun orderBubblesInPanel(
+    bubbles: List<DetectedBubble>,
+    rtl: Boolean
+): List<DetectedBubble> {
+    if (bubbles.size <= 1) return bubbles
+
+    val sortedByTop = bubbles.sortedWith(compareBy({ it.box.top }, { it.id }))
+    val rows = mutableListOf<MutableList<DetectedBubble>>()
+    var rowTop = 0f
+    var rowBottom = 0f
+
+    for (b in sortedByTop) {
+        if (rows.isEmpty()) {
+            rows.add(mutableListOf(b))
+            rowTop = b.box.top
+            rowBottom = b.box.bottom
+        } else {
+            val bH = b.box.bottom - b.box.top
+            val curH = rowBottom - rowTop
+            val minH = minOf(curH, bH).coerceAtLeast(1e-6f)
+            val overlap = minOf(rowBottom, b.box.bottom) - maxOf(rowTop, b.box.top)
+
+            if (overlap >= 0.35f * minH) {
+                rows.last().add(b)
+                rowTop = minOf(rowTop, b.box.top)
+                rowBottom = maxOf(rowBottom, b.box.bottom)
+            } else {
+                rows.add(mutableListOf(b))
+                rowTop = b.box.top
+                rowBottom = b.box.bottom
+            }
+        }
+    }
+
+    return rows.flatMap { row ->
+        row.sortedWith(
+            compareBy<DetectedBubble> {
+                val cx = (it.box.left + it.box.right) / 2f
+                if (rtl) -cx else cx
+            }.thenBy { it.box.top }.thenBy { it.id }
+        )
+    }
 }
 
