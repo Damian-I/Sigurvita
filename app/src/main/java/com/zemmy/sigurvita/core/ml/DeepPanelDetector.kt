@@ -20,7 +20,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 import java.util.concurrent.Executors
-import kotlin.math.max
 import kotlin.math.min
 import androidx.core.graphics.createBitmap
 
@@ -41,6 +40,11 @@ class DeepPanelDetector(private val context: Context) {
     // Reusable buffers to avoid per-frame GC pressure
     private var reuseInputBuffer: ByteBuffer? = null
     private var reusePixels: IntArray? = null
+    private var reuseLetterboxBitmap: Bitmap? = null
+    private var reusePrediction: Array<Array<Array<FloatArray>>>? = null
+    private var reuseRawMatrix: IntArray? = null
+    private var reuseLabeledMatrix: IntArray? = null
+    private var reuseParentArray: IntArray? = null
 
     private suspend fun getInterpreter(): Interpreter = withContext(singleThreadDispatcher) {
         if (interpreter == null) {
@@ -81,7 +85,11 @@ class DeepPanelDetector(private val context: Context) {
             )
 
             // Letterbox original bitmap to 224x224 black background
-            val letterboxedBitmap = createBitmap(modelInputImageSize, modelInputImageSize)
+            val letterboxedBitmap = if (reuseLetterboxBitmap != null && reuseLetterboxBitmap!!.width == modelInputImageSize && reuseLetterboxBitmap!!.height == modelInputImageSize && !reuseLetterboxBitmap!!.isRecycled) {
+                reuseLetterboxBitmap!!
+            } else {
+                createBitmap(modelInputImageSize, modelInputImageSize).also { reuseLetterboxBitmap = it }
+            }
             val canvas = Canvas(letterboxedBitmap)
             val paint = Paint().apply { color = Color.BLACK }
             canvas.drawRect(0f, 0f, modelInputImageSize.toFloat(), modelInputImageSize.toFloat(), paint)
@@ -119,20 +127,30 @@ class DeepPanelDetector(private val context: Context) {
             }
 
             // Output tensor shape: [1, 224, 224, 3] (0=bg, 1=border, 2=content)
-            val prediction = Array(1) { Array(modelInputImageSize) { Array(modelInputImageSize) { FloatArray(3) } } }
+            val prediction = if (reusePrediction != null) {
+                reusePrediction!!
+            } else {
+                Array(1) { Array(modelInputImageSize) { Array(modelInputImageSize) { FloatArray(3) } } }.also { reusePrediction = it }
+            }
             interp.run(inputBuffer, prediction)
 
-            // Step 1: Content mask with x/y index swap, letterbox padding guard, and border suppression
-            val rawMatrix = Array(modelInputImageSize) { IntArray(modelInputImageSize) }
+            // Step 1: Content mask with flat array indices
+            val rawMatrix = if (reuseRawMatrix != null && reuseRawMatrix!!.size == pixelCount) {
+                reuseRawMatrix!!.also { it.fill(0) }
+            } else {
+                IntArray(pixelCount).also { reuseRawMatrix = it }
+            }
+
             val minValidX = (padX - 1f).toInt().coerceAtLeast(0)
             val maxValidX = (modelInputImageSize - padX + 1f).toInt().coerceAtMost(modelInputImageSize - 1)
             val minValidY = (padY - 1f).toInt().coerceAtLeast(0)
             val maxValidY = (modelInputImageSize - padY + 1f).toInt().coerceAtMost(modelInputImageSize - 1)
 
-            for (i in 0 until modelInputImageSize) {
-                for (j in 0 until modelInputImageSize) {
+            for (j in 0 until modelInputImageSize) {
+                for (i in 0 until modelInputImageSize) {
+                    val idx = j * modelInputImageSize + i
                     if (i !in minValidX..maxValidX || j < minValidY || j > maxValidY) {
-                        rawMatrix[i][j] = 0
+                        rawMatrix[idx] = 0
                         continue
                     }
                     val pixelScores = prediction[0][j][i]
@@ -140,14 +158,17 @@ class DeepPanelDetector(private val context: Context) {
                     val border = pixelScores[1]
                     val content = pixelScores[2]
 
-                    rawMatrix[i][j] = if (content > bg && content > border) 1 else 0
+                    rawMatrix[idx] = if (content > bg && content > border) 1 else 0
                 }
             }
 
             // Step 2: 4-connected Hoshen-Kopelman component labeling
-            // 4-connectivity prevents thin frame border gaps from bridging adjacent panels
             val maxLabels = (modelInputImageSize * modelInputImageSize) / 2
-            val parent = IntArray(maxLabels) { it }
+            val parent = if (reuseParentArray != null && reuseParentArray!!.size == maxLabels) {
+                reuseParentArray!!.also { for (k in it.indices) it[k] = k }
+            } else {
+                IntArray(maxLabels) { it }.also { reuseParentArray = it }
+            }
 
             fun ufFind(x: Int): Int {
                 var root = x
@@ -169,25 +190,30 @@ class DeepPanelDetector(private val context: Context) {
             }
 
             var nextLabel = 1
-            val labeled = Array(modelInputImageSize) { IntArray(modelInputImageSize) }
+            val labeled = if (reuseLabeledMatrix != null && reuseLabeledMatrix!!.size == pixelCount) {
+                reuseLabeledMatrix!!.also { it.fill(0) }
+            } else {
+                IntArray(pixelCount).also { reuseLabeledMatrix = it }
+            }
 
             for (j in 0 until modelInputImageSize) {
                 for (i in 0 until modelInputImageSize) {
-                    if (rawMatrix[i][j] != 0) {
-                        val up = if (i == 0) 0 else labeled[i - 1][j]
-                        val left = if (j == 0) 0 else labeled[i][j - 1]
+                    val idx = j * modelInputImageSize + i
+                    if (rawMatrix[idx] != 0) {
+                        val left = if (i == 0) 0 else labeled[j * modelInputImageSize + (i - 1)]
+                        val up = if (j == 0) 0 else labeled[(j - 1) * modelInputImageSize + i]
 
                         when ((if (up != 0) 1 else 0) + (if (left != 0) 1 else 0)) {
                             0 -> {
                                 val l = nextLabel++
                                 parent[l] = l
-                                labeled[i][j] = l
+                                labeled[idx] = l
                             }
                             1 -> {
-                                labeled[i][j] = if (up != 0) up else left
+                                labeled[idx] = if (up != 0) up else left
                             }
                             2 -> {
-                                labeled[i][j] = ufUnion(up, left)
+                                labeled[idx] = ufUnion(up, left)
                             }
                         }
                     }
@@ -195,83 +221,80 @@ class DeepPanelDetector(private val context: Context) {
             }
 
             // Count pixels per canonical label
-            val labelCounts = mutableMapOf<Int, Int>()
-            for (i in 0 until modelInputImageSize) {
-                for (j in 0 until modelInputImageSize) {
-                    val l = labeled[i][j]
-                    if (l != 0) {
-                        val canonical = ufFind(l)
-                        labelCounts[canonical] = (labelCounts[canonical] ?: 0) + 1
-                    }
+            val labelCounts = IntArray(nextLabel)
+            for (idx in 0 until pixelCount) {
+                val l = labeled[idx]
+                if (l != 0) {
+                    val canonical = ufFind(l)
+                    labelCounts[canonical]++
                 }
             }
 
             // Step 3: Area filter threshold
             val minPixels = (modelInputImageSize * modelInputImageSize * MIN_PANEL_AREA_RATIO).toInt()
-            val validCanonicalLabels = labelCounts.filter { it.value >= minPixels }.keys
-
-            // Relabel to sequential 1..N
-            val canonicalToNew = mutableMapOf<Int, Int>()
+            val canonicalToNew = IntArray(nextLabel)
             var currentNormLabel = 0
-            val finalLabels = ShortArray(modelInputImageSize * modelInputImageSize)
 
-            for (j in 0 until modelInputImageSize) {
-                for (i in 0 until modelInputImageSize) {
-                    val rawL = labeled[i][j]
-                    if (rawL != 0) {
-                        val canonical = ufFind(rawL)
-                        if (canonical in validCanonicalLabels) {
-                            if (!canonicalToNew.containsKey(canonical)) {
-                                currentNormLabel++
-                                canonicalToNew[canonical] = currentNormLabel
-                            }
-                            val newL = canonicalToNew[canonical]!!
-                            finalLabels[j * modelInputImageSize + i] = newL.toShort()
-                        }
+            for (c in 1 until nextLabel) {
+                if (labelCounts[c] >= minPixels) {
+                    canonicalToNew[c] = ++currentNormLabel
+                }
+            }
+
+            val finalLabels = ShortArray(pixelCount)
+            for (idx in 0 until pixelCount) {
+                val rawL = labeled[idx]
+                if (rawL != 0) {
+                    val canonical = ufFind(rawL)
+                    val newL = canonicalToNew[canonical]
+                    if (newL > 0) {
+                        finalLabels[idx] = newL.toShort()
                     }
                 }
             }
 
-            // Step 3b: Split wide merged panels along vertical gutters
-            val (refinedLabels, totalPanelLabels) = splitWidePanels(
+            // Step 3b: Split merged grid panels along constant-color vertical and horizontal gutters
+            val (refinedLabels, totalPanelLabels) = splitMergedPanels(
                 modelInputImageSize,
                 modelInputImageSize,
                 rawMatrix,
+                pixels,
                 finalLabels,
                 currentNormLabel
             )
 
             // Step 4: Compute bounds and build PanelInfo list
-            val minXMap = mutableMapOf<Int, Int>()
-            val maxXMap = mutableMapOf<Int, Int>()
-            val minYMap = mutableMapOf<Int, Int>()
-            val maxYMap = mutableMapOf<Int, Int>()
-            val sumXMap = mutableMapOf<Int, Float>()
-            val sumYMap = mutableMapOf<Int, Float>()
-            val countMap = mutableMapOf<Int, Int>()
+            val minXMap = IntArray(totalPanelLabels + 1) { Int.MAX_VALUE }
+            val maxXMap = IntArray(totalPanelLabels + 1) { Int.MIN_VALUE }
+            val minYMap = IntArray(totalPanelLabels + 1) { Int.MAX_VALUE }
+            val maxYMap = IntArray(totalPanelLabels + 1) { Int.MIN_VALUE }
+            val sumXMap = FloatArray(totalPanelLabels + 1)
+            val sumYMap = FloatArray(totalPanelLabels + 1)
+            val countMap = IntArray(totalPanelLabels + 1)
 
             for (j in 0 until modelInputImageSize) {
                 for (i in 0 until modelInputImageSize) {
                     val l = refinedLabels[j * modelInputImageSize + i].toInt()
                     if (l in 1..totalPanelLabels) {
-                        minXMap[l] = min(minXMap[l] ?: Int.MAX_VALUE, i)
-                        maxXMap[l] = max(maxXMap[l] ?: Int.MIN_VALUE, i)
-                        minYMap[l] = min(minYMap[l] ?: Int.MAX_VALUE, j)
-                        maxYMap[l] = max(maxYMap[l] ?: Int.MIN_VALUE, j)
+                        if (i < minXMap[l]) minXMap[l] = i
+                        if (i > maxXMap[l]) maxXMap[l] = i
+                        if (j < minYMap[l]) minYMap[l] = j
+                        if (j > maxYMap[l]) maxYMap[l] = j
 
-                        sumXMap[l] = (sumXMap[l] ?: 0f) + i.toFloat()
-                        sumYMap[l] = (sumYMap[l] ?: 0f) + j.toFloat()
-                        countMap[l] = (countMap[l] ?: 0) + 1
+                        sumXMap[l] += i.toFloat()
+                        sumYMap[l] += j.toFloat()
+                        countMap[l]++
                     }
                 }
             }
 
             val panelInfos = mutableListOf<PanelInfo>()
             for (l in 1..totalPanelLabels) {
-                val minGx = minXMap[l] ?: continue
-                val maxGx = maxXMap[l] ?: continue
-                val minGy = minYMap[l] ?: continue
-                val maxGy = maxYMap[l] ?: continue
+                if (countMap[l] == 0) continue
+                val minGx = minXMap[l]
+                val maxGx = maxXMap[l]
+                val minGy = minYMap[l]
+                val maxGy = maxYMap[l]
 
                 val (normLeft, normTop) = letterbox.letterboxToNorm(minGx.toFloat(), minGy.toFloat())
                 val (normRight, normBottom) = letterbox.letterboxToNorm((maxGx + 1).toFloat(), (maxGy + 1).toFloat())
@@ -283,9 +306,9 @@ class DeepPanelDetector(private val context: Context) {
                 if (normWidth < 0.03f || normHeight < 0.03f) continue
                 if (normWidth / normHeight > 12f || normHeight / normWidth > 12f) continue
 
-                val count = countMap[l] ?: 1
-                val avgGx = (sumXMap[l] ?: 0f) / count
-                val avgGy = (sumYMap[l] ?: 0f) / count
+                val count = countMap[l]
+                val avgGx = sumXMap[l] / count
+                val avgGy = sumYMap[l] / count
                 val (cx, cy) = letterbox.letterboxToNorm(avgGx, avgGy)
 
                 val boxArea = normWidth * normHeight
@@ -315,68 +338,183 @@ class DeepPanelDetector(private val context: Context) {
         }
     }
 
-    private fun splitWidePanels(
+    private fun isConstantVerticalGutter(
+        pixels: IntArray,
+        gridW: Int,
+        splitX: Int,
+        minGy: Int,
+        maxGy: Int
+    ): Boolean {
+        val h = maxGy - minGy + 1
+        if (h <= 0) return false
+
+        var darkCount = 0
+        var lightCount = 0
+
+        for (j in minGy..maxGy) {
+            val px = pixels[j * gridW + splitX]
+            val r = (px shr 16) and 0xFF
+            val g = (px shr 8) and 0xFF
+            val b = px and 0xFF
+            val brightness = (0.299f * r + 0.587f * g + 0.114f * b).toInt()
+
+            if (brightness < 60) darkCount++
+            else if (brightness > 195) lightCount++
+        }
+
+        val darkRatio = darkCount.toFloat() / h
+        val lightRatio = lightCount.toFloat() / h
+
+        return darkRatio >= 0.60f || lightRatio >= 0.60f
+    }
+
+    private fun isConstantHorizontalGutter(
+        pixels: IntArray,
+        gridW: Int,
+        splitY: Int,
+        minGx: Int,
+        maxGx: Int
+    ): Boolean {
+        val w = maxGx - minGx + 1
+        if (w <= 0) return false
+
+        var darkCount = 0
+        var lightCount = 0
+
+        for (i in minGx..maxGx) {
+            val px = pixels[splitY * gridW + i]
+            val r = (px shr 16) and 0xFF
+            val g = (px shr 8) and 0xFF
+            val b = px and 0xFF
+            val brightness = (0.299f * r + 0.587f * g + 0.114f * b).toInt()
+
+            if (brightness < 60) darkCount++
+            else if (brightness > 195) lightCount++
+        }
+
+        val darkRatio = darkCount.toFloat() / w
+        val lightRatio = lightCount.toFloat() / w
+
+        return darkRatio >= 0.60f || lightRatio >= 0.60f
+    }
+
+    private fun splitMergedPanels(
         gridW: Int,
         gridH: Int,
-        rawMatrix: Array<IntArray>,
+        rawMatrix: IntArray,
+        pixels: IntArray,
         finalLabels: ShortArray,
         currentNormLabel: Int
     ): Pair<ShortArray, Int> {
         var newNormLabel = currentNormLabel
         val updatedLabels = finalLabels.clone()
 
-        for (l in 1..currentNormLabel) {
-            var minGx = gridW
-            var maxGx = 0
-            var minGy = gridH
-            var maxGy = 0
+        var passNum = 0
+        var splitAny = true
 
-            for (j in 0 until gridH) {
-                for (i in 0 until gridW) {
-                    if (updatedLabels[j * gridW + i].toInt() == l) {
-                        if (i < minGx) minGx = i
-                        if (i > maxGx) maxGx = i
-                        if (j < minGy) minGy = j
-                        if (j > maxGy) maxGy = j
-                    }
-                }
-            }
+        while (splitAny && passNum < 3) {
+            splitAny = false
+            passNum++
 
-            val width = maxGx - minGx + 1
-            val height = maxGy - minGy + 1
+            val labelCountThisPass = newNormLabel
+            for (l in 1..labelCountThisPass) {
+                var minGx = gridW
+                var maxGx = 0
+                var minGy = gridH
+                var maxGy = 0
+                var pixelCount = 0
 
-            // Only analyze wide panels that span at least 65% of grid width
-            if (width < (gridW * 0.65).toInt() || height <= 10) continue
-            if (width.toFloat() / height < 1.5f) continue
-
-            // Search for vertical gutter column in middle 35%..65% of panel
-            val searchStart = minGx + (width * 0.35).toInt()
-            val searchEnd = minGx + (width * 0.65).toInt()
-
-            var minContentCount = Int.MAX_VALUE
-            var bestSplitX = -1
-
-            for (i in searchStart..searchEnd) {
-                var contentCount = 0
-                for (j in minGy..maxGy) {
-                    if (rawMatrix[i][j] != 0) {
-                        contentCount++
-                    }
-                }
-                if (contentCount < minContentCount) {
-                    minContentCount = contentCount
-                    bestSplitX = i
-                }
-            }
-
-            // If a column in the middle section has a content dip (< 70% of panel height)
-            if (bestSplitX != -1 && minContentCount <= (height * 0.70).toInt()) {
-                val rightLabel = ++newNormLabel
-                for (j in minGy..maxGy) {
-                    for (i in (bestSplitX + 1)..maxGx) {
+                for (j in 0 until gridH) {
+                    for (i in 0 until gridW) {
                         if (updatedLabels[j * gridW + i].toInt() == l) {
-                            updatedLabels[j * gridW + i] = rightLabel.toShort()
+                            if (i < minGx) minGx = i
+                            if (i > maxGx) maxGx = i
+                            if (j < minGy) minGy = j
+                            if (j > maxGy) maxGy = j
+                            pixelCount++
                         }
+                    }
+                }
+
+                if (pixelCount == 0) continue
+
+                val width = maxGx - minGx + 1
+                val height = maxGy - minGy + 1
+
+                // Check 1: Vertical Gutter Split (Left / Right merged panels)
+                val spansHorizontally = (minGx < (gridW * 0.45).toInt() && maxGx > (gridW * 0.55).toInt()) || width >= (gridW * 0.52).toInt()
+                if (spansHorizontally && width >= 25 && height >= 10 && (width.toFloat() / height) >= 1.20f) {
+                    val searchStart = minGx + (width * 0.35).toInt()
+                    val searchEnd = minGx + (width * 0.65).toInt()
+
+                    var minContentCount = Int.MAX_VALUE
+                    var bestSplitX = -1
+
+                    for (i in searchStart..searchEnd) {
+                        var contentCount = 0
+                        for (j in minGy..maxGy) {
+                            if (rawMatrix[j * gridW + i] != 0 && updatedLabels[j * gridW + i].toInt() == l) {
+                                contentCount++
+                            }
+                        }
+                        if (contentCount < minContentCount) {
+                            minContentCount = contentCount
+                            bestSplitX = i
+                        }
+                    }
+
+                    val isGutterLine = bestSplitX != -1 && isConstantVerticalGutter(pixels, gridW, bestSplitX, minGy, maxGy)
+                    val isDeepContentDip = bestSplitX != -1 && minContentCount <= (height * 0.15).toInt()
+
+                    if (bestSplitX != -1 && (isGutterLine || isDeepContentDip) && minContentCount <= (height * 0.50).toInt()) {
+                        val rightLabel = ++newNormLabel
+                        for (j in minGy..maxGy) {
+                            for (i in (bestSplitX + 1)..maxGx) {
+                                if (updatedLabels[j * gridW + i].toInt() == l) {
+                                    updatedLabels[j * gridW + i] = rightLabel.toShort()
+                                }
+                            }
+                        }
+                        splitAny = true
+                        continue
+                    }
+                }
+
+                // Check 2: Horizontal Gutter Split (Top / Bottom merged panels)
+                val spansVertically = (minGy < (gridH * 0.45).toInt() && maxGy > (gridH * 0.55).toInt()) || height >= (gridH * 0.52).toInt()
+                if (spansVertically && height >= 25 && width >= 10 && (height.toFloat() / width) >= 1.20f) {
+                    val searchStart = minGy + (height * 0.35).toInt()
+                    val searchEnd = minGy + (height * 0.65).toInt()
+
+                    var minContentCount = Int.MAX_VALUE
+                    var bestSplitY = -1
+
+                    for (j in searchStart..searchEnd) {
+                        var contentCount = 0
+                        for (i in minGx..maxGx) {
+                            if (rawMatrix[j * gridW + i] != 0 && updatedLabels[j * gridW + i].toInt() == l) {
+                                contentCount++
+                            }
+                        }
+                        if (contentCount < minContentCount) {
+                            minContentCount = contentCount
+                            bestSplitY = j
+                        }
+                    }
+
+                    val isGutterLine = bestSplitY != -1 && isConstantHorizontalGutter(pixels, gridW, bestSplitY, minGx, maxGx)
+                    val isDeepContentDip = bestSplitY != -1 && minContentCount <= (width * 0.15).toInt()
+
+                    if (bestSplitY != -1 && (isGutterLine || isDeepContentDip) && minContentCount <= (width * 0.50).toInt()) {
+                        val bottomLabel = ++newNormLabel
+                        for (j in (bestSplitY + 1)..maxGy) {
+                            for (i in minGx..maxGx) {
+                                if (updatedLabels[j * gridW + i].toInt() == l) {
+                                    updatedLabels[j * gridW + i] = bottomLabel.toShort()
+                                }
+                            }
+                        }
+                        splitAny = true
                     }
                 }
             }

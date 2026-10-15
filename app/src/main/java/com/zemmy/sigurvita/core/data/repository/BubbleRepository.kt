@@ -16,6 +16,8 @@ import androidx.core.graphics.createBitmap
 
 private const val TAG = "BubbleRepository"
 
+private val normPointsCache = LruCache<Int, List<Pair<Float, Float>>>(300)
+
 /**
  * Extracts a smoothed list of normalized page coordinates `(normX, normY)` (0.0..1.0)
  * along the speech bubble contour using 48 radial raycasts and 3-point moving average smoothing,
@@ -26,6 +28,10 @@ fun extractBubbleNormalizedPoints(
     lb: LetterboxParams,
     numSteps: Int = 48
 ): List<Pair<Float, Float>> {
+    val cacheKey = System.identityHashCode(bubble)
+    val cached = normPointsCache.get(cacheKey)
+    if (cached != null) return cached
+
     val mask = bubble.mask
     val sz = mask.size
     if (sz <= 0 || mask.probs.size < sz * sz) return emptyList()
@@ -76,12 +82,14 @@ fun extractBubbleNormalizedPoints(
         val (normLeft, normTop) = gridToNorm(minX.toFloat(), minY.toFloat())
         val (normRight, normBottom) = gridToNorm(maxX.toFloat() + 1f, maxY.toFloat() + 1f)
 
-        return listOf(
+        val rectPoints = listOf(
             Pair(normLeft, normTop),
             Pair(normRight, normTop),
             Pair(normRight, normBottom),
             Pair(normLeft, normBottom)
         )
+        normPointsCache.put(cacheKey, rectPoints)
+        return rectPoints
     }
 
     // Marching Squares boundary contour extraction on the prototype mask
@@ -185,6 +193,7 @@ fun extractBubbleNormalizedPoints(
         normPoints.add(gridToNorm(smGridX, smGridY))
     }
 
+    normPointsCache.put(cacheKey, normPoints)
     return normPoints
 }
 

@@ -57,6 +57,7 @@ class BubbleDetector(
     // Reusable buffers to avoid per-frame GC pressure (~7 MB for 640×640 input)
     private var reuseInputBuffer: ByteBuffer? = null
     private var reusePixels: IntArray? = null
+    private var reuseLetterboxBitmap: Bitmap? = null
     private var lastInputBufferSize: Int = 0
 
     private suspend fun getInterpreter(): Interpreter = withContext(singleThreadDispatcher) {
@@ -142,7 +143,11 @@ class BubbleDetector(
         )
 
         // Draw original bitmap letterboxed into inputSize x inputSize bitmap
-        val letterboxedBitmap = createBitmap(inputSize, inputSize)
+        val letterboxedBitmap = if (reuseLetterboxBitmap != null && reuseLetterboxBitmap!!.width == inputSize && reuseLetterboxBitmap!!.height == inputSize && !reuseLetterboxBitmap!!.isRecycled) {
+            reuseLetterboxBitmap!!
+        } else {
+            createBitmap(inputSize, inputSize).also { reuseLetterboxBitmap = it }
+        }
         val canvas = Canvas(letterboxedBitmap)
         canvas.drawColor(Color.rgb(114, 114, 114))
 

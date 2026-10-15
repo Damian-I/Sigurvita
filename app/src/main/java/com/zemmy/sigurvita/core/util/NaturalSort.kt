@@ -1,7 +1,6 @@
 package com.zemmy.sigurvita.core.util
 
 // Pre-compiled regex constants to avoid recompilation on every call
-private val NATURAL_SORT_REGEX = Regex("""(\d+\.?\d*|\D+)""")
 private val CHAPTER_PATTERN_KEYWORD = Regex("""^(?:Chapter|Issue|Vol\.?)\s*#?(\d+(?:\.\d+)?[A-Za-z]*)""", RegexOption.IGNORE_CASE)
 private val CHAPTER_PATTERN_HASH = Regex("""^#?(\d+(?:\.\d+)?[A-Za-z]*)(\s*[-:].*)?""")
 private val CHAPTER_PATTERN_BARE = Regex("""^(\d+(?:\.\d+)?[A-Za-z]*)\b""")
@@ -12,31 +11,71 @@ private val YEAR_RANGE_EXTRACT_REGEX = Regex("""(\d{4}-\d{4})""")
 private val BRACKET_EXTRACT_REGEX = Regex("""^\[([^]]+)]""")
 
 /**
- * Natural/human-friendly string comparator that sorts numeric chunks numerically.
+ * Natural/human-friendly string comparator that sorts numeric chunks numerically
+ * without allocating objects, Sequences, or Regex MatchResults.
  * e.g., "page2" < "page10" (unlike lexicographic sort).
  */
 fun naturalCompare(s1: String, s2: String): Int {
-    val chunks1 = NATURAL_SORT_REGEX.findAll(s1).map { it.value }.toList()
-    val chunks2 = NATURAL_SORT_REGEX.findAll(s2).map { it.value }.toList()
+    var i1 = 0
+    var i2 = 0
+    val len1 = s1.length
+    val len2 = s2.length
 
-    val size = minOf(chunks1.size, chunks2.size)
-    for (i in 0 until size) {
-        val c1 = chunks1[i]
-        val c2 = chunks2[i]
+    while (i1 < len1 && i2 < len2) {
+        val c1 = s1[i1]
+        val c2 = s2[i2]
 
-        val num1 = c1.toDoubleOrNull()
-        val num2 = c2.toDoubleOrNull()
+        if (c1.isDigit() && c2.isDigit()) {
+            var end1 = i1 + 1
+            while (end1 < len1 && s1[end1].isDigit()) end1++
 
-        val cmp = if (num1 != null && num2 != null) {
-            num1.compareTo(num2)
+            var end2 = i2 + 1
+            while (end2 < len2 && s2[end2].isDigit()) end2++
+
+            val cmp = compareIntegerSegments(s1, i1, end1, s2, i2, end2)
+            if (cmp != 0) return cmp
+
+            i1 = end1
+            i2 = end2
         } else {
-            c1.lowercase().compareTo(c2.lowercase())
+            val u1 = c1.uppercaseChar()
+            val u2 = c2.uppercaseChar()
+            if (u1 != u2) {
+                val l1 = c1.lowercaseChar()
+                val l2 = c2.lowercaseChar()
+                if (l1 != l2) return l1.compareTo(l2)
+            }
+            i1++
+            i2++
         }
-
-        if (cmp != 0) return cmp
     }
 
-    return chunks1.size.compareTo(chunks2.size)
+    return (len1 - i1).compareTo(len2 - i2)
+}
+
+private fun compareIntegerSegments(
+    s1: String, start1: Int, end1: Int,
+    s2: String, start2: Int, end2: Int
+): Int {
+    var p1 = start1
+    while (p1 < end1 - 1 && s1[p1] == '0') p1++
+
+    var p2 = start2
+    while (p2 < end2 - 1 && s2[p2] == '0') p2++
+
+    val numLen1 = end1 - p1
+    val numLen2 = end2 - p2
+
+    if (numLen1 != numLen2) {
+        return numLen1.compareTo(numLen2)
+    }
+
+    for (k in 0 until numLen1) {
+        val diff = s1[p1 + k].compareTo(s2[p2 + k])
+        if (diff != 0) return diff
+    }
+
+    return (end1 - start1).compareTo(end2 - start2)
 }
 
 /**
@@ -195,14 +234,15 @@ data class ReadingListEraGroup(
 fun parseReadingListHierarchy(lists: List<com.zemmy.sigurvita.core.model.ReadingList>): List<ReadingListEraGroup> {
     val eraGrouped = lists.groupBy { extractEraInfo(it.title).name }
     return eraGrouped.entries.sortedBy { it.key }.map { (eraName, listsInEra) ->
-        val partGrouped = listsInEra.groupBy { rl ->
-            parsePartAndSubpart(rl.title).first
+        val listsWithParsed = listsInEra.map { rl ->
+            val (majorPart, subpartDisplay) = parsePartAndSubpart(rl.title)
+            Triple(rl, majorPart, subpartDisplay)
         }
+        val partGrouped = listsWithParsed.groupBy { it.second }
         val parts = partGrouped.entries.sortedBy { it.key }.map { (majorPart, sublistsInPart) ->
-            val sortedSublists = sublistsInPart.sortedWith { l1, l2 ->
-                naturalCompare(l1.title, l2.title)
-            }.map { rl ->
-                val (_, subpartDisplay) = parsePartAndSubpart(rl.title)
+            val sortedSublists = sublistsInPart.sortedWith { t1, t2 ->
+                naturalCompare(t1.first.title, t2.first.title)
+            }.map { (rl, _, subpartDisplay) ->
                 ReadingListSubpart(rl, subpartDisplay)
             }
             val majorNum = majorPart.replace(Regex("""\D+"""), "").toIntOrNull() ?: 1

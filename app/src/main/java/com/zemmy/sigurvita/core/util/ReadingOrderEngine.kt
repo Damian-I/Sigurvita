@@ -224,11 +224,26 @@ fun panelOfBubble(
     if (sz <= 0 || b.mask.probs.size < sz * sz || map.panels.isEmpty()) {
         return map.nearestPanel(b.box, rtl)
     }
+
+    val minLbX = b.box.left * bubbleLb.originalWidth * bubbleLb.gain + bubbleLb.padX
+    val maxLbX = b.box.right * bubbleLb.originalWidth * bubbleLb.gain + bubbleLb.padX
+    val minLbY = b.box.top * bubbleLb.originalHeight * bubbleLb.gain + bubbleLb.padY
+    val maxLbY = b.box.bottom * bubbleLb.originalHeight * bubbleLb.gain + bubbleLb.padY
+
+    val minGx = ((minLbX / bubbleLb.inputSize) * sz).toInt().coerceIn(0, sz - 1)
+    val maxGx = ((maxLbX / bubbleLb.inputSize) * sz).toInt().coerceIn(0, sz - 1)
+    val minGy = ((minLbY / bubbleLb.inputSize) * sz).toInt().coerceIn(0, sz - 1)
+    val maxGy = ((maxLbY / bubbleLb.inputSize) * sz).toInt().coerceIn(0, sz - 1)
+
+    val step = if ((maxGx - minGx) > 6 && (maxGy - minGy) > 6) 2 else 1
+
     val scale = bubbleLb.inputSize.toFloat() / sz
     val votes = IntArray(map.panels.size + 1)
-    for (gy in 0 until sz) {
-        for (gx in 0 until sz) {
-            val prob = b.mask.probs[gy * sz + gx].toInt() and 0xFF
+
+    for (gy in minGy..maxGy step step) {
+        val rowOffset = gy * sz
+        for (gx in minGx..maxGx step step) {
+            val prob = b.mask.probs[rowOffset + gx].toInt() and 0xFF
             if (prob < 50) continue
             val (nx, ny) = bubbleLb.letterboxToNorm(gx * scale, gy * scale)
             val label = map.labelAtNorm(nx, ny)

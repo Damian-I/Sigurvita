@@ -214,7 +214,7 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
 
                     val iou = calculateRectIoU(b1.box, b2.box)
                     val minAreaOverlap = calculateIntersectionOverMinArea(b1.box, b2.box)
-                    val masksTouch = doMasksTouch(b1.mask, b2.mask)
+                    val masksTouch = doMasksTouch(b1.box, b2.box, b1.mask, b2.mask)
 
                     if (iou >= 0.18f || minAreaOverlap >= 0.35f || masksTouch) {
                         val mergedBox = NormRect(
@@ -254,18 +254,41 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
         return list.mapIndexed { index, b -> b.copy(id = index) }
     }
 
-    private fun doMasksTouch(m1: BubbleMask, m2: BubbleMask): Boolean {
+    private fun doMasksTouch(r1: NormRect, r2: NormRect, m1: BubbleMask, m2: BubbleMask): Boolean {
         val sz = m1.size
         if (sz != m2.size || sz == 0) return false
+
+        // Fast normalized proximity gate (~2 mask pixels = 2/160 = 0.0125)
+        val margin = 0.015f
+        if (r1.left > r2.right + margin || r2.left > r1.right + margin ||
+            r1.top > r2.bottom + margin || r2.top > r1.bottom + margin) {
+            return false
+        }
+
         var sharedPixels = 0
 
-        for (y in 0 until sz) {
+        // Convert normalized bounding boxes to mask pixel coordinates
+        val minX1 = (r1.left * sz).toInt().coerceIn(0, sz - 1)
+        val maxX1 = (r1.right * sz).toInt().coerceIn(0, sz - 1)
+        val minY1 = (r1.top * sz).toInt().coerceIn(0, sz - 1)
+        val maxY1 = (r1.bottom * sz).toInt().coerceIn(0, sz - 1)
+
+        val minX2 = (r2.left * sz).toInt().coerceIn(0, sz - 1)
+        val maxX2 = (r2.right * sz).toInt().coerceIn(0, sz - 1)
+        val minY2 = (r2.top * sz).toInt().coerceIn(0, sz - 1)
+        val maxY2 = (r2.bottom * sz).toInt().coerceIn(0, sz - 1)
+
+        val startX = maxOf(0, minOf(minX1, minX2) - 1)
+        val endX = minOf(sz - 1, maxOf(maxX1, maxX2) + 1)
+        val startY = maxOf(0, minOf(minY1, minY2) - 1)
+        val endY = minOf(sz - 1, maxOf(maxY1, maxY2) + 1)
+
+        for (y in startY..endY) {
             val rowOffset = y * sz
-            for (x in 0 until sz) {
+            for (x in startX..endX) {
                 val p1 = m1.probs[rowOffset + x].toInt() and 0xFF
                 if (p1 < 35) continue
 
-                // Check 4-connected 1-pixel neighbors (center, up, down, left, right)
                 val p2Center = m2.probs[rowOffset + x].toInt() and 0xFF
                 val p2Up = if (y > 0) m2.probs[(y - 1) * sz + x].toInt() and 0xFF else 0
                 val p2Down = if (y < sz - 1) m2.probs[(y + 1) * sz + x].toInt() and 0xFF else 0
