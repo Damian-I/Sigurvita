@@ -145,7 +145,7 @@ Repositories wrap `KavitaApi` calls in `withContext(Dispatchers.IO)` and return 
 
 - **Model**: YOLOv8m-seg single-class model bundled as `app/src/main/assets/model.tflite` (float32, ~104 MiB, exported with `imgsz=1024`, tracked with Git LFS).
 - **Pipeline**: Caching (`LruCache`), sidecar `detections.json` support for downloaded chapters, `PageBitmapLoader` inference decode (`targetSize = 1024`), preprocessing (letterbox to 1024x1024), TFLite dynamic tensor input shape detection, `YoloSegDecoder` + `DeepPanelDetector` decoding (with dynamic mask proximity gate `2f / sz`), Marching Squares contour extraction, and `ReadingOrderEngine` topological sorting.
-- **Overlay & Magnifier**: `ImageReader` canvas overlays (`speechBubbleBoxesEnabled`, `panelDebugOverlayEnabled`), long-press hit testing (`hitBubble`), `cropBubble` high-res cropping, and `BubbleMagnifierOverlay`.
+- **Overlay & Magnifier**: `ImageReader` canvas overlays (`speechBubbleBoxesEnabled`, `panelDebugOverlayEnabled`), S-Pen hover magnification (magnifies on speech bubble hover; persists when unhovering; automatically switches to magnify a new bubble if hovered while another is active; and returns to normal only when pressing down on the screen with the stylus), long-press hit testing (`hitBubble`), `cropBubble` high-res cropping, and `BubbleMagnifierOverlay`.
 
 ---
 

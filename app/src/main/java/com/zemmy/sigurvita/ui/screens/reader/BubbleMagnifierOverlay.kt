@@ -16,10 +16,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -27,12 +30,16 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.zemmy.sigurvita.core.model.MagnifiedBubble
+import com.zemmy.sigurvita.core.model.PageBubbles
 
 @Composable
 fun BubbleMagnifierOverlay(
     magnifiedBubble: MagnifiedBubble,
     speechBubbleBoxesEnabled: Boolean,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    bubbles: PageBubbles? = null,
+    contentScale: ContentScale = ContentScale.Fit,
+    onBubbleHover: ((Int, Int?, Offset?, Size?) -> Unit)? = null
 ) {
     BackHandler(enabled = true) {
         onDismiss()
@@ -48,12 +55,64 @@ fun BubbleMagnifierOverlay(
 
     var screenSize by remember { mutableStateOf(IntSize.Zero) }
 
+    val hoverModifier = if (bubbles != null && onBubbleHover != null) {
+        Modifier.pointerInput(magnifiedBubble.pageIndex, bubbles, contentScale) {
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val change = event.changes.firstOrNull()
+                    if (change != null && change.type == PointerType.Stylus && !change.pressed) {
+                        val offset = change.position
+                        val norm = viewportToPageNorm(
+                            tap = offset,
+                            box = size,
+                            pageW = bubbles.pageWidth,
+                            pageH = bubbles.pageHeight,
+                            contentScale = contentScale,
+                            zoom = 1f,
+                            pan = Offset.Zero
+                        )
+                        val hitId = if (norm != null) hitBubble(bubbles, norm) else null
+                        if (hitId != null && hitId != magnifiedBubble.bubbleId) {
+                            val hitBubble = bubbles.bubbles.find { it.id == hitId }
+                            if (hitBubble != null) {
+                                val boxW = size.width.toFloat()
+                                val boxH = size.height.toFloat()
+                                val pageW = bubbles.pageWidth.toFloat()
+                                val pageH = bubbles.pageHeight.toFloat()
+                                val s = when (contentScale) {
+                                    ContentScale.FillWidth -> boxW / pageW
+                                    ContentScale.FillHeight -> boxH / pageH
+                                    else -> minOf(boxW / pageW, boxH / pageH)
+                                }
+                                val dispW = pageW * s
+                                val dispH = pageH * s
+                                val originX = (boxW - dispW) / 2f
+                                val originY = (boxH - dispH) / 2f
+
+                                val centerX = originX + (hitBubble.box.left + hitBubble.box.right) / 2f * dispW
+                                val centerY = originY + (hitBubble.box.top + hitBubble.box.bottom) / 2f * dispH
+                                val bw = (hitBubble.box.right - hitBubble.box.left) * dispW
+                                val bh = (hitBubble.box.bottom - hitBubble.box.top) * dispH
+
+                                onBubbleHover(magnifiedBubble.pageIndex, hitId, Offset(centerX, centerY), Size(bw, bh))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        Modifier
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
                 detectTapGestures(onTap = { onDismiss() })
             }
+            .then(hoverModifier)
             .onSizeChanged { screenSize = it }
     ) {
         if (screenSize.width > 0 && screenSize.height > 0) {

@@ -193,14 +193,24 @@ fun ReaderScreen(
                 speechBubbleDetectionEnabled = state.settings.speechBubbleDetectionEnabled,
                 speechBubbleBoxesEnabled = state.settings.speechBubbleBoxesEnabled,
                 panelDebugOverlayEnabled = state.settings.panelDebugOverlayEnabled,
-                onBubbleLongPress = { pageIdx, bubbleId, centerPx, bubbleSizePx -> viewModel.onBubbleLongPress(pageIdx, bubbleId, centerPx, bubbleSizePx) }
+                onBubbleLongPress = { pageIdx, bubbleId, centerPx, bubbleSizePx -> viewModel.onBubbleLongPress(pageIdx, bubbleId, centerPx, bubbleSizePx) },
+                onBubbleHover = { pageIdx, bubbleId, centerPx, bubbleSizePx -> viewModel.onBubbleHover(pageIdx, bubbleId, centerPx, bubbleSizePx) },
+                magnifiedBubble = state.magnifiedBubble
             )
 
             state.magnifiedBubble?.let { magBubble ->
                 BubbleMagnifierOverlay(
                     magnifiedBubble = magBubble,
                     speechBubbleBoxesEnabled = state.settings.speechBubbleBoxesEnabled,
-                    onDismiss = { viewModel.dismissBubble() }
+                    onDismiss = { viewModel.dismissBubble() },
+                    bubbles = state.bubblesByPage[magBubble.pageIndex],
+                    contentScale = when {
+                        state.settings.readingMode == ReadingMode.WEBTOON -> ContentScale.FillWidth
+                        state.settings.fitMode == FitMode.FIT_WIDTH -> ContentScale.FillWidth
+                        state.settings.fitMode == FitMode.FIT_HEIGHT -> ContentScale.FillHeight
+                        else -> ContentScale.Fit
+                    },
+                    onBubbleHover = { pageIdx, bubbleId, centerPx, bubbleSizePx -> viewModel.onBubbleHover(pageIdx, bubbleId, centerPx, bubbleSizePx) }
                 )
             }
 

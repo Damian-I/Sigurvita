@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -48,6 +49,10 @@ import com.zemmy.sigurvita.core.model.ReadingMode
 
 import androidx.compose.ui.graphics.nativeCanvas
 import com.zemmy.sigurvita.core.util.PanelMap
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerType
+import com.zemmy.sigurvita.core.model.MagnifiedBubble
+import androidx.compose.ui.unit.IntSize
 
 @Composable
 fun ImageReader(
@@ -66,7 +71,9 @@ fun ImageReader(
     speechBubbleDetectionEnabled: Boolean = true,
     speechBubbleBoxesEnabled: Boolean = true,
     panelDebugOverlayEnabled: Boolean = false,
-    onBubbleLongPress: (pageIndex: Int, bubbleId: Int, centerPx: Offset, bubbleSizePx: Size) -> Unit = { _, _, _, _ -> }
+    onBubbleLongPress: (pageIndex: Int, bubbleId: Int, centerPx: Offset, bubbleSizePx: Size) -> Unit = { _, _, _, _ -> },
+    onBubbleHover: (pageIndex: Int, bubbleId: Int?, centerPx: Offset?, bubbleSizePx: Size?) -> Unit = { _, _, _, _ -> },
+    magnifiedBubble: MagnifiedBubble? = null
 ) {
     if (pages.isEmpty()) return
 
@@ -119,6 +126,8 @@ fun ImageReader(
                         speechBubbleBoxesEnabled = speechBubbleBoxesEnabled,
                         panelDebugOverlayEnabled = panelDebugOverlayEnabled,
                         onBubbleLongPress = { bubbleId, centerPx, bubbleSizePx -> onBubbleLongPress(idx, bubbleId, centerPx, bubbleSizePx) },
+                        onBubbleHover = { bubbleId, centerPx, bubbleSizePx -> onBubbleHover(idx, bubbleId, centerPx, bubbleSizePx) },
+                        magnifiedBubbleId = if (magnifiedBubble?.pageIndex == idx) magnifiedBubble.bubbleId else null,
                         onNextPage = onNextPage,
                         onPreviousPage = onPreviousPage,
                         onTap = onTap,
@@ -163,6 +172,8 @@ fun ImageReader(
                     speechBubbleBoxesEnabled = speechBubbleBoxesEnabled,
                     panelDebugOverlayEnabled = panelDebugOverlayEnabled,
                     onBubbleLongPress = { bubbleId, centerPx, bubbleSizePx -> onBubbleLongPress(pageIdx, bubbleId, centerPx, bubbleSizePx) },
+                    onBubbleHover = { bubbleId, centerPx, bubbleSizePx -> onBubbleHover(pageIdx, bubbleId, centerPx, bubbleSizePx) },
+                    magnifiedBubbleId = if (magnifiedBubble?.pageIndex == pageIdx) magnifiedBubble.bubbleId else null,
                     onNextPage = onNextPage,
                     onPreviousPage = onPreviousPage,
                     onTap = onTap,
@@ -186,10 +197,11 @@ private fun ZoomableImage(
     speechBubbleBoxesEnabled: Boolean = true,
     panelDebugOverlayEnabled: Boolean = false,
     onBubbleLongPress: (bubbleId: Int, centerPx: Offset, bubbleSizePx: Size) -> Unit = { _, _, _ -> },
+    onBubbleHover: (bubbleId: Int?, centerPx: Offset?, bubbleSizePx: Size?) -> Unit = { _, _, _ -> },
+    magnifiedBubbleId: Int? = null,
     onNextPage: () -> Unit,
     onPreviousPage: () -> Unit,
     onTap: () -> Unit
-
 ) {
     val context = LocalContext.current
     var scale by remember(page.pageNumber) { mutableFloatStateOf(1f) }
@@ -226,9 +238,54 @@ private fun ZoomableImage(
         }
     }
 
+    var lastHoveredBubbleId by remember(page.pageNumber) { mutableStateOf<Int?>(null) }
+
+    // S-Pen Hover Magnification Modifier:
+    // Magnifies when hovered over a speech bubble. Returns to normal ONLY when PRESSING on screen with the S-Pen, NOT when unhovering.
+    val stylusHoverMagnifyModifier = Modifier.pointerInput(page.pageNumber, speechBubbleDetectionEnabled, bubbles, scale, offsetX, offsetY, magnifiedBubbleId) {
+        awaitPointerEventScope {
+            while (true) {
+                val pointerEvent = awaitPointerEvent()
+                val pointerChange = pointerEvent.changes.firstOrNull()
+                // Only process Stylus or Mouse events. Ignore Touch entirely so finger taps/long-presses work!
+                if (pointerChange != null && (pointerChange.type == PointerType.Stylus || pointerChange.type == PointerType.Mouse)) {
+                    if (!pointerChange.pressed && pointerEvent.type != PointerEventType.Exit) {
+                        val currentHoverOffset = pointerChange.position
+                        // Magnifies when hovered over a speech bubble.
+                        // If no bubble is magnified yet, or if hovering over a NEW bubble while one is already magnified, switch to and magnify the new bubble.
+                        if (speechBubbleDetectionEnabled && bubbles != null && bubbles.bubbles.isNotEmpty()) {
+                            val normPoint = viewportToPageNorm(
+                                tap = currentHoverOffset,
+                                box = size,
+                                pageW = bubbles.pageWidth,
+                                pageH = bubbles.pageHeight,
+                                contentScale = contentScale,
+                                zoom = scale,
+                                pan = Offset(offsetX, offsetY)
+                            )
+                            val hitBubbleId = if (normPoint != null) hitBubble(bubbles, normPoint) else null
+                            if (hitBubbleId != null && hitBubbleId != magnifiedBubbleId && hitBubbleId != lastHoveredBubbleId) {
+                                lastHoveredBubbleId = hitBubbleId
+                                triggerMagnify(hitBubbleId, bubbles, contentScale, size, offsetX, offsetY, onBubbleHover)
+                            }
+                        }
+                    } else {
+                        // Returns to normal ONLY when PRESSING on screen with the S-Pen (pointerChange.pressed == true), NOT when unhovering
+                        if (magnifiedBubbleId != null && pointerChange.pressed) {
+                            lastHoveredBubbleId = null
+                            onBubbleHover(null, null, null)
+                        }
+                    }
+                }
+                // Unhovering or exiting does NOT return to normal; magnification persists until pen-down screen press.
+            }
+        }
+    }
+
     Box(
         modifier = boxModifier
             .then(transformModifier)
+            .then(stylusHoverMagnifyModifier)
             .pointerInput(touchEdgeNavigationEnabled, readingMode, scale) {
                 detectTapGestures(
                     onTap = { offset ->
@@ -460,4 +517,36 @@ private fun buildBubbleVectorPaths(
     }
 
     return paths
+}
+
+private fun triggerMagnify(
+    hitId: Int,
+    bubbles: PageBubbles,
+    contentScale: ContentScale,
+    boxSize: IntSize,
+    offsetX: Float,
+    offsetY: Float,
+    onBubbleHover: (Int?, Offset?, Size?) -> Unit
+) {
+    val hitBubble = bubbles.bubbles.find { it.id == hitId } ?: return
+    val boxW = boxSize.width.toFloat()
+    val boxH = boxSize.height.toFloat()
+    val pageW = bubbles.pageWidth.toFloat()
+    val pageH = bubbles.pageHeight.toFloat()
+    val s = when (contentScale) {
+        ContentScale.FillWidth -> boxW / pageW
+        ContentScale.FillHeight -> boxH / pageH
+        else -> minOf(boxW / pageW, boxH / pageH)
+    }
+    val dispW = pageW * s
+    val dispH = pageH * s
+    val originX = (boxW - dispW) / 2f
+    val originY = (boxH - dispH) / 2f
+
+    val centerX = originX + (hitBubble.box.left + hitBubble.box.right) / 2f * dispW
+    val centerY = originY + (hitBubble.box.top + hitBubble.box.bottom) / 2f * dispH
+    val bw = (hitBubble.box.right - hitBubble.box.left) * dispW
+    val bh = (hitBubble.box.bottom - hitBubble.box.top) * dispH
+
+    onBubbleHover(hitId, Offset(centerX, centerY), Size(bw, bh))
 }

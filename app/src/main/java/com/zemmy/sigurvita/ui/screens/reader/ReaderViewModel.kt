@@ -545,6 +545,26 @@ class ReaderViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(magnifiedBubble = null)
     }
 
+    fun onBubbleHover(
+        pageIndex: Int,
+        bubbleId: Int?,
+        centerOffsetPx: androidx.compose.ui.geometry.Offset?,
+        bubbleSizePx: androidx.compose.ui.geometry.Size?
+    ) {
+        if (bubbleId == null) {
+            if (_uiState.value.magnifiedBubble != null) {
+                _uiState.value = _uiState.value.copy(magnifiedBubble = null)
+            }
+            return
+        }
+
+        if (_uiState.value.magnifiedBubble?.bubbleId == bubbleId && _uiState.value.magnifiedBubble?.pageIndex == pageIndex) {
+            return
+        }
+
+        onBubbleLongPress(pageIndex, bubbleId, centerOffsetPx ?: androidx.compose.ui.geometry.Offset.Zero, bubbleSizePx ?: androidx.compose.ui.geometry.Size.Zero)
+    }
+
     fun toggleMarkCurrentPage() {
         val state = _uiState.value
         val pageIdx = state.currentPageIndex
