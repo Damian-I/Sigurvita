@@ -125,7 +125,14 @@ class ReaderViewModel : ViewModel() {
     private var markedPageJob: Job? = null
     private var bubbleDetectionJobs = mutableMapOf<Int, Job>()
 
-    fun loadChapter(chapterId: Int, totalPages: Int, seriesId: Int, volumeId: Int, readingListId: Int = 0) {
+    fun loadChapter(
+        chapterId: Int,
+        totalPages: Int,
+        seriesId: Int,
+        volumeId: Int,
+        readingListId: Int = 0,
+        openAtLastPage: Boolean = false
+    ) {
         // Flush progress for the previous chapter before loading a new one
         flushProgress()
         // Reset cached library ID for new chapter context
@@ -281,9 +288,11 @@ class ReaderViewModel : ViewModel() {
             val pageList = readerRepository.getPages(chapterId, totalPages)
             val savedPageNum = readerRepository.getProgress(chapterId)
 
-            val hasSavedProgress = savedPageNum > 1 && pageList.isNotEmpty()
+            val hasSavedProgress = !openAtLastPage && savedPageNum > 1 && pageList.isNotEmpty()
 
-            val activeIndex = if (hasSavedProgress) {
+            val activeIndex = if (openAtLastPage && pageList.isNotEmpty()) {
+                pageList.size - 1
+            } else if (hasSavedProgress) {
                 if (savedPageNum - 1 in pageList.indices) savedPageNum - 1 else 0
             } else 0
 
@@ -732,14 +741,25 @@ class ReaderViewModel : ViewModel() {
         val current = _uiState.value.currentPageIndex
         if (current > 0) {
             onPageChanged(current - 1)
+        } else if (_uiState.value.pages.isNotEmpty()) {
+            loadPreviousChapter()
         }
     }
 
     fun loadNextChapter() {
         val state = _uiState.value
         viewModelScope.launch {
-            if (state.readingListId > 0) {
-                val listRes = readingListRepository.getReadingListItems(state.readingListId)
+            val effectiveReadingListId = if (state.readingListId > 0) {
+                state.readingListId
+            } else if (state.seriesId > 0) {
+                val savedContext = preferencesRepository.seriesReadContextsFlow.first()[state.seriesId]
+                if (savedContext?.originType == "READING_LIST" && savedContext.readingListId > 0) {
+                    savedContext.readingListId
+                } else 0
+            } else 0
+
+            if (effectiveReadingListId > 0) {
+                val listRes = readingListRepository.getReadingListItems(effectiveReadingListId)
                 if (listRes.isSuccess) {
                     val items = listRes.getOrNull() ?: emptyList()
                     val currentIndex = items.indexOfFirst { it.chapterId == state.chapterId }
@@ -751,7 +771,8 @@ class ReaderViewModel : ViewModel() {
                                 totalPages = nextItem.pages,
                                 seriesId = nextItem.seriesId,
                                 volumeId = nextItem.volumeId ?: 0,
-                                readingListId = state.readingListId
+                                readingListId = effectiveReadingListId,
+                                openAtLastPage = false
                             )
                             return@launch
                         }
@@ -769,7 +790,62 @@ class ReaderViewModel : ViewModel() {
                             totalPages = nextChapter.pages,
                             seriesId = state.seriesId,
                             volumeId = nextChapter.volumeId,
-                            readingListId = 0
+                            readingListId = 0,
+                            openAtLastPage = false
+                        )
+                        return@launch
+                    }
+                }
+            }
+        }
+    }
+
+    fun loadPreviousChapter() {
+        val state = _uiState.value
+        viewModelScope.launch {
+            val effectiveReadingListId = if (state.readingListId > 0) {
+                state.readingListId
+            } else if (state.seriesId > 0) {
+                val savedContext = preferencesRepository.seriesReadContextsFlow.first()[state.seriesId]
+                if (savedContext?.originType == "READING_LIST" && savedContext.readingListId > 0) {
+                    savedContext.readingListId
+                } else 0
+            } else 0
+
+            if (effectiveReadingListId > 0) {
+                val listRes = readingListRepository.getReadingListItems(effectiveReadingListId)
+                if (listRes.isSuccess) {
+                    val items = listRes.getOrNull() ?: emptyList()
+                    val currentIndex = items.indexOfFirst { it.chapterId == state.chapterId }
+                    if (currentIndex in 1 until items.size) {
+                        val prevItem = items[currentIndex - 1]
+                        if (prevItem.chapterId != null && prevItem.chapterId > 0) {
+                            loadChapter(
+                                chapterId = prevItem.chapterId,
+                                totalPages = prevItem.pages,
+                                seriesId = prevItem.seriesId,
+                                volumeId = prevItem.volumeId ?: 0,
+                                readingListId = effectiveReadingListId,
+                                openAtLastPage = true
+                            )
+                            return@launch
+                        }
+                    }
+                }
+            } else if (state.seriesId > 0) {
+                val volumesRes = seriesRepository.getSeriesVolumes(state.seriesId)
+                if (volumesRes.isSuccess) {
+                    val allChapters = volumesRes.getOrDefault(emptyList()).flatMap { it.chapters }
+                    val currentIndex = allChapters.indexOfFirst { it.id == state.chapterId }
+                    if (currentIndex in 1 until allChapters.size) {
+                        val prevChapter = allChapters[currentIndex - 1]
+                        loadChapter(
+                            chapterId = prevChapter.id,
+                            totalPages = prevChapter.pages,
+                            seriesId = state.seriesId,
+                            volumeId = prevChapter.volumeId,
+                            readingListId = 0,
+                            openAtLastPage = true
                         )
                         return@launch
                     }
