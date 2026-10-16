@@ -36,21 +36,69 @@ fun extractBubbleNormalizedPoints(
     val sz = mask.size
     if (sz <= 0 || mask.probs.size < sz * sz) return emptyList()
 
-    val maskThreshold = 50 // prob >= 50 (~0.20 probability)
+    val level = 128f // probability 0.5
+    val total = sz * sz
+    val raw = FloatArray(total) { (mask.probs[it].toInt() and 0xFF).toFloat() }
 
-    var minX = sz
-    var maxX = -1
-    var minY = sz
-    var maxY = -1
-    var count = 0
+    // 1. Keep only the largest 4-connected component above the level
+    val label = IntArray(total)
+    val stack = IntArray(total)
+    var bestLabel = 0
+    var bestSize = 0
+    var nextLabel = 1
+    for (start in 0 until total) {
+        if (raw[start] < level || label[start] != 0) continue
+        var top = 0
+        stack[top++] = start
+        label[start] = nextLabel
+        var size = 0
+        while (top > 0) {
+            val idx = stack[--top]
+            size++
+            val x = idx % sz
+            val y = idx / sz
+            if (x > 0) { val n = idx - 1; if (raw[n] >= level && label[n] == 0) { label[n] = nextLabel; stack[top++] = n } }
+            if (x < sz - 1) { val n = idx + 1; if (raw[n] >= level && label[n] == 0) { label[n] = nextLabel; stack[top++] = n } }
+            if (y > 0) { val n = idx - sz; if (raw[n] >= level && label[n] == 0) { label[n] = nextLabel; stack[top++] = n } }
+            if (y < sz - 1) { val n = idx + sz; if (raw[n] >= level && label[n] == 0) { label[n] = nextLabel; stack[top++] = n } }
+        }
+        if (size > bestSize) { bestSize = size; bestLabel = nextLabel }
+        nextLabel++
+    }
+    if (bestSize < 4) return emptyList()
+    val inside = BooleanArray(total) { label[it] == bestLabel }
 
-    val grid = BooleanArray(sz * sz)
+    // 2. Fill holes: flood the outside from the grid border, anything unreached is a hole
+    val outside = BooleanArray(total)
+    var sp = 0
+    fun seed(i: Int) {
+        if (!inside[i] && !outside[i]) { outside[i] = true; stack[sp++] = i }
+    }
+    for (i in 0 until sz) { seed(i); seed((sz - 1) * sz + i); seed(i * sz); seed(i * sz + sz - 1) }
+    while (sp > 0) {
+        val idx = stack[--sp]
+        val x = idx % sz
+        val y = idx / sz
+        if (x > 0) seed(idx - 1)
+        if (x < sz - 1) seed(idx + 1)
+        if (y > 0) seed(idx - sz)
+        if (y < sz - 1) seed(idx + sz)
+    }
+    for (i in 0 until total) if (!inside[i] && !outside[i]) inside[i] = true
+
+    // Soft field used for sub-cell edge interpolation
+    val field = FloatArray(total) { i ->
+        when {
+            inside[i] -> if (raw[i] >= level) raw[i] else 255f
+            raw[i] >= level -> 0f // belongs to a discarded component
+            else -> raw[i]
+        }
+    }
+
+    var minX = sz; var maxX = -1; var minY = sz; var maxY = -1; var count = 0
     for (y in 0 until sz) {
-        val rowOffset = y * sz
         for (x in 0 until sz) {
-            val prob = mask.probs[rowOffset + x].toInt() and 0xFF
-            if (prob >= maskThreshold) {
-                grid[rowOffset + x] = true
+            if (inside[y * sz + x]) {
                 if (x < minX) minX = x
                 if (x > maxX) maxX = x
                 if (y < minY) minY = y
@@ -59,16 +107,14 @@ fun extractBubbleNormalizedPoints(
             }
         }
     }
-
     if (count < 4 || maxX <= minX || maxY <= minY) return emptyList()
 
     val wGrid = maxX - minX + 1
     val hGrid = maxY - minY + 1
-    val boxArea = wGrid * hGrid
-    val fillRatio = count.toFloat() / boxArea.toFloat()
-
+    val fillRatio = count.toFloat() / (wGrid * hGrid).toFloat()
     val scaleGridToLb = lb.inputSize.toFloat() / sz.toFloat()
 
+    // Cell-edge coordinates (cell i spans [i, i+1)) -> page-normalized
     fun gridToNorm(gx: Float, gy: Float): Pair<Float, Float> {
         val lbX = gx * scaleGridToLb
         val lbY = gy * scaleGridToLb
@@ -77,11 +123,10 @@ fun extractBubbleNormalizedPoints(
         return Pair(normX, normY)
     }
 
-    // Check if the bubble is a rectangular / square box (high fill ratio inside grid bounding box)
-    if (wGrid >= 4 && hGrid >= 4 && fillRatio >= 0.83f) {
+    // Literal rectangle only for genuinely rectangular masks (captions, narration boxes)
+    if (wGrid >= 4 && hGrid >= 4 && fillRatio >= 0.93f) {
         val (normLeft, normTop) = gridToNorm(minX.toFloat(), minY.toFloat())
         val (normRight, normBottom) = gridToNorm(maxX.toFloat() + 1f, maxY.toFloat() + 1f)
-
         val rectPoints = listOf(
             Pair(normLeft, normTop),
             Pair(normRight, normTop),
@@ -92,105 +137,90 @@ fun extractBubbleNormalizedPoints(
         return rectPoints
     }
 
-    // Marching Squares boundary contour extraction on the prototype mask
-    val startX = (minX - 1).coerceAtLeast(0)
-    val endX = (maxX + 1).coerceAtMost(sz - 2)
-    val startY = (minY - 1).coerceAtLeast(0)
-    val endY = (maxY + 1).coerceAtMost(sz - 2)
+    // 3. Marching squares with linear interpolation, padded so contours always close
+    fun f(x: Int, y: Int): Float =
+        if (x < 0 || y < 0 || x >= sz || y >= sz) 0f else field[y * sz + x]
 
-    val segments = mutableListOf<Pair<Pair<Float, Float>, Pair<Float, Float>>>()
+    fun t(a: Float, b: Float): Float {
+        val d = b - a
+        return if (kotlin.math.abs(d) < 1e-6f) 0.5f else ((level - a) / d).coerceIn(0f, 1f)
+    }
 
-    for (y in startY..endY) {
-        for (x in startX..endX) {
-            val v0 = if (grid[y * sz + x]) 1 else 0
-            val v1 = if (grid[y * sz + (x + 1)]) 1 else 0
-            val v2 = if (grid[(y + 1) * sz + (x + 1)]) 1 else 0
-            val v3 = if (grid[(y + 1) * sz + x]) 1 else 0
+    val w = sz + 3
+    fun hId(x: Int, y: Int): Long = (((y + 1).toLong() * w + (x + 1)) shl 1)
+    fun vId(x: Int, y: Int): Long = (((y + 1).toLong() * w + (x + 1)) shl 1) or 1L
 
-            val caseIndex = (v0 shl 3) or (v1 shl 2) or (v2 shl 1) or v3
-            if (caseIndex == 0 || caseIndex == 15) continue
+    val pts = HashMap<Long, Pair<Float, Float>>()
+    val adj = HashMap<Long, MutableList<Long>>()
+    fun link(a: Long, b: Long) {
+        adj.getOrPut(a) { mutableListOf() }.add(b)
+        adj.getOrPut(b) { mutableListOf() }.add(a)
+    }
 
-            val fx = x.toFloat()
-            val fy = y.toFloat()
+    for (y in (minY - 1)..maxY) {
+        for (x in (minX - 1)..maxX) {
+            val f0 = f(x, y)
+            val f1 = f(x + 1, y)
+            val f2 = f(x + 1, y + 1)
+            val f3 = f(x, y + 1)
+            val ci = (if (f0 >= level) 8 else 0) or (if (f1 >= level) 4 else 0) or
+                    (if (f2 >= level) 2 else 0) or (if (f3 >= level) 1 else 0)
+            if (ci == 0 || ci == 15) continue
 
-            val topMid = Pair(fx + 0.5f, fy)
-            val rightMid = Pair(fx + 1.0f, fy + 0.5f)
-            val bottomMid = Pair(fx + 0.5f, fy + 1.0f)
-            val leftMid = Pair(fx, fy + 0.5f)
+            val topId = hId(x, y)
+            val bottomId = hId(x, y + 1)
+            val leftId = vId(x, y)
+            val rightId = vId(x + 1, y)
+            pts[topId] = Pair(x + t(f0, f1), y.toFloat())
+            pts[bottomId] = Pair(x + t(f3, f2), (y + 1).toFloat())
+            pts[leftId] = Pair(x.toFloat(), y + t(f0, f3))
+            pts[rightId] = Pair((x + 1).toFloat(), y + t(f1, f2))
 
-            when (caseIndex) {
-                1, 14 -> segments.add(Pair(leftMid, bottomMid))
-                2, 13 -> segments.add(Pair(bottomMid, rightMid))
-                3, 12 -> segments.add(Pair(leftMid, rightMid))
-                4, 11 -> segments.add(Pair(topMid, rightMid))
-                5 -> {
-                    segments.add(Pair(leftMid, topMid))
-                    segments.add(Pair(bottomMid, rightMid))
-                }
-                6, 9 -> segments.add(Pair(topMid, bottomMid))
-                7, 8 -> segments.add(Pair(leftMid, topMid))
-                10 -> {
-                    segments.add(Pair(topMid, rightMid))
-                    segments.add(Pair(leftMid, bottomMid))
-                }
+            when (ci) {
+                1, 14 -> link(leftId, bottomId)
+                2, 13 -> link(bottomId, rightId)
+                3, 12 -> link(leftId, rightId)
+                4, 11 -> link(topId, rightId)
+                5 -> { link(leftId, topId); link(bottomId, rightId) }
+                6, 9 -> link(topId, bottomId)
+                7, 8 -> link(leftId, topId)
+                10 -> { link(topId, rightId); link(leftId, bottomId) }
             }
         }
     }
+    if (adj.isEmpty()) return emptyList()
 
-    if (segments.isEmpty()) return emptyList()
-
-    // Chain segments into connected boundary loop
-    val orderedPoints = mutableListOf<Pair<Float, Float>>()
-    val current = segments.removeAt(0)
-    orderedPoints.add(current.first)
-    orderedPoints.add(current.second)
-
-    while (segments.isNotEmpty()) {
-        val lastPt = orderedPoints.last()
-        var foundIdx = -1
-        var reverse = false
-
-        for ((idx, seg) in segments.withIndex()) {
-            val dx1 = kotlin.math.abs(seg.first.first - lastPt.first)
-            val dy1 = kotlin.math.abs(seg.first.second - lastPt.second)
-            if (dx1 < 0.1f && dy1 < 0.1f) {
-                foundIdx = idx
-                reverse = false
-                break
-            }
-            val dx2 = kotlin.math.abs(seg.second.first - lastPt.first)
-            val dy2 = kotlin.math.abs(seg.second.second - lastPt.second)
-            if (dx2 < 0.1f && dy2 < 0.1f) {
-                foundIdx = idx
-                reverse = true
-                break
-            }
+    // Trace every loop, keep the longest
+    val visited = HashSet<Long>()
+    var best: List<Long> = emptyList()
+    for (startId in adj.keys) {
+        if (startId in visited) continue
+        val loop = ArrayList<Long>()
+        var prev = -1L
+        var cur = startId
+        while (true) {
+            visited.add(cur)
+            loop.add(cur)
+            val next = adj[cur]?.firstOrNull { it != prev && it !in visited } ?: break
+            prev = cur
+            cur = next
         }
-
-        if (foundIdx != -1) {
-            val seg = segments.removeAt(foundIdx)
-            val nextPt = if (reverse) seg.first else seg.second
-            orderedPoints.add(nextPt)
-        } else {
-            break
-        }
+        if (loop.size > best.size) best = loop
     }
 
-    if (orderedPoints.size < 3) return emptyList()
+    val loopPts = best.mapNotNull { pts[it] }
+    if (loopPts.size < 3) return emptyList()
 
-    // Smooth contour points with 3-point moving average and map to page-normalized coordinates
-    val n = orderedPoints.size
+    // 4. Light smoothing, then map to page space. +0.5: proto samples sit at cell centers.
+    val n = loopPts.size
     val normPoints = ArrayList<Pair<Float, Float>>(n)
-
     for (i in 0 until n) {
-        val prev = orderedPoints[(i - 1 + n) % n]
-        val curr = orderedPoints[i]
-        val next = orderedPoints[(i + 1) % n]
-
-        val smGridX = prev.first * 0.25f + curr.first * 0.5f + next.first * 0.25f
-        val smGridY = prev.second * 0.25f + curr.second * 0.5f + next.second * 0.25f
-
-        normPoints.add(gridToNorm(smGridX, smGridY))
+        val prev = loopPts[(i - 1 + n) % n]
+        val curr = loopPts[i]
+        val next = loopPts[(i + 1) % n]
+        val smX = prev.first * 0.25f + curr.first * 0.5f + next.first * 0.25f
+        val smY = prev.second * 0.25f + curr.second * 0.5f + next.second * 0.25f
+        normPoints.add(gridToNorm(smX + 0.5f, smY + 0.5f))
     }
 
     normPointsCache.put(cacheKey, normPoints)
@@ -400,7 +430,7 @@ data class BubbleCropResult(
             // Inflate path outward from centroid to ensure speech bubble edges and tails are never clipped
             val cx = localPoints.map { it.first }.average().toFloat()
             val cy = localPoints.map { it.second }.average().toFloat()
-            val expandPx = (minOf(cropW, cropH) * 0.05f).coerceIn(8f, 16f)
+            val expandPx = (minOf(cropW, cropH) * 0.015f).coerceIn(2f, 6f)
 
             val inflatedPoints = localPoints.map { (px, py) ->
                 val dx = px - cx

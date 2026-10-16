@@ -9,6 +9,9 @@ import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 
+
+private const val TOUCH_LEVEL = 128
+private const val MERGE_ENABLED = true // set false to see raw, unmerged detections
 private data class Candidate(
     val cx: Float,
     val cy: Float,
@@ -73,8 +76,7 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
 
         var absMaxScore = -999f
 
-        val minConf = config.confThreshold.coerceAtMost(0.04f)
-
+        val minConf = config.confThreshold
         for (a in 0 until numAnchors) {
             var maxScore = 0f
             var maxClass = 0
@@ -136,17 +138,16 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
         // Decode Prototype Mask with lower cutoff (0.25) to preserve full rectangular edges
         val isProtoNHWC = protoArray[0].size > 32 // e.g. 160x160x32
         val protoSize = if (isProtoNHWC) protoArray[0].size else protoArray[0][0].size
-        val maskCutoff = 0.25f
 
         val rawBubbles = mutableListOf<DetectedBubble>()
 
         for ((idx, cand) in nmsKept.withIndex()) {
             val maskProbs = ByteArray(protoSize * protoSize)
 
-            val minX = (cand.leftPx * protoSize).toInt().coerceIn(0, protoSize - 1)
-            val maxX = (cand.rightPx * protoSize).toInt().coerceIn(0, protoSize - 1)
-            val minY = (cand.topPx * protoSize).toInt().coerceIn(0, protoSize - 1)
-            val maxY = (cand.bottomPx * protoSize).toInt().coerceIn(0, protoSize - 1)
+            val minX = ((cand.leftPx * protoSize).toInt() - 1).coerceIn(0, protoSize - 1)
+            val maxX = ((cand.rightPx * protoSize).toInt() + 1).coerceIn(0, protoSize - 1)
+            val minY = ((cand.topPx * protoSize).toInt() - 1).coerceIn(0, protoSize - 1)
+            val maxY = ((cand.bottomPx * protoSize).toInt() + 1).coerceIn(0, protoSize - 1)
 
             for (py in minY..maxY) {
                 for (px in minX..maxX) {
@@ -163,9 +164,7 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
                     }
 
                     val prob = 1f / (1f + exp(-sum))
-                    if (prob >= maskCutoff) {
-                        maskProbs[py * protoSize + px] = (prob * 255f).toInt().toByte()
-                    }
+                    maskProbs[py * protoSize + px] = (prob * 255f).toInt().toByte()
                 }
             }
 
@@ -191,7 +190,7 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
         }
 
         // Merge overlapping/connected bubbles so extended speech bubbles get a single unified outline
-        return mergeConnectedBubbles(rawBubbles)
+        return if (MERGE_ENABLED) mergeConnectedBubbles(rawBubbles) else rawBubbles
     }
 
     /**
@@ -287,7 +286,7 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
             val rowOffset = y * sz
             for (x in startX..endX) {
                 val p1 = m1.probs[rowOffset + x].toInt() and 0xFF
-                if (p1 < 35) continue
+                if (p1 < TOUCH_LEVEL) continue
 
                 val p2Center = m2.probs[rowOffset + x].toInt() and 0xFF
                 val p2Up = if (y > 0) m2.probs[(y - 1) * sz + x].toInt() and 0xFF else 0
@@ -295,7 +294,8 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
                 val p2Left = if (x > 0) m2.probs[rowOffset + x - 1].toInt() and 0xFF else 0
                 val p2Right = if (x < sz - 1) m2.probs[rowOffset + x + 1].toInt() and 0xFF else 0
 
-                if (p2Center >= 35 || p2Up >= 35 || p2Down >= 35 || p2Left >= 35 || p2Right >= 35) {
+                if (p2Center >= TOUCH_LEVEL || p2Up >= TOUCH_LEVEL || p2Down >= TOUCH_LEVEL ||
+                        p2Left >= TOUCH_LEVEL || p2Right >= TOUCH_LEVEL) {
                     sharedPixels++
                     if (sharedPixels >= 6) return true
                 }
