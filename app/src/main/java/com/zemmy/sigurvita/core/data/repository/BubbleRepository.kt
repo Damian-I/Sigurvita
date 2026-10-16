@@ -18,6 +18,46 @@ private const val TAG = "BubbleRepository"
 
 private val normPointsCache = LruCache<Int, List<Pair<Float, Float>>>(300)
 
+// ~0.33 probability. 128 = 0.5. Lower keeps thin tails, higher tightens the outline. Try 70..110.
+private const val CONTOUR_LEVEL = 95f
+
+/** Morphological closing (3x3): bridges gaps up to 2 cells so thin tails don't fragment. */
+private fun closeMask(src: BooleanArray, sz: Int): BooleanArray {
+    val dilated = BooleanArray(src.size)
+    for (y in 0 until sz) {
+        for (x in 0 until sz) {
+            var on = false
+            loop@ for (dy in -1..1) {
+                val yy = y + dy
+                if (yy < 0 || yy >= sz) continue
+                for (dx in -1..1) {
+                    val xx = x + dx
+                    if (xx < 0 || xx >= sz) continue
+                    if (src[yy * sz + xx]) { on = true; break@loop }
+                }
+            }
+            dilated[y * sz + x] = on
+        }
+    }
+    val out = BooleanArray(src.size)
+    for (y in 0 until sz) {
+        for (x in 0 until sz) {
+            var all = true
+            loop@ for (dy in -1..1) {
+                val yy = y + dy
+                if (yy < 0 || yy >= sz) continue // outside the grid counts as set, so edges don't erode
+                for (dx in -1..1) {
+                    val xx = x + dx
+                    if (xx < 0 || xx >= sz) continue
+                    if (!dilated[yy * sz + xx]) { all = false; break@loop }
+                }
+            }
+            out[y * sz + x] = all
+        }
+    }
+    return out
+}
+
 /**
  * Extracts a smoothed list of normalized page coordinates `(normX, normY)` (0.0..1.0)
  * along the speech bubble contour using 48 radial raycasts and 3-point moving average smoothing,
@@ -35,18 +75,21 @@ fun extractBubbleNormalizedPoints(
     val sz = mask.size
     if (sz <= 0 || mask.probs.size < sz * sz) return emptyList()
 
-    val level = 128f // probability 0.5
+    val level = CONTOUR_LEVEL
     val total = sz * sz
     val raw = FloatArray(total) { (mask.probs[it].toInt() and 0xFF).toFloat() }
 
-    // 1. Keep only the largest 4-connected component above the level
+    // 1. Threshold, bridge small gaps (thin tails often fragment), keep the largest component
+    val strong = BooleanArray(total) { raw[it] >= level }
+    val bridged = closeMask(strong, sz)
+
     val label = IntArray(total)
     val stack = IntArray(total)
     var bestLabel = 0
     var bestSize = 0
     var nextLabel = 1
     for (start in 0 until total) {
-        if (raw[start] < level || label[start] != 0) continue
+        if (!bridged[start] || label[start] != 0) continue
         var top = 0
         stack[top++] = start
         label[start] = nextLabel
@@ -56,10 +99,10 @@ fun extractBubbleNormalizedPoints(
             size++
             val x = idx % sz
             val y = idx / sz
-            if (x > 0) { val n = idx - 1; if (raw[n] >= level && label[n] == 0) { label[n] = nextLabel; stack[top++] = n } }
-            if (x < sz - 1) { val n = idx + 1; if (raw[n] >= level && label[n] == 0) { label[n] = nextLabel; stack[top++] = n } }
-            if (y > 0) { val n = idx - sz; if (raw[n] >= level && label[n] == 0) { label[n] = nextLabel; stack[top++] = n } }
-            if (y < sz - 1) { val n = idx + sz; if (raw[n] >= level && label[n] == 0) { label[n] = nextLabel; stack[top++] = n } }
+            if (x > 0) { val n = idx - 1; if (bridged[n] && label[n] == 0) { label[n] = nextLabel; stack[top++] = n } }
+            if (x < sz - 1) { val n = idx + 1; if (bridged[n] && label[n] == 0) { label[n] = nextLabel; stack[top++] = n } }
+            if (y > 0) { val n = idx - sz; if (bridged[n] && label[n] == 0) { label[n] = nextLabel; stack[top++] = n } }
+            if (y < sz - 1) { val n = idx + sz; if (bridged[n] && label[n] == 0) { label[n] = nextLabel; stack[top++] = n } }
         }
         if (size > bestSize) { bestSize = size; bestLabel = nextLabel }
         nextLabel++
@@ -88,7 +131,7 @@ fun extractBubbleNormalizedPoints(
     // Soft field used for sub-cell edge interpolation
     val field = FloatArray(total) { i ->
         when {
-            inside[i] -> if (raw[i] >= level) raw[i] else 255f
+            inside[i] -> if (raw[i] >= level) raw[i] else 170f
             raw[i] >= level -> 0f // belongs to a discarded component
             else -> raw[i]
         }
@@ -217,8 +260,8 @@ fun extractBubbleNormalizedPoints(
         val prev = loopPts[(i - 1 + n) % n]
         val curr = loopPts[i]
         val next = loopPts[(i + 1) % n]
-        val smX = prev.first * 0.25f + curr.first * 0.5f + next.first * 0.25f
-        val smY = prev.second * 0.25f + curr.second * 0.5f + next.second * 0.25f
+        val smX = prev.first * 0.15f + curr.first * 0.7f + next.first * 0.15f
+        val smY = prev.second * 0.15f + curr.second * 0.7f + next.second * 0.15f
         normPoints.add(gridToNorm(smX + 0.5f, smY + 0.5f))
     }
 
@@ -254,7 +297,8 @@ class BubbleRepository(
                     if (cacheFile.exists()) {
                         val sidecarCache = com.zemmy.sigurvita.core.ml.DetectionsCacheHelper.loadCache(cacheFile)
                         val pageData = sidecarCache?.pages?.find { it.pageIndex == page.index }
-                        if (sidecarCache != null && pageData != null) {
+                        if (sidecarCache != null && pageData != null &&
+                            sidecarCache.modelVersion == com.zemmy.sigurvita.core.ml.CURRENT_DETECTION_VERSION) {
                             val result = com.zemmy.sigurvita.core.ml.DetectionsCacheHelper.toPageBubbles(pageData, page.index)
                             cache.put(key, result)
                             return@withContext result

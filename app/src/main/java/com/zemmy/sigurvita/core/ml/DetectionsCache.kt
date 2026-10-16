@@ -18,10 +18,12 @@ private val jsonFormat = Json {
     coerceInputValues = true
 }
 
+const val CURRENT_DETECTION_VERSION = "yolov8m_seg_1024_tails_v2"
+
 @Serializable
 data class PageDetectionsCache(
     val chapterId: Int,
-    val modelVersion: String = "yolov8m_seg_v1.0",
+    val modelVersion: String = CURRENT_DETECTION_VERSION,
     val confidence: Float = 0.10f,
     val pages: List<PageDetectionData>
 )

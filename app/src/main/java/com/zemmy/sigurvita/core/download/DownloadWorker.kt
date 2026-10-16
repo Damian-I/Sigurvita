@@ -364,7 +364,7 @@ class DownloadWorker(
                     isLocal = true
                 )
                 val bitmap = kotlinx.coroutines.runBlocking {
-                    com.zemmy.sigurvita.core.ml.PageBitmapLoader.decodeForInference(context, dummyPage)
+                    com.zemmy.sigurvita.core.ml.PageBitmapLoader.decodeForInference(context, dummyPage, targetSize = 1024)
                 } ?: continue
 
                 val pageBubbles = try {

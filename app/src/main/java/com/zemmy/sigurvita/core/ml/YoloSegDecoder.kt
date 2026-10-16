@@ -12,6 +12,55 @@ import kotlin.math.min
 
 private const val TOUCH_LEVEL = 128
 private const val MERGE_ENABLED = true // set false to see raw, unmerged detections
+private const val TAIL_PAD_FRAC = 0.25f   // extra mask area around the box, as a fraction of box size
+private const val TAIL_PAD_MIN_CELLS = 3
+private const val GROW_LEVEL = 85         // same idea as CONTOUR_LEVEL
+
+/** Bounding extent [minX, minY, maxX, maxY] (cells) of the region connected to the seed, or null. */
+private fun connectedExtent(probs: ByteArray, sz: Int, seedX: Int, seedY: Int, level: Int): IntArray? {
+    val sx = seedX.coerceIn(0, sz - 1)
+    val sy = seedY.coerceIn(0, sz - 1)
+    var bx = sx
+    var by = sy
+    var bestP = probs[sy * sz + sx].toInt() and 0xFF
+    if (bestP < level) {
+        for (dy in -3..3) for (dx in -3..3) {
+            val x = sx + dx
+            val y = sy + dy
+            if (x < 0 || y < 0 || x >= sz || y >= sz) continue
+            val p = probs[y * sz + x].toInt() and 0xFF
+            if (p > bestP) { bestP = p; bx = x; by = y }
+        }
+        if (bestP < level) return null
+    }
+    val visited = BooleanArray(sz * sz)
+    val stack = IntArray(sz * sz)
+    var top = 0
+    stack[top++] = by * sz + bx
+    visited[by * sz + bx] = true
+    var minX = bx; var maxX = bx; var minY = by; var maxY = by
+    while (top > 0) {
+        val idx = stack[--top]
+        val x = idx % sz
+        val y = idx / sz
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+        for (dy in -1..1) for (dx in -1..1) {
+            if (dx == 0 && dy == 0) continue
+            val nx = x + dx
+            val ny = y + dy
+            if (nx < 0 || ny < 0 || nx >= sz || ny >= sz) continue
+            val n = ny * sz + nx
+            if (visited[n]) continue
+            if ((probs[n].toInt() and 0xFF) < level) continue
+            visited[n] = true
+            stack[top++] = n
+        }
+    }
+    return intArrayOf(minX, minY, maxX, maxY)
+}
 private data class Candidate(
     val cx: Float,
     val cy: Float,
@@ -144,10 +193,13 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
         for ((idx, cand) in nmsKept.withIndex()) {
             val maskProbs = ByteArray(protoSize * protoSize)
 
-            val minX = ((cand.leftPx * protoSize).toInt() - 1).coerceIn(0, protoSize - 1)
-            val maxX = ((cand.rightPx * protoSize).toInt() + 1).coerceIn(0, protoSize - 1)
-            val minY = ((cand.topPx * protoSize).toInt() - 1).coerceIn(0, protoSize - 1)
-            val maxY = ((cand.bottomPx * protoSize).toInt() + 1).coerceIn(0, protoSize - 1)
+            val padX = max(TAIL_PAD_MIN_CELLS, ((cand.rightPx - cand.leftPx) * protoSize * TAIL_PAD_FRAC).toInt())
+            val padY = max(TAIL_PAD_MIN_CELLS, ((cand.bottomPx - cand.topPx) * protoSize * TAIL_PAD_FRAC).toInt())
+
+            val minX = ((cand.leftPx * protoSize).toInt() - padX).coerceIn(0, protoSize - 1)
+            val maxX = ((cand.rightPx * protoSize).toInt() + padX).coerceIn(0, protoSize - 1)
+            val minY = ((cand.topPx * protoSize).toInt() - padY).coerceIn(0, protoSize - 1)
+            val maxY = ((cand.bottomPx * protoSize).toInt() + padY).coerceIn(0, protoSize - 1)
 
             for (py in minY..maxY) {
                 for (px in minX..maxX) {
@@ -168,9 +220,24 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
                 }
             }
 
-            val (normLeft, normTop) = letterbox.letterboxToNorm(cand.leftPx * letterbox.inputSize, cand.topPx * letterbox.inputSize)
-            val (normRight, normBottom) = letterbox.letterboxToNorm(cand.rightPx * letterbox.inputSize, cand.bottomPx * letterbox.inputSize)
+            // Extend the box over any tail the box regression missed (only the part connected to the body)
+            var gLeft = cand.leftPx
+            var gTop = cand.topPx
+            var gRight = cand.rightPx
+            var gBottom = cand.bottomPx
+            val grown = connectedExtent(
+                maskProbs, protoSize,
+                (cand.cx * protoSize).toInt(), (cand.cy * protoSize).toInt(), GROW_LEVEL
+            )
+            if (grown != null) {
+                gLeft = min(gLeft, grown[0].toFloat() / protoSize)
+                gTop = min(gTop, grown[1].toFloat() / protoSize)
+                gRight = max(gRight, (grown[2] + 1).toFloat() / protoSize)
+                gBottom = max(gBottom, (grown[3] + 1).toFloat() / protoSize)
+            }
 
+            val (normLeft, normTop) = letterbox.letterboxToNorm(gLeft * letterbox.inputSize, gTop * letterbox.inputSize)
+            val (normRight, normBottom) = letterbox.letterboxToNorm(gRight * letterbox.inputSize, gBottom * letterbox.inputSize)
             val normRect = NormRect(
                 left = normLeft,
                 top = normTop,
