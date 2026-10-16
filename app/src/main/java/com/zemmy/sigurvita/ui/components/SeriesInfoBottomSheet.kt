@@ -1,5 +1,6 @@
 package com.zemmy.sigurvita.ui.components
 
+import com.zemmy.sigurvita.core.util.getPersonCoverUrl
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -305,7 +306,7 @@ private fun PersonCard(
     apiKey: String
 ) {
     val imageUrl = if (person.id > 0 && serverUrl.isNotBlank()) {
-        "$serverUrl/api/Image/person-cover?personId=${person.id}&apiKey=$apiKey"
+        ServerConfig(serverUrl = serverUrl, apiKey = apiKey).getPersonCoverUrl(person.id)
     } else null
 
     Column(

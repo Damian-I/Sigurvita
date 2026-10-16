@@ -13,7 +13,7 @@ When modifying or extending Sigurvita, follow these guidelines in order of prior
 1. **Documentation maintenance**: update this file whenever structure, feature behavior, data flow or architecture change. Prefer describing verified behavior; add surprising behavior to section 10.
 2. **Architecture consistency**:
    - Keep UI in Compose screens (`ui.screens.*`) and state in the matching ViewModel.
-   - Fetch data through repositories (`core.data.repository`); do not call `KavitaApi` from composables. (Existing exception: two chapter lookups in `ReaderViewModel`.)
+   - Fetch data through repositories (`core.data.repository`); do not call `KavitaApi` from composables or ViewModels.
    - Obtain shared instances from `SigurvitaApp.instance`; register new singletons there with `by lazy`.
 3. **Navigation**: add routes to `Screen.kt` (route string + `createRoute` helper) and register the composable in `NavGraph.kt`. Add a drawer entry there if it should appear in the sliding panel.
 4. **Database changes**: when changing entities or DAOs, bump the version in `SigurvitaDatabase.kt` and **write a real migration**. The current destructive fallback would erase download records and marked pages. Do not assume `cached_chapters` data exists.
@@ -56,7 +56,7 @@ When developing new screens, components, or settings dialogues in Sigurvita, adh
 - `NetworkClient` builds one shared `OkHttpClient` (connect timeout 15 s, read timeout 30 s, `AuthInterceptor`, `HttpLoggingInterceptor` at `BASIC`) and one `KavitaApi`. JSON config: `ignoreUnknownKeys`, `coerceInputValues`, `isLenient`.
 - **Dynamic base URL**: Retrofit is built with the placeholder base URL `http://localhost/`. `AuthInterceptor` reads `UserPreferencesRepository.currentServerConfig` (a volatile, always-current copy of the stored config) and rewrites each request's **scheme, host and port** to the configured server. The same trick is used by `DownloadWorker`, which builds `http://localhost/...` requests by hand.
 - **Auth header**: `Authorization: Bearer <jwtToken>` if a JWT is stored, otherwise `Bearer <apiKey>`.
-- **Images are authenticated differently**: Coil uses its own HTTP stack (no `AuthInterceptor`), so every image URL the app builds carries `apiKey=` as a query parameter (cover URLs and `/api/Reader/image` page URLs).
+- **Images are authenticated differently**: Coil uses its own HTTP stack (no `AuthInterceptor`), so every image URL the app builds carries `apiKey=` as a query parameter (cover URLs and `/api/Reader/image` page URLs). All cover and reader image URLs are constructed centrally using `KavitaUrlBuilder.kt` extension methods (`getSeriesCoverUrl`, `getChapterCoverUrl`, `getPersonCoverUrl`, `getReaderImageUrl`, `resolvePageImageUri`).
 
 ### 3.3 Authentication flow
 

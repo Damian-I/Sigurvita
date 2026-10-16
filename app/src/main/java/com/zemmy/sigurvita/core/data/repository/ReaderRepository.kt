@@ -8,6 +8,7 @@ import com.zemmy.sigurvita.core.data.api.dto.ProgressDto
 import com.zemmy.sigurvita.core.data.db.SigurvitaDatabase
 import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import com.zemmy.sigurvita.core.model.ReaderPage
+import com.zemmy.sigurvita.core.util.getReaderImageUrl
 import com.zemmy.sigurvita.core.util.naturalCompare
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -128,7 +129,7 @@ class ReaderRepository(
             ReaderPage(
                 index = pageIdx,
                 pageNumber = pageIdx + 1,
-                imageUrl = "${config.serverUrl}/api/Reader/image?chapterId=$chapterId&page=$pageIdx&apiKey=${config.apiKey}",
+                imageUrl = config.getReaderImageUrl(chapterId, pageIdx),
                 isLocal = false
             )
         }

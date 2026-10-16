@@ -1,6 +1,7 @@
 package com.zemmy.sigurvita.core.data.repository
 
 import com.zemmy.sigurvita.core.data.api.KavitaApi
+import com.zemmy.sigurvita.core.data.api.dto.ChapterDto
 import com.zemmy.sigurvita.core.data.api.dto.MarkReadDto
 import com.zemmy.sigurvita.core.data.api.dto.MarkVolumesReadDto
 import com.zemmy.sigurvita.core.data.api.dto.SeriesMetadataDto
@@ -13,6 +14,8 @@ import com.zemmy.sigurvita.core.model.MangaFile
 import com.zemmy.sigurvita.core.model.Series
 import com.zemmy.sigurvita.core.model.Volume
 import com.zemmy.sigurvita.core.util.extractChapterNumber
+import com.zemmy.sigurvita.core.util.getChapterCoverUrl
+import com.zemmy.sigurvita.core.util.getSeriesCoverUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -42,7 +45,7 @@ class SeriesRepository(
                     libraryId = dto.libraryId,
                     name = dto.name,
                     localizedName = dto.localizedName,
-                    coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
+                    coverUrl = config.getSeriesCoverUrl(dto.id),
                     summary = summary?.takeIf { it.isNotBlank() } ?: dto.summary,
                     pagesRead = dto.pagesRead,
                     totalPages = dto.pages,
@@ -60,7 +63,7 @@ class SeriesRepository(
                         id = dto.id,
                         libraryId = dto.libraryId,
                         name = dto.name,
-                        coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.id}&apiKey=${config.apiKey}",
+                        coverUrl = config.getSeriesCoverUrl(dto.id),
                         summary = summary?.takeIf { it.isNotBlank() } ?: dto.summary,
                         pagesRead = dto.pagesRead,
                         totalPages = dto.pages,
@@ -236,7 +239,7 @@ class SeriesRepository(
                                 pages = cDto.pages,
                                 pagesRead = cDto.pagesRead,
                                 isRead = isChapterRead,
-                                coverUrl = "${config.serverUrl}/api/image/chapter-cover?chapterId=${cDto.id}&apiKey=${config.apiKey}",
+                                coverUrl = config.getChapterCoverUrl(cDto.id),
                                 files = mappedFiles
                             )
                         }
@@ -321,6 +324,19 @@ class SeriesRepository(
             val res = api.markSeriesUnread(MarkReadDto(seriesId = seriesId))
             if (res.isSuccessful) Result.success(true)
             else Result.failure(Exception("Failed to mark as unread"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getChapterDto(chapterId: Int): Result<ChapterDto> = withContext(Dispatchers.IO) {
+        try {
+            val res = api.getChapterById(chapterId)
+            if (res.isSuccessful && res.body() != null) {
+                Result.success(res.body()!!)
+            } else {
+                Result.failure(Exception("Failed to fetch chapter $chapterId"))
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }

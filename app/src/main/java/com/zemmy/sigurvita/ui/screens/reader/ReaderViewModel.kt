@@ -159,9 +159,9 @@ class ReaderViewModel : ViewModel() {
             // 1. Resolve targetSeriesId if not provided in arguments
             if (targetSeriesId <= 0) {
                 try {
-                    val cRes = app.kavitaApi.getChapterById(chapterId)
-                    if (cRes.isSuccessful && cRes.body() != null) {
-                        val cDto = cRes.body()!!
+                    val cRes = seriesRepository.getChapterDto(chapterId)
+                    if (cRes.isSuccess && cRes.getOrNull() != null) {
+                        val cDto = cRes.getOrNull()!!
                         if (targetVolumeId <= 0) targetVolumeId = cDto.volumeId
                     }
                 } catch (_: Exception) {}
@@ -205,9 +205,9 @@ class ReaderViewModel : ViewModel() {
 
             if (fetchedChapterTitle.isBlank()) {
                 try {
-                    val cRes = app.kavitaApi.getChapterById(chapterId)
-                    if (cRes.isSuccessful && cRes.body() != null) {
-                        val cDto = cRes.body()!!
+                    val cRes = seriesRepository.getChapterDto(chapterId)
+                    if (cRes.isSuccess && cRes.getOrNull() != null) {
+                        val cDto = cRes.getOrNull()!!
                         fetchedChapterTitle = formatChapterDisplayTitle(cDto.titleName ?: cDto.title ?: "", cDto.number ?: "", isManga = isManga)
                     }
                 } catch (_: Exception) {}

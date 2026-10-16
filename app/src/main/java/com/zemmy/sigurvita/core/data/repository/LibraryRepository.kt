@@ -11,6 +11,7 @@ import com.zemmy.sigurvita.core.data.db.entity.CachedSeriesEntity
 import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import com.zemmy.sigurvita.core.model.Library
 import com.zemmy.sigurvita.core.model.Series
+import com.zemmy.sigurvita.core.util.getSeriesCoverUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -190,7 +191,7 @@ class LibraryRepository(
                         libraryId = dto.libraryId,
                         name = dto.seriesName ?: "",
                         localizedName = dto.localizedSeriesName,
-                        coverUrl = "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}",
+                        coverUrl = config.getSeriesCoverUrl(dto.seriesId),
                         pagesRead = cached?.pagesRead ?: 0,
                         totalPages = cached?.totalPages ?: 0,
                         totalIssues = if (dto.count > 0) dto.count else cached?.totalIssues ?: 0,

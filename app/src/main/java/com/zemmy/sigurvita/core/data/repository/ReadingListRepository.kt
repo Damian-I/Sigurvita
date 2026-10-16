@@ -8,6 +8,8 @@ import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.model.ReadingListItem
 import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
+import com.zemmy.sigurvita.core.util.getChapterCoverUrl
+import com.zemmy.sigurvita.core.util.getSeriesCoverUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -127,9 +129,9 @@ class ReadingListRepository(
                     }
 
                     val coverUrl = if (dto.chapterId > 0) {
-                        "${config.serverUrl}/api/image/chapter-cover?chapterId=${dto.chapterId}&apiKey=${config.apiKey}"
+                        config.getChapterCoverUrl(dto.chapterId)
                     } else {
-                        "${config.serverUrl}/api/image/series-cover?seriesId=${dto.seriesId}&apiKey=${config.apiKey}"
+                        config.getSeriesCoverUrl(dto.seriesId)
                     }
 
                     val rawSeriesName = dto.seriesName ?: ""

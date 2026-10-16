@@ -13,6 +13,7 @@ import com.zemmy.sigurvita.core.model.PageBubbles
 import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.util.PanelMap
+import com.zemmy.sigurvita.core.util.resolvePageImageUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.first
@@ -91,21 +92,9 @@ class MarkedPagesViewModel : ViewModel() {
         viewModelScope.launch {
             repository.markedPagesFlow.collect { pages ->
                 val config = preferencesRepository.serverConfigFlow.first()
-                val serverUrl = config.serverUrl
-                val apiKey = config.apiKey
                 val resolvedPages = pages.map { page ->
-                    val cleanPath = page.imageUrl.removePrefix("file://")
-                    val file = File(cleanPath)
-                    if ((page.imageUrl.startsWith("/") || page.imageUrl.startsWith("file://")) && !file.exists()) {
-                        if (serverUrl.isNotBlank()) {
-                            val remoteUrl = "$serverUrl/api/Reader/image?chapterId=${page.chapterId}&page=${page.pageIndex}&apiKey=$apiKey"
-                            page.copy(imageUrl = remoteUrl)
-                        } else {
-                            page
-                        }
-                    } else {
-                        page
-                    }
+                    val resolvedUrl = config.resolvePageImageUri(page.imageUrl, page.chapterId, page.pageIndex)
+                    if (resolvedUrl != page.imageUrl) page.copy(imageUrl = resolvedUrl) else page
                 }
                 _uiState.value = _uiState.value.copy(markedPages = resolvedPages)
                 filterData()
