@@ -14,12 +14,16 @@ import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.util.PanelMap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
+import kotlin.time.Duration.Companion.milliseconds
 
 enum class ReviewTagFilter(val displayName: String) {
     ALL("All Marks"),
@@ -47,6 +51,8 @@ data class MarkedPageGroup(
 
 data class MarkedPagesUiState(
     val markedPages: List<MarkedPageEntity> = emptyList(),
+    val filteredPages: List<MarkedPageEntity> = emptyList(),
+    val groupedPages: List<MarkedPageGroup> = emptyList(),
     val searchQuery: String = "",
     val selectedTagFilter: ReviewTagFilter = ReviewTagFilter.ALL,
     val selectedGrouping: MarkedPageGrouping = MarkedPageGrouping.NONE,
@@ -60,68 +66,28 @@ data class MarkedPagesUiState(
     val magnifiedBubble: MagnifiedBubble? = null,
     val showBubblesOverlay: Boolean = true,
     val showPanelsOverlay: Boolean = true
-) {
-    val filteredPages: List<MarkedPageEntity>
-        get() {
-            var result = markedPages
+)
 
-            // 1. Tag filter
-            result = when (selectedTagFilter) {
-                ReviewTagFilter.ALL -> result
-                ReviewTagFilter.DEBUG_ONLY -> result.filter { it.reviewTag == "DEBUG" }
-                ReviewTagFilter.REMOVE_ONLY -> result.filter { it.reviewTag == "REMOVE" }
-            }
-
-            // 2. Search query
-            if (searchQuery.isNotBlank()) {
-                result = result.filter {
-                    it.chapterTitle.contains(searchQuery, ignoreCase = true) ||
-                    it.seriesName.contains(searchQuery, ignoreCase = true)
-                }
-            }
-
-            // 3. Sorting
-            result = when (selectedSorting) {
-                MarkedPageSorting.NEWEST -> result.sortedByDescending { it.createdAt }
-                MarkedPageSorting.OLDEST -> result.sortedBy { it.createdAt }
-                MarkedPageSorting.SERIES_NAME -> result.sortedBy { it.seriesName.ifBlank { it.chapterTitle } }
-                MarkedPageSorting.PAGE_NUMBER -> result.sortedBy { it.pageIndex }
-            }
-
-            return result
-        }
-
-    val groupedPages: List<MarkedPageGroup>
-        get() {
-            val pages = filteredPages
-            return when (selectedGrouping) {
-                MarkedPageGrouping.NONE -> listOf(MarkedPageGroup("All Marked Pages", pages))
-                MarkedPageGrouping.BY_SERIES -> {
-                    pages.groupBy { it.seriesName.ifBlank { it.chapterTitle } }
-                        .map { (series, items) -> MarkedPageGroup(series, items) }
-                }
-                MarkedPageGrouping.BY_TAG -> {
-                    val debugs = pages.filter { it.reviewTag == "DEBUG" }
-                    val removes = pages.filter { it.reviewTag == "REMOVE" }
-                    buildList {
-                        if (debugs.isNotEmpty()) add(MarkedPageGroup("Debug Items (${debugs.size})", debugs))
-                        if (removes.isNotEmpty()) add(MarkedPageGroup("To Remove Items (${removes.size})", removes))
-                    }
-                }
-            }
-        }
-}
-
+@OptIn(FlowPreview::class)
 class MarkedPagesViewModel : ViewModel() {
 
     private val app = SigurvitaApp.instance
     private val repository = app.markedPageRepository
     private val preferencesRepository = app.userPreferencesRepository
 
+    private val searchQueryFlow = MutableStateFlow("")
+
     private val _uiState = MutableStateFlow(MarkedPagesUiState())
     val uiState: StateFlow<MarkedPagesUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch(Dispatchers.Default) {
+            searchQueryFlow
+                .debounce(150.milliseconds)
+                .collect {
+                    filterData()
+                }
+        }
         viewModelScope.launch {
             repository.markedPagesFlow.collect { pages ->
                 val config = preferencesRepository.serverConfigFlow.first()
@@ -142,6 +108,7 @@ class MarkedPagesViewModel : ViewModel() {
                     }
                 }
                 _uiState.value = _uiState.value.copy(markedPages = resolvedPages)
+                filterData()
             }
         }
         viewModelScope.launch {
@@ -155,20 +122,84 @@ class MarkedPagesViewModel : ViewModel() {
         }
     }
 
+    private fun filterData() {
+        viewModelScope.launch(Dispatchers.Default) {
+            val state = _uiState.value
+            val query = searchQueryFlow.value
+            val pages = state.markedPages
+            val tagFilter = state.selectedTagFilter
+            val sorting = state.selectedSorting
+            val grouping = state.selectedGrouping
+
+            var result = pages
+
+            // 1. Tag filter
+            result = when (tagFilter) {
+                ReviewTagFilter.ALL -> result
+                ReviewTagFilter.DEBUG_ONLY -> result.filter { it.reviewTag == "DEBUG" }
+                ReviewTagFilter.REMOVE_ONLY -> result.filter { it.reviewTag == "REMOVE" }
+            }
+
+            // 2. Search query
+            if (query.isNotBlank()) {
+                result = result.filter {
+                    it.chapterTitle.contains(query, ignoreCase = true) ||
+                    it.seriesName.contains(query, ignoreCase = true)
+                }
+            }
+
+            // 3. Sorting
+            result = when (sorting) {
+                MarkedPageSorting.NEWEST -> result.sortedByDescending { it.createdAt }
+                MarkedPageSorting.OLDEST -> result.sortedBy { it.createdAt }
+                MarkedPageSorting.SERIES_NAME -> result.sortedBy { it.seriesName.ifBlank { it.chapterTitle } }
+                MarkedPageSorting.PAGE_NUMBER -> result.sortedBy { it.pageIndex }
+            }
+
+            // 4. Grouping
+            val groups = when (grouping) {
+                MarkedPageGrouping.NONE -> listOf(MarkedPageGroup("All Marked Pages", result))
+                MarkedPageGrouping.BY_SERIES -> {
+                    result.groupBy { it.seriesName.ifBlank { it.chapterTitle } }
+                        .map { (series, items) -> MarkedPageGroup(series, items) }
+                }
+                MarkedPageGrouping.BY_TAG -> {
+                    val debugs = result.filter { it.reviewTag == "DEBUG" }
+                    val removes = result.filter { it.reviewTag == "REMOVE" }
+                    buildList {
+                        if (debugs.isNotEmpty()) add(MarkedPageGroup("Debug Items (${debugs.size})", debugs))
+                        if (removes.isNotEmpty()) add(MarkedPageGroup("To Remove Items (${removes.size})", removes))
+                    }
+                }
+            }
+
+            _uiState.update {
+                it.copy(
+                    filteredPages = result,
+                    groupedPages = groups
+                )
+            }
+        }
+    }
+
     fun updateSearchQuery(query: String) {
         _uiState.value = _uiState.value.copy(searchQuery = query)
+        searchQueryFlow.value = query
     }
 
     fun setTagFilter(filter: ReviewTagFilter) {
         _uiState.value = _uiState.value.copy(selectedTagFilter = filter)
+        filterData()
     }
 
     fun setGrouping(grouping: MarkedPageGrouping) {
         _uiState.value = _uiState.value.copy(selectedGrouping = grouping)
+        filterData()
     }
 
     fun setSorting(sorting: MarkedPageSorting) {
         _uiState.value = _uiState.value.copy(selectedSorting = sorting)
+        filterData()
     }
 
     fun toggleReviewTag(id: Int, currentTag: String) {

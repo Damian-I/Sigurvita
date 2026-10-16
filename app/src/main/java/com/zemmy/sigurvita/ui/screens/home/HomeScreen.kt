@@ -242,7 +242,7 @@ fun HomeScreen(
                     // Search Everything across all series
                     Spacer(modifier = Modifier.height(8.dp))
                     if (state.searchResults.isNotEmpty()) {
-                        val rows = state.searchResults.chunked(3)
+                        val rows = remember(state.searchResults) { state.searchResults.chunked(3) }
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()

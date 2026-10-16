@@ -7,12 +7,14 @@ import com.zemmy.sigurvita.core.datastore.SeriesReadContext
 import com.zemmy.sigurvita.core.model.Library
 import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.model.Series
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -23,20 +25,15 @@ data class HomeUiState(
     val recentlyUpdatedSeries: List<Series> = emptyList(),
     val newlyAddedSeries: List<Series> = emptyList(),
     val allSeries: List<Series> = emptyList(),
+    val searchResults: List<Series> = emptyList(),
     val seriesReadContexts: Map<Int, SeriesReadContext> = emptyMap(),
     val searchQuery: String = "",
-    val debouncedQuery: String = "",
     val isSearchActive: Boolean = false,
     val isIncognitoMode: Boolean = false,
     val isOffline: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
-) {
-    val searchResults: List<Series>
-        get() = if (debouncedQuery.isBlank()) emptyList() else allSeries.filter {
-            it.name.contains(debouncedQuery, ignoreCase = true) || (it.localizedName?.contains(debouncedQuery, ignoreCase = true) == true)
-        }
-}
+)
 
 @OptIn(FlowPreview::class)
 class HomeViewModel : ViewModel() {
@@ -52,11 +49,19 @@ class HomeViewModel : ViewModel() {
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.Default) {
             searchQueryFlow
-                .debounce(200L.milliseconds)
+                .debounce(150.milliseconds)
                 .collect { query ->
-                    _uiState.value = _uiState.value.copy(debouncedQuery = query)
+                    val seriesList = _uiState.value.allSeries
+                    val results = if (query.isBlank()) {
+                        emptyList()
+                    } else {
+                        seriesList.filter {
+                            it.name.contains(query, ignoreCase = true) || (it.localizedName?.contains(query, ignoreCase = true) == true)
+                        }
+                    }
+                    _uiState.update { it.copy(searchResults = results) }
                 }
         }
         viewModelScope.launch {
@@ -114,12 +119,17 @@ class HomeViewModel : ViewModel() {
             val hasAnyData = onDeck.isNotEmpty() || recentlyUpdated.isNotEmpty() || newlyAdded.isNotEmpty() || allSeries.isNotEmpty() || _uiState.value.downloadedSeries.isNotEmpty()
 
             if (hasAnyData) {
+                val query = _uiState.value.searchQuery
+                val results = if (query.isBlank()) emptyList() else allSeries.filter {
+                    it.name.contains(query, ignoreCase = true) || (it.localizedName?.contains(query, ignoreCase = true) == true)
+                }
                 _uiState.value = _uiState.value.copy(
                     libraries = libraries,
                     onDeckSeries = onDeck,
                     recentlyUpdatedSeries = recentlyUpdated,
                     newlyAddedSeries = newlyAdded,
                     allSeries = allSeries,
+                    searchResults = results,
                     isOffline = !isAnyNetworkSuccess,
                     isLoading = false
                 )

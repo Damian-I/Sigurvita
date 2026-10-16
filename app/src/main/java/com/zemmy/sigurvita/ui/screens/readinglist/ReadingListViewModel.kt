@@ -10,11 +10,13 @@ import com.zemmy.sigurvita.core.util.EraCategory
 import com.zemmy.sigurvita.core.util.cleanReadingListTitle
 import com.zemmy.sigurvita.core.util.extractEraInfo
 import com.zemmy.sigurvita.core.util.naturalCompare
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -27,13 +29,14 @@ enum class ReadingListSortOption(val displayName: String) {
 
 data class ReadingListUiState(
     val readingLists: List<ReadingList> = emptyList(),
+    val filteredReadingLists: List<ReadingList> = emptyList(),
     val selectedListId: Int? = null,
     val selectedListItems: List<ReadingListItem> = emptyList(),
+    val filteredListItems: List<ReadingListItem> = emptyList(),
     val downloadTasks: Map<Int, DownloadTask> = emptyMap(),
     val selectedListTitle: String? = null,
     val selectedEraName: String = "All",
     val searchQuery: String = "",
-    val debouncedQuery: String = "",
     val sortOption: ReadingListSortOption = ReadingListSortOption.TITLE_NATURAL_ASC,
     val totalIssues: Int = 0,
     val issuesRead: Int = 0,
@@ -52,37 +55,6 @@ data class ReadingListUiState(
 
     val selectedEraCategory: EraCategory?
         get() = eraCategories.find { it.name == selectedEraName }
-
-    val filteredReadingLists: List<ReadingList>
-        get() {
-            val filtered = readingLists.filter { list ->
-                val eraInfo = extractEraInfo(list.title)
-                val matchesEra = selectedEraName == "All" || eraInfo.name == selectedEraName
-                val matchesQuery = debouncedQuery.isBlank() ||
-                        list.title.contains(debouncedQuery, ignoreCase = true) ||
-                        cleanReadingListTitle(list.title).contains(debouncedQuery, ignoreCase = true) ||
-                        (list.summary?.contains(debouncedQuery, ignoreCase = true) == true)
-                matchesEra && matchesQuery
-            }
-
-            return when (sortOption) {
-                ReadingListSortOption.TITLE_NATURAL_ASC ->
-                    filtered.sortedWith { l1, l2 -> naturalCompare(cleanReadingListTitle(l1.title), cleanReadingListTitle(l2.title)) }
-                ReadingListSortOption.TITLE_NATURAL_DESC ->
-                    filtered.sortedWith { l2, l1 -> naturalCompare(cleanReadingListTitle(l2.title), cleanReadingListTitle(l1.title)) }
-                ReadingListSortOption.ITEM_COUNT_DESC ->
-                    filtered.sortedByDescending { it.itemCount }
-                ReadingListSortOption.ITEM_COUNT_ASC ->
-                    filtered.sortedBy { it.itemCount }
-            }
-        }
-
-    val filteredListItems: List<ReadingListItem>
-        get() = selectedListItems.filter { item ->
-            debouncedQuery.isBlank() ||
-                    item.title.contains(debouncedQuery, ignoreCase = true) ||
-                    item.seriesName.contains(debouncedQuery, ignoreCase = true)
-        }
 
     val nextToReadIndex: Int
         get() = selectedListItems.indexOfFirst { !it.isRead }
@@ -103,11 +75,11 @@ class ReadingListViewModel : ViewModel() {
     val uiState: StateFlow<ReadingListUiState> = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.Default) {
             searchQueryFlow
-                .debounce(200.milliseconds)
-                .collect { query ->
-                    _uiState.value = _uiState.value.copy(debouncedQuery = query)
+                .debounce(150.milliseconds)
+                .collect {
+                    filterData()
                 }
         }
         viewModelScope.launch {
@@ -137,6 +109,51 @@ class ReadingListViewModel : ViewModel() {
         }
     }
 
+    private fun filterData() {
+        viewModelScope.launch(Dispatchers.Default) {
+            val state = _uiState.value
+            val query = searchQueryFlow.value
+            val lists = state.readingLists
+            val items = state.selectedListItems
+            val selectedEraName = state.selectedEraName
+            val sortOption = state.sortOption
+
+            val filteredLists = lists.filter { list ->
+                val eraInfo = extractEraInfo(list.title)
+                val matchesEra = selectedEraName == "All" || eraInfo.name == selectedEraName
+                val matchesQuery = query.isBlank() ||
+                        list.title.contains(query, ignoreCase = true) ||
+                        cleanReadingListTitle(list.title).contains(query, ignoreCase = true) ||
+                        (list.summary?.contains(query, ignoreCase = true) == true)
+                matchesEra && matchesQuery
+            }.let { filtered ->
+                when (sortOption) {
+                    ReadingListSortOption.TITLE_NATURAL_ASC ->
+                        filtered.sortedWith { l1, l2 -> naturalCompare(cleanReadingListTitle(l1.title), cleanReadingListTitle(l2.title)) }
+                    ReadingListSortOption.TITLE_NATURAL_DESC ->
+                        filtered.sortedWith { l2, l1 -> naturalCompare(cleanReadingListTitle(l2.title), cleanReadingListTitle(l1.title)) }
+                    ReadingListSortOption.ITEM_COUNT_DESC ->
+                        filtered.sortedByDescending { it.itemCount }
+                    ReadingListSortOption.ITEM_COUNT_ASC ->
+                        filtered.sortedBy { it.itemCount }
+                }
+            }
+
+            val filteredItems = items.filter { item ->
+                query.isBlank() ||
+                        item.title.contains(query, ignoreCase = true) ||
+                        item.seriesName.contains(query, ignoreCase = true)
+            }
+
+            _uiState.update {
+                it.copy(
+                    filteredReadingLists = filteredLists,
+                    filteredListItems = filteredItems
+                )
+            }
+        }
+    }
+
     fun loadReadingLists() {
         _uiState.value = _uiState.value.copy(
             selectedListId = null,
@@ -147,6 +164,7 @@ class ReadingListViewModel : ViewModel() {
             isLoading = true,
             errorMessage = null
         )
+        searchQueryFlow.value = ""
         viewModelScope.launch {
             val result = repository.getReadingLists()
             if (result.isSuccess) {
@@ -154,6 +172,7 @@ class ReadingListViewModel : ViewModel() {
                     readingLists = result.getOrNull() ?: emptyList(),
                     isLoading = false
                 )
+                filterData()
             } else {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -184,6 +203,7 @@ class ReadingListViewModel : ViewModel() {
                 searchQuery = "",
                 errorMessage = null
             )
+            searchQueryFlow.value = ""
         } else {
             _uiState.value = _uiState.value.copy(
                 selectedListId = listId,
@@ -208,6 +228,7 @@ class ReadingListViewModel : ViewModel() {
                     pagesRead = computedPagesRead,
                     isLoading = false
                 )
+                filterData()
             } else {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -228,6 +249,7 @@ class ReadingListViewModel : ViewModel() {
                     loadListDetail(readingListId, targetList.title)
                 } else {
                     _uiState.value = _uiState.value.copy(readingLists = lists, isLoading = false)
+                    filterData()
                 }
             } else {
                 _uiState.value = _uiState.value.copy(isLoading = false, errorMessage = "Failed to load reading list")
@@ -242,10 +264,12 @@ class ReadingListViewModel : ViewModel() {
 
     fun selectEra(eraName: String) {
         _uiState.value = _uiState.value.copy(selectedEraName = eraName)
+        filterData()
     }
 
     fun selectSortOption(option: ReadingListSortOption) {
         _uiState.value = _uiState.value.copy(sortOption = option)
+        filterData()
     }
 
     fun toggleItemRead(item: ReadingListItem) {
@@ -264,6 +288,7 @@ class ReadingListViewModel : ViewModel() {
             issuesRead = newIssuesRead,
             pagesRead = newPagesRead
         )
+        filterData()
 
         viewModelScope.launch {
             if (newReadState) {
@@ -283,6 +308,7 @@ class ReadingListViewModel : ViewModel() {
                         totalPages = items.sumOf { it.pages },
                         pagesRead = items.sumOf { it.pagesRead }
                     )
+                    filterData()
                 }
             }
         }

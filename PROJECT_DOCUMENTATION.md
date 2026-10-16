@@ -133,12 +133,13 @@ Repositories wrap `KavitaApi` calls in `withContext(Dispatchers.IO)` and return 
 - `pauseDownload`, `resumeDownload`, `cancelDownload`, `clearCompleted`, `deleteLocalChapter`.
 - `DownloadWorker`: validates server config, sets progress to `DOWNLOADING`, targets `<root>/<Library>/<Series>/`, downloads via native CBZ archive (`GET /api/Download/chapter`) or page-by-page fallback, and performs a post-download ML scan (`detections.json`).
 
-### 3.8 Concurrency Conventions
+### 3.8 Concurrency & Search Conventions
 
 - ViewModels expose `StateFlow<UiState>` (mutated with `_uiState.value = _uiState.value.copy(...)`), launched from `viewModelScope`.
 - Independent network calls on a screen load are run concurrently with `async`/`await`.
 - Repository methods switch to `Dispatchers.IO`. Room DAOs are non-suspending and must only be called from IO contexts.
 - Screens that show server data reload in a `Lifecycle.Event.ON_RESUME` observer in the background without setting `isLoading = true` when content is present.
+- **Search & Filtering**: All list filtering, regex string matching, era parsing, and `naturalCompare` sorting across ViewModels (`HomeViewModel`, `LibraryViewModel`, `ReadingListViewModel`, `SeriesDetailViewModel`, `MarkedPagesViewModel`) are computed on `Dispatchers.Default` using a 150ms debounced flow pipeline (`searchQueryFlow.debounce(150.milliseconds)`). Filtered lists are held in explicit data properties on `UiState` rather than computed getters (`get()`), preventing main-thread UI lag during typing.
 
 ### 3.9 On-device speech bubble detection
 

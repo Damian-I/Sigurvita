@@ -8,12 +8,14 @@ import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.core.model.Series
 import com.zemmy.sigurvita.core.model.Volume
 import com.zemmy.sigurvita.core.util.naturalCompare
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.time.Duration.Companion.milliseconds
@@ -86,6 +88,8 @@ sealed class SeriesItem {
 data class SeriesDetailUiState(
     val series: Series? = null,
     val volumes: List<Volume> = emptyList(),
+    val filteredVolumes: List<Volume> = emptyList(),
+    val displayMangaItems: List<SeriesItem> = emptyList(),
     val downloadTasks: Map<Int, DownloadTask> = emptyMap(),
     val libraryName: String = "Comics",
     val libraryId: Int = 0,
@@ -96,7 +100,6 @@ data class SeriesDetailUiState(
     val totalPages: Int = 0,
     val pagesRead: Int = 0,
     val searchQuery: String = "",
-    val debouncedQuery: String = "",
     val viewFilter: SeriesViewFilter = SeriesViewFilter.BOTH,
     val isSearchActive: Boolean = false,
     val isGridView: Boolean = false,
@@ -106,52 +109,6 @@ data class SeriesDetailUiState(
     val metadata: com.zemmy.sigurvita.core.data.api.dto.SeriesMetadataDto? = null,
     val errorMessage: String? = null
 ) {
-    val displayMangaItems: List<SeriesItem>
-        get() {
-            if (!isMangaLibrary) return emptyList()
-
-            val volumeItems = mutableListOf<SeriesItem.VolumeItem>()
-            val chapterItems = mutableListOf<SeriesItem.ChapterItem>()
-
-            for (v in volumes) {
-                if (isVolumeFile(v)) {
-                    volumeItems.add(SeriesItem.VolumeItem(v))
-                } else {
-                    for (c in v.chapters) {
-                        chapterItems.add(SeriesItem.ChapterItem(c, v.id, isManga = true))
-                    }
-                    if (v.chapters.isEmpty()) {
-                        val dummyChapter = Chapter(
-                            id = v.id,
-                            volumeId = v.id,
-                            seriesId = 0,
-                            chapterNumber = v.name.replace(Regex("""[^0-9.]"""), ""),
-                            title = v.name,
-                            pages = v.totalPages,
-                            pagesRead = v.pagesRead
-                        )
-                        chapterItems.add(SeriesItem.ChapterItem(dummyChapter, v.id, isManga = true))
-                    }
-                }
-            }
-
-            val sortedVolumes = volumeItems.sortedBy { it.volume.number }
-            val sortedChapters = chapterItems.sortedWith { c1, c2 -> naturalCompare(c1.chapter.chapterNumber, c2.chapter.chapterNumber) }
-
-            val baseItems = when (viewFilter) {
-                SeriesViewFilter.BOTH -> sortedVolumes + sortedChapters
-                SeriesViewFilter.VOLUMES -> sortedVolumes
-                SeriesViewFilter.CHAPTERS -> sortedChapters
-            }
-
-            if (debouncedQuery.isBlank()) return baseItems
-
-            return baseItems.filter { item ->
-                item.title.contains(debouncedQuery, ignoreCase = true) ||
-                (item is SeriesItem.ChapterItem && item.chapter.chapterNumber.contains(debouncedQuery, ignoreCase = true))
-            }
-        }
-
     val nextToReadId: Int?
         get() {
             if (isMangaLibrary) {
@@ -173,20 +130,6 @@ data class SeriesDetailUiState(
             }
             return volumes.firstOrNull()?.chapters?.firstOrNull()?.id
         }
-
-    val filteredVolumes: List<Volume>
-        get() {
-            if (debouncedQuery.isBlank()) return volumes
-            return volumes.mapNotNull { volume ->
-                val matchingChapters = volume.chapters.filter { c ->
-                    c.title.contains(debouncedQuery, ignoreCase = true) ||
-                    c.chapterNumber.contains(debouncedQuery, ignoreCase = true)
-                }
-                if (matchingChapters.isNotEmpty()) {
-                    volume.copy(chapters = matchingChapters)
-                } else null
-            }
-        }
 }
 
 @OptIn(FlowPreview::class)
@@ -205,11 +148,11 @@ class SeriesDetailViewModel : ViewModel() {
     val uiState: StateFlow<SeriesDetailUiState> = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.Default) {
             searchQueryFlow
-                .debounce(200.milliseconds)
-                .collect { query ->
-                    _uiState.value = _uiState.value.copy(debouncedQuery = query)
+                .debounce(150.milliseconds)
+                .collect {
+                    filterData()
                 }
         }
         viewModelScope.launch {
@@ -223,6 +166,84 @@ class SeriesDetailViewModel : ViewModel() {
             preferencesRepository.readerSettingsFlow.collect { settings ->
                 _uiState.value = _uiState.value.copy(
                     isIncognitoMode = settings.isIncognitoMode
+                )
+            }
+        }
+    }
+
+    private fun filterData() {
+        viewModelScope.launch(Dispatchers.Default) {
+            val state = _uiState.value
+            val query = searchQueryFlow.value
+            val volumes = state.volumes
+            val isMangaLibrary = state.isMangaLibrary
+            val viewFilter = state.viewFilter
+
+            val computedDisplayMangaItems = if (isMangaLibrary) {
+                val volumeItems = mutableListOf<SeriesItem.VolumeItem>()
+                val chapterItems = mutableListOf<SeriesItem.ChapterItem>()
+
+                for (v in volumes) {
+                    if (isVolumeFile(v)) {
+                        volumeItems.add(SeriesItem.VolumeItem(v))
+                    } else {
+                        for (c in v.chapters) {
+                            chapterItems.add(SeriesItem.ChapterItem(c, v.id, isManga = true))
+                        }
+                        if (v.chapters.isEmpty()) {
+                            val dummyChapter = Chapter(
+                                id = v.id,
+                                volumeId = v.id,
+                                seriesId = 0,
+                                chapterNumber = v.name.replace(Regex("""[^0-9.]"""), ""),
+                                title = v.name,
+                                pages = v.totalPages,
+                                pagesRead = v.pagesRead
+                            )
+                            chapterItems.add(SeriesItem.ChapterItem(dummyChapter, v.id, isManga = true))
+                        }
+                    }
+                }
+
+                val sortedVolumes = volumeItems.sortedBy { it.volume.number }
+                val sortedChapters = chapterItems.sortedWith { c1, c2 -> naturalCompare(c1.chapter.chapterNumber, c2.chapter.chapterNumber) }
+
+                val baseItems = when (viewFilter) {
+                    SeriesViewFilter.BOTH -> sortedVolumes + sortedChapters
+                    SeriesViewFilter.VOLUMES -> sortedVolumes
+                    SeriesViewFilter.CHAPTERS -> sortedChapters
+                }
+
+                if (query.isBlank()) {
+                    baseItems
+                } else {
+                    baseItems.filter { item ->
+                        item.title.contains(query, ignoreCase = true) ||
+                        (item is SeriesItem.ChapterItem && item.chapter.chapterNumber.contains(query, ignoreCase = true))
+                    }
+                }
+            } else {
+                emptyList()
+            }
+
+            val computedFilteredVolumes = if (query.isBlank()) {
+                volumes
+            } else {
+                volumes.mapNotNull { volume ->
+                    val matchingChapters = volume.chapters.filter { c ->
+                        c.title.contains(query, ignoreCase = true) ||
+                        c.chapterNumber.contains(query, ignoreCase = true)
+                    }
+                    if (matchingChapters.isNotEmpty()) {
+                        volume.copy(chapters = matchingChapters)
+                    } else null
+                }
+            }
+
+            _uiState.update {
+                it.copy(
+                    displayMangaItems = computedDisplayMangaItems,
+                    filteredVolumes = computedFilteredVolumes
                 )
             }
         }
@@ -304,6 +325,7 @@ class SeriesDetailViewModel : ViewModel() {
                     isOffline = isOfflineMode,
                     isLoading = false
                 )
+                filterData()
 
                 launch {
                     try {
@@ -327,6 +349,7 @@ class SeriesDetailViewModel : ViewModel() {
 
     fun selectViewFilter(filter: SeriesViewFilter) {
         _uiState.value = _uiState.value.copy(viewFilter = filter)
+        filterData()
     }
 
     fun toggleSearchActive() {
@@ -418,6 +441,7 @@ class SeriesDetailViewModel : ViewModel() {
             chaptersRead = newChaptersRead,
             pagesRead = newPagesRead
         )
+        filterData()
 
         viewModelScope.launch {
             if (newReadState) {
@@ -448,6 +472,7 @@ class SeriesDetailViewModel : ViewModel() {
             chaptersRead = newChaptersRead,
             pagesRead = newPagesRead
         )
+        filterData()
 
         viewModelScope.launch {
             if (targetReadState) {

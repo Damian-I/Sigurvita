@@ -5,12 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.model.Library
 import com.zemmy.sigurvita.core.model.Series
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -19,18 +21,13 @@ data class LibraryUiState(
     val selectedLibraryId: Int = 0,
     val libraryName: String = "All Libraries",
     val series: List<Series> = emptyList(),
+    val filteredSeries: List<Series> = emptyList(),
     val searchQuery: String = "",
-    val debouncedQuery: String = "",
     val isSearchActive: Boolean = false,
     val isIncognitoMode: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
-) {
-    val filteredSeries: List<Series>
-        get() = if (debouncedQuery.isBlank()) series else series.filter {
-            it.name.contains(debouncedQuery, ignoreCase = true) || (it.localizedName?.contains(debouncedQuery, ignoreCase = true) == true)
-        }
-}
+)
 
 @OptIn(FlowPreview::class)
 class LibraryViewModel : ViewModel() {
@@ -45,11 +42,19 @@ class LibraryViewModel : ViewModel() {
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.Default) {
             searchQueryFlow
-                .debounce(200.milliseconds)
+                .debounce(150.milliseconds)
                 .collect { query ->
-                    _uiState.value = _uiState.value.copy(debouncedQuery = query)
+                    val allSeries = _uiState.value.series
+                    val filtered = if (query.isBlank()) {
+                        allSeries
+                    } else {
+                        allSeries.filter {
+                            it.name.contains(query, ignoreCase = true) || (it.localizedName?.contains(query, ignoreCase = true) == true)
+                        }
+                    }
+                    _uiState.update { it.copy(filteredSeries = filtered) }
                 }
         }
         viewModelScope.launch {
@@ -77,11 +82,21 @@ class LibraryViewModel : ViewModel() {
 
             val libName = if (libraryId == 0) "All Libraries" else libraries.find { it.id == libraryId }?.name ?: "Library"
 
+            val query = _uiState.value.searchQuery
+            val filtered = if (query.isBlank()) {
+                series
+            } else {
+                series.filter {
+                    it.name.contains(query, ignoreCase = true) || (it.localizedName?.contains(query, ignoreCase = true) == true)
+                }
+            }
+
             _uiState.value = _uiState.value.copy(
                 libraries = libraries,
                 selectedLibraryId = libraryId,
                 libraryName = libName,
                 series = series,
+                filteredSeries = filtered,
                 isLoading = false
             )
         }

@@ -16,7 +16,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,7 +40,6 @@ import com.zemmy.sigurvita.ui.components.LoadingState
 import com.zemmy.sigurvita.ui.components.SeriesCard
 import com.zemmy.sigurvita.ui.components.SigurvitaTopBar
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     initialLibraryId: Int = 0,
@@ -144,7 +142,7 @@ fun LibraryScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 if (state.filteredSeries.isNotEmpty()) {
-                    val rows = state.filteredSeries.chunked(3)
+                    val rows = remember(state.filteredSeries) { state.filteredSeries.chunked(3) }
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
