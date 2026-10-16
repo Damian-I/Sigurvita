@@ -25,8 +25,7 @@ private val normPointsCache = LruCache<Int, List<Pair<Float, Float>>>(300)
  */
 fun extractBubbleNormalizedPoints(
     bubble: DetectedBubble,
-    lb: LetterboxParams,
-    numSteps: Int = 48
+    lb: LetterboxParams
 ): List<Pair<Float, Float>> {
     val cacheKey = System.identityHashCode(bubble)
     val cached = normPointsCache.get(cacheKey)
@@ -264,7 +263,7 @@ class BubbleRepository(
                 }
             }
 
-            val bitmap = PageBitmapLoader.decodeForInference(context, page) ?: return@withContext null
+            val bitmap = PageBitmapLoader.decodeForInference(context, page, targetSize = 1024) ?: return@withContext null
             val result = detector.detect(bitmap, page.index, confidence)
             cache.put(key, result)
             return@withContext result

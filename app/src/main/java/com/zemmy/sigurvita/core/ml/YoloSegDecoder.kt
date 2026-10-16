@@ -258,7 +258,7 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
         if (sz != m2.size || sz == 0) return false
 
         // Fast normalized proximity gate (~2 mask pixels = 2/160 = 0.0125)
-        val margin = 0.015f
+        val margin = 2f / sz
         if (r1.left > r2.right + margin || r2.left > r1.right + margin ||
             r1.top > r2.bottom + margin || r2.top > r1.bottom + margin) {
             return false

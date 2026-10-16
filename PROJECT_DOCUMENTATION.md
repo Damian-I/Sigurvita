@@ -143,8 +143,8 @@ Repositories wrap `KavitaApi` calls in `withContext(Dispatchers.IO)` and return 
 
 ### 3.9 On-device speech bubble detection
 
-- **Model**: YOLOv8m-seg single-class model bundled as `app/src/main/assets/model.tflite` (float32, ~104 MiB, tracked with Git LFS).
-- **Pipeline**: Caching (`LruCache`), sidecar `detections.json` support for downloaded chapters, `PageBitmapLoader` inference decode, preprocessing (letterbox to 640x640), TFLite inference, `YoloSegDecoder` + `DeepPanelDetector` decoding, Marching Squares contour extraction, and `ReadingOrderEngine` topological sorting.
+- **Model**: YOLOv8m-seg single-class model bundled as `app/src/main/assets/model.tflite` (float32, ~104 MiB, exported with `imgsz=1024`, tracked with Git LFS).
+- **Pipeline**: Caching (`LruCache`), sidecar `detections.json` support for downloaded chapters, `PageBitmapLoader` inference decode (`targetSize = 1024`), preprocessing (letterbox to 1024x1024), TFLite dynamic tensor input shape detection, `YoloSegDecoder` + `DeepPanelDetector` decoding (with dynamic mask proximity gate `2f / sz`), Marching Squares contour extraction, and `ReadingOrderEngine` topological sorting.
 - **Overlay & Magnifier**: `ImageReader` canvas overlays (`speechBubbleBoxesEnabled`, `panelDebugOverlayEnabled`), long-press hit testing (`hitBubble`), `cropBubble` high-res cropping, and `BubbleMagnifierOverlay`.
 
 ---
@@ -260,7 +260,7 @@ Reader configuration (fit mode, volume keys, edge tap, keep screen on, speech bu
 
 ```text
 app/src/main/assets/
-└── model.tflite                     # Speech-bubble YOLOv8-seg model (float32, ~104 MiB, Git LFS)
+└── model.tflite                     # Speech-bubble YOLOv8-seg model (float32, ~104 MiB, imgsz=1024, Git LFS)
 
 app/src/main/java/com/zemmy/sigurvita/
 ├── MainActivity.kt                  # Single activity: routing, volume-key interception
