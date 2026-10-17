@@ -124,6 +124,7 @@ class ReaderViewModel : ViewModel() {
 
     private var markedPageJob: Job? = null
     private var bubbleDetectionJobs = mutableMapOf<Int, Job>()
+    private var isBubbleNavActive: Boolean = false
     private var completedForwardBubblePageIndex: Int = -1
     private var completedBackwardBubblePageIndex: Int = -1
 
@@ -142,8 +143,7 @@ class ReaderViewModel : ViewModel() {
 
         bubbleDetectionJobs.values.forEach { it.cancel() }
         bubbleDetectionJobs.clear()
-        completedForwardBubblePageIndex = -1
-        completedBackwardBubblePageIndex = -1
+        resetBubbleNavMode()
         _uiState.value = _uiState.value.copy(bubblesByPage = emptyMap())
 
         markedPageJob?.cancel()
@@ -365,8 +365,7 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun updateSpeechBubbleDetectionEnabled(enabled: Boolean) {
-        completedForwardBubblePageIndex = -1
-        completedBackwardBubblePageIndex = -1
+        resetBubbleNavMode()
         if (!enabled) {
             bubbleDetectionJobs.values.forEach { it.cancel() }
             bubbleDetectionJobs.clear()
@@ -397,8 +396,7 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun updateSpeechBubbleConfidence(confidence: Float) {
-        completedForwardBubblePageIndex = -1
-        completedBackwardBubblePageIndex = -1
+        resetBubbleNavMode()
         bubbleDetectionJobs.values.forEach { it.cancel() }
         bubbleDetectionJobs.clear()
 
@@ -470,6 +468,7 @@ class ReaderViewModel : ViewModel() {
         bubble: com.zemmy.sigurvita.core.model.DetectedBubble,
         pageBubbles: com.zemmy.sigurvita.core.model.PageBubbles
     ) {
+        isBubbleNavActive = true
         val state = _uiState.value
         val page = state.pages.getOrNull(pageIndex) ?: return
 
@@ -512,6 +511,7 @@ class ReaderViewModel : ViewModel() {
         centerOffsetPx: androidx.compose.ui.geometry.Offset,
         bubbleSizePx: androidx.compose.ui.geometry.Size
     ) {
+        isBubbleNavActive = true
         val state = _uiState.value
         val pageBubbles = state.bubblesByPage[pageIndex] ?: return
         val bubble = pageBubbles.bubbles.find { it.id == bubbleId } ?: return
@@ -549,8 +549,17 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
+    fun resetBubbleNavMode() {
+        isBubbleNavActive = false
+        completedForwardBubblePageIndex = -1
+        completedBackwardBubblePageIndex = -1
+        if (_uiState.value.magnifiedBubble != null) {
+            _uiState.value = _uiState.value.copy(magnifiedBubble = null)
+        }
+    }
+
     fun dismissBubble() {
-        _uiState.value = _uiState.value.copy(magnifiedBubble = null)
+        resetBubbleNavMode()
     }
 
     fun onBubbleHover(
@@ -560,9 +569,7 @@ class ReaderViewModel : ViewModel() {
         bubbleSizePx: androidx.compose.ui.geometry.Size?
     ) {
         if (bubbleId == null) {
-            if (_uiState.value.magnifiedBubble != null) {
-                _uiState.value = _uiState.value.copy(magnifiedBubble = null)
-            }
+            resetBubbleNavMode()
             return
         }
 
@@ -682,12 +689,6 @@ class ReaderViewModel : ViewModel() {
     fun onPageChanged(index: Int) {
         if (_uiState.value.showResumePrompt) return
         if (index in _uiState.value.pages.indices) {
-            if (index != completedForwardBubblePageIndex) {
-                completedForwardBubblePageIndex = -1
-            }
-            if (index != completedBackwardBubblePageIndex) {
-                completedBackwardBubblePageIndex = -1
-            }
             val totalPages = _uiState.value.pages.size
             val currentCh = _uiState.value.currentChapter
             val updatedCh = currentCh?.copy(
@@ -988,7 +989,7 @@ class ReaderViewModel : ViewModel() {
             }
         }
 
-        if (state.settings.speechBubbleDetectionEnabled && state.settings.readingMode != ReadingMode.WEBTOON) {
+        if (isBubbleNavActive && state.settings.speechBubbleDetectionEnabled && state.settings.readingMode != ReadingMode.WEBTOON) {
             val pageIdx = state.currentPageIndex
             if (isNext) {
                 if (completedForwardBubblePageIndex == pageIdx) {

@@ -189,7 +189,10 @@ fun ReaderScreen(
                 onPageChanged = { viewModel.onPageChanged(it) },
                 onNextPage = { viewModel.nextPage() },
                 onPreviousPage = { viewModel.previousPage() },
-                onTap = { viewModel.toggleControls() },
+                onTap = {
+                    viewModel.resetBubbleNavMode()
+                    viewModel.toggleControls()
+                },
                 fitMode = state.settings.fitMode,
                 touchEdgeNavigationEnabled = state.settings.touchEdgeNavigationEnabled,
                 bubblesByPage = state.bubblesByPage,
@@ -402,6 +405,7 @@ fun ReaderScreen(
                                 val pageOffset = (accumulatedDragPx * directionMultiplier / stepPx).toInt()
                                 val targetIdx = (dragStartIdx + pageOffset).coerceIn(0, state.pages.size - 1)
                                 if (targetIdx != state.currentPageIndex) {
+                                    viewModel.resetBubbleNavMode()
                                     viewModel.onPageChanged(targetIdx)
                                 }
                             }
@@ -444,7 +448,10 @@ fun ReaderScreen(
                                             border = if (absOffset == 0) BorderStroke(1.5.dp, Color.White) else null,
                                             modifier = Modifier
                                                 .graphicsLayer { this.alpha = alpha }
-                                                .clickable { viewModel.onPageChanged(targetIdx) }
+                                                .clickable {
+                                                    viewModel.resetBubbleNavMode()
+                                                    viewModel.onPageChanged(targetIdx)
+                                                }
                                         ) {
                                             AsyncImage(
                                                 model = ImageRequest.Builder(LocalContext.current)
