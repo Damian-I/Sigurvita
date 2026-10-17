@@ -242,7 +242,7 @@ Pinned header with summary, "Read more...", metadata bottom sheet, resume button
 
 ### 6.6 Reader (`ReaderScreen`)
 
-Horizontal pager (RTL/LTR) or vertical webtoon scrolling, pinch/double-tap zoom, edge-tap/volume-key navigation, prefetch, control overlay auto-dismiss, issue detail bottom sheet, timeline slider, bottom speech bubble indicator, previous chapter navigation, open-at-last-page support, and **S-Pen hover magnification**.
+Horizontal pager (RTL/LTR) or vertical webtoon scrolling, pinch/double-tap zoom, edge-tap/volume-key navigation (traverses speech bubbles sequentially, showing full page view after the final bubble before progressing to the next page, and showing pages even when no speech bubbles are detected), prefetch, control overlay auto-dismiss, issue detail bottom sheet, timeline slider, bottom speech bubble indicator, previous chapter navigation, open-at-last-page support, and **S-Pen hover magnification**.
 
 ### 6.7 Reading lists (`ReadingListScreen`)
 

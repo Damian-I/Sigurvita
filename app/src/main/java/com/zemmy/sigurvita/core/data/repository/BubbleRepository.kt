@@ -19,7 +19,7 @@ private const val TAG = "BubbleRepository"
 private val normPointsCache = LruCache<Int, List<Pair<Float, Float>>>(300)
 
 // ~0.33 probability. 128 = 0.5. Lower keeps thin tails, higher tightens the outline. Try 70..110.
-private const val CONTOUR_LEVEL = 95f
+private const val CONTOUR_LEVEL = 90f
 
 /** Morphological closing (3x3): bridges gaps up to 2 cells so thin tails don't fragment. */
 private fun closeMask(src: BooleanArray, sz: Int): BooleanArray {
@@ -29,10 +29,10 @@ private fun closeMask(src: BooleanArray, sz: Int): BooleanArray {
             var on = false
             loop@ for (dy in -1..1) {
                 val yy = y + dy
-                if (yy < 0 || yy >= sz) continue
+                if (yy !in 0..<sz) continue
                 for (dx in -1..1) {
                     val xx = x + dx
-                    if (xx < 0 || xx >= sz) continue
+                    if (xx !in 0..<sz) continue
                     if (src[yy * sz + xx]) { on = true; break@loop }
                 }
             }
@@ -45,10 +45,10 @@ private fun closeMask(src: BooleanArray, sz: Int): BooleanArray {
             var all = true
             loop@ for (dy in -1..1) {
                 val yy = y + dy
-                if (yy < 0 || yy >= sz) continue // outside the grid counts as set, so edges don't erode
+                if (yy !in 0..<sz) continue // outside the grid counts as set, so edges don't erode
                 for (dx in -1..1) {
                     val xx = x + dx
-                    if (xx < 0 || xx >= sz) continue
+                    if (xx !in 0..<sz) continue
                     if (!dilated[yy * sz + xx]) { all = false; break@loop }
                 }
             }

@@ -124,6 +124,7 @@ class ReaderViewModel : ViewModel() {
 
     private var markedPageJob: Job? = null
     private var bubbleDetectionJobs = mutableMapOf<Int, Job>()
+    private var completedBubblePageIndex: Int = -1
 
     fun loadChapter(
         chapterId: Int,
@@ -140,6 +141,7 @@ class ReaderViewModel : ViewModel() {
 
         bubbleDetectionJobs.values.forEach { it.cancel() }
         bubbleDetectionJobs.clear()
+        completedBubblePageIndex = -1
         _uiState.value = _uiState.value.copy(bubblesByPage = emptyMap())
 
         markedPageJob?.cancel()
@@ -361,6 +363,7 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun updateSpeechBubbleDetectionEnabled(enabled: Boolean) {
+        completedBubblePageIndex = -1
         if (!enabled) {
             bubbleDetectionJobs.values.forEach { it.cancel() }
             bubbleDetectionJobs.clear()
@@ -391,6 +394,7 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun updateSpeechBubbleConfidence(confidence: Float) {
+        completedBubblePageIndex = -1
         bubbleDetectionJobs.values.forEach { it.cancel() }
         bubbleDetectionJobs.clear()
 
@@ -674,6 +678,9 @@ class ReaderViewModel : ViewModel() {
     fun onPageChanged(index: Int) {
         if (_uiState.value.showResumePrompt) return
         if (index in _uiState.value.pages.indices) {
+            if (index != completedBubblePageIndex) {
+                completedBubblePageIndex = -1
+            }
             val totalPages = _uiState.value.pages.size
             val currentCh = _uiState.value.currentChapter
             val updatedCh = currentCh?.copy(
@@ -911,26 +918,6 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
-    private fun magnifyFrom(startIdx: Int, forward: Boolean) = viewModelScope.launch {
-        var idx = startIdx
-        val totalPages = _uiState.value.pages.size
-        while (idx in 0 until totalPages) {
-            onPageChanged(idx)
-            ensureBubbles(idx)
-            bubbleDetectionJobs[idx]?.join()
-            val pb = _uiState.value.bubblesByPage[idx]
-            val target = if (forward) pb?.bubbles?.firstOrNull() else pb?.bubbles?.lastOrNull()
-            if (pb != null && target != null) {
-                magnifyBubbleObject(idx, target, pb)
-                return@launch
-            }
-            idx += if (forward) 1 else -1
-        }
-        if (forward) {
-            nextPage()
-        }
-    }
-
     fun updatePanelAwareOrder(enabled: Boolean) {
         val currentSettings = _uiState.value.settings
         val isRtl = (currentSettings.readingMode == ReadingMode.RTL)
@@ -977,8 +964,8 @@ class ReaderViewModel : ViewModel() {
                     magnifyBubbleObject(pageIdx, nextBubble, pageBubbles)
                     return true
                 } else {
+                    completedBubblePageIndex = pageIdx
                     _uiState.value = _uiState.value.copy(magnifiedBubble = null)
-                    magnifyFrom(pageIdx + 1, forward = true)
                     return true
                 }
             } else {
@@ -988,14 +975,47 @@ class ReaderViewModel : ViewModel() {
                     return true
                 } else {
                     _uiState.value = _uiState.value.copy(magnifiedBubble = null)
-                    magnifyFrom(pageIdx - 1, forward = false)
                     return true
                 }
             }
         }
 
         if (isNext) {
-            nextPage()
+            if (state.settings.speechBubbleDetectionEnabled && state.settings.readingMode != ReadingMode.WEBTOON) {
+                val pageIdx = state.currentPageIndex
+                if (completedBubblePageIndex == pageIdx) {
+                    nextPage()
+                    return true
+                }
+
+                val pageBubbles = state.bubblesByPage[pageIdx]
+                if (pageBubbles != null) {
+                    val bubbles = pageBubbles.bubbles
+                    if (bubbles.isNotEmpty()) {
+                        magnifyBubbleObject(pageIdx, bubbles.first(), pageBubbles)
+                    } else {
+                        completedBubblePageIndex = pageIdx
+                        nextPage()
+                    }
+                } else if (bubbleDetectionJobs.containsKey(pageIdx)) {
+                    viewModelScope.launch {
+                        bubbleDetectionJobs[pageIdx]?.join()
+                        if (_uiState.value.currentPageIndex != pageIdx) return@launch
+                        val pb = _uiState.value.bubblesByPage[pageIdx]
+                        val bList = pb?.bubbles ?: emptyList()
+                        if (bList.isNotEmpty() && completedBubblePageIndex != pageIdx) {
+                            magnifyBubbleObject(pageIdx, bList.first(), pb!!)
+                        } else {
+                            completedBubblePageIndex = pageIdx
+                            nextPage()
+                        }
+                    }
+                } else {
+                    nextPage()
+                }
+            } else {
+                nextPage()
+            }
         } else {
             previousPage()
         }
