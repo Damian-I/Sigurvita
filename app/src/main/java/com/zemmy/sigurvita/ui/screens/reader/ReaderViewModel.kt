@@ -124,7 +124,8 @@ class ReaderViewModel : ViewModel() {
 
     private var markedPageJob: Job? = null
     private var bubbleDetectionJobs = mutableMapOf<Int, Job>()
-    private var completedBubblePageIndex: Int = -1
+    private var completedForwardBubblePageIndex: Int = -1
+    private var completedBackwardBubblePageIndex: Int = -1
 
     fun loadChapter(
         chapterId: Int,
@@ -141,7 +142,8 @@ class ReaderViewModel : ViewModel() {
 
         bubbleDetectionJobs.values.forEach { it.cancel() }
         bubbleDetectionJobs.clear()
-        completedBubblePageIndex = -1
+        completedForwardBubblePageIndex = -1
+        completedBackwardBubblePageIndex = -1
         _uiState.value = _uiState.value.copy(bubblesByPage = emptyMap())
 
         markedPageJob?.cancel()
@@ -363,7 +365,8 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun updateSpeechBubbleDetectionEnabled(enabled: Boolean) {
-        completedBubblePageIndex = -1
+        completedForwardBubblePageIndex = -1
+        completedBackwardBubblePageIndex = -1
         if (!enabled) {
             bubbleDetectionJobs.values.forEach { it.cancel() }
             bubbleDetectionJobs.clear()
@@ -394,7 +397,8 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun updateSpeechBubbleConfidence(confidence: Float) {
-        completedBubblePageIndex = -1
+        completedForwardBubblePageIndex = -1
+        completedBackwardBubblePageIndex = -1
         bubbleDetectionJobs.values.forEach { it.cancel() }
         bubbleDetectionJobs.clear()
 
@@ -678,8 +682,11 @@ class ReaderViewModel : ViewModel() {
     fun onPageChanged(index: Int) {
         if (_uiState.value.showResumePrompt) return
         if (index in _uiState.value.pages.indices) {
-            if (index != completedBubblePageIndex) {
-                completedBubblePageIndex = -1
+            if (index != completedForwardBubblePageIndex) {
+                completedForwardBubblePageIndex = -1
+            }
+            if (index != completedBackwardBubblePageIndex) {
+                completedBackwardBubblePageIndex = -1
             }
             val totalPages = _uiState.value.pages.size
             val currentCh = _uiState.value.currentChapter
@@ -964,7 +971,7 @@ class ReaderViewModel : ViewModel() {
                     magnifyBubbleObject(pageIdx, nextBubble, pageBubbles)
                     return true
                 } else {
-                    completedBubblePageIndex = pageIdx
+                    completedForwardBubblePageIndex = pageIdx
                     _uiState.value = _uiState.value.copy(magnifiedBubble = null)
                     return true
                 }
@@ -974,16 +981,17 @@ class ReaderViewModel : ViewModel() {
                     magnifyBubbleObject(pageIdx, prevBubble, pageBubbles)
                     return true
                 } else {
+                    completedBackwardBubblePageIndex = pageIdx
                     _uiState.value = _uiState.value.copy(magnifiedBubble = null)
                     return true
                 }
             }
         }
 
-        if (isNext) {
-            if (state.settings.speechBubbleDetectionEnabled && state.settings.readingMode != ReadingMode.WEBTOON) {
-                val pageIdx = state.currentPageIndex
-                if (completedBubblePageIndex == pageIdx) {
+        if (state.settings.speechBubbleDetectionEnabled && state.settings.readingMode != ReadingMode.WEBTOON) {
+            val pageIdx = state.currentPageIndex
+            if (isNext) {
+                if (completedForwardBubblePageIndex == pageIdx) {
                     nextPage()
                     return true
                 }
@@ -994,7 +1002,7 @@ class ReaderViewModel : ViewModel() {
                     if (bubbles.isNotEmpty()) {
                         magnifyBubbleObject(pageIdx, bubbles.first(), pageBubbles)
                     } else {
-                        completedBubblePageIndex = pageIdx
+                        completedForwardBubblePageIndex = pageIdx
                         nextPage()
                     }
                 } else if (bubbleDetectionJobs.containsKey(pageIdx)) {
@@ -1003,10 +1011,10 @@ class ReaderViewModel : ViewModel() {
                         if (_uiState.value.currentPageIndex != pageIdx) return@launch
                         val pb = _uiState.value.bubblesByPage[pageIdx]
                         val bList = pb?.bubbles ?: emptyList()
-                        if (bList.isNotEmpty() && completedBubblePageIndex != pageIdx) {
+                        if (bList.isNotEmpty() && completedForwardBubblePageIndex != pageIdx) {
                             magnifyBubbleObject(pageIdx, bList.first(), pb!!)
                         } else {
-                            completedBubblePageIndex = pageIdx
+                            completedForwardBubblePageIndex = pageIdx
                             nextPage()
                         }
                     }
@@ -1014,10 +1022,43 @@ class ReaderViewModel : ViewModel() {
                     nextPage()
                 }
             } else {
-                nextPage()
+                if (completedBackwardBubblePageIndex == pageIdx) {
+                    previousPage()
+                    return true
+                }
+
+                val pageBubbles = state.bubblesByPage[pageIdx]
+                if (pageBubbles != null) {
+                    val bubbles = pageBubbles.bubbles
+                    if (bubbles.isNotEmpty()) {
+                        magnifyBubbleObject(pageIdx, bubbles.last(), pageBubbles)
+                    } else {
+                        completedBackwardBubblePageIndex = pageIdx
+                        previousPage()
+                    }
+                } else if (bubbleDetectionJobs.containsKey(pageIdx)) {
+                    viewModelScope.launch {
+                        bubbleDetectionJobs[pageIdx]?.join()
+                        if (_uiState.value.currentPageIndex != pageIdx) return@launch
+                        val pb = _uiState.value.bubblesByPage[pageIdx]
+                        val bList = pb?.bubbles ?: emptyList()
+                        if (bList.isNotEmpty() && completedBackwardBubblePageIndex != pageIdx) {
+                            magnifyBubbleObject(pageIdx, bList.last(), pb!!)
+                        } else {
+                            completedBackwardBubblePageIndex = pageIdx
+                            previousPage()
+                        }
+                    }
+                } else {
+                    previousPage()
+                }
             }
         } else {
-            previousPage()
+            if (isNext) {
+                nextPage()
+            } else {
+                previousPage()
+            }
         }
         return true
     }

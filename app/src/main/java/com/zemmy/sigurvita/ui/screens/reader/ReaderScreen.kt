@@ -64,7 +64,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import coil.compose.AsyncImage
@@ -386,11 +390,39 @@ fun ReaderScreen(
 
                         // Multi-Thumbnail Timeline Preview Strip
                         if (state.pages.isNotEmpty()) {
+                            val layoutDirection = LocalLayoutDirection.current
+                            val density = LocalDensity.current
+                            val stepPx = remember(density) { with(density) { 32.dp.toPx() } }
+                            var dragStartIdx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+                            var accumulatedDragPx by remember { mutableFloatStateOf(0f) }
+
+                            val draggableState = rememberDraggableState { delta ->
+                                accumulatedDragPx += delta
+                                val directionMultiplier = if (layoutDirection == LayoutDirection.Rtl) 1f else -1f
+                                val pageOffset = (accumulatedDragPx * directionMultiplier / stepPx).toInt()
+                                val targetIdx = (dragStartIdx + pageOffset).coerceIn(0, state.pages.size - 1)
+                                if (targetIdx != state.currentPageIndex) {
+                                    viewModel.onPageChanged(targetIdx)
+                                }
+                            }
+
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .draggable(
+                                        state = draggableState,
+                                        orientation = Orientation.Horizontal,
+                                        onDragStarted = {
+                                            viewModel.cancelAutoHideControls()
+                                            dragStartIdx = state.currentPageIndex
+                                            accumulatedDragPx = 0f
+                                        },
+                                        onDragStopped = {
+                                            viewModel.scheduleAutoHideControls()
+                                        }
+                                    )
                                     .padding(bottom = 8.dp)
                             ) {
                                 for (offset in -2..2) {
