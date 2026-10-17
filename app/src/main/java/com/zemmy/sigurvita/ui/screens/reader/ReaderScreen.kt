@@ -145,6 +145,7 @@ fun ReaderScreen(
     DisposableEffect(Unit) {
         onDispose {
             viewModel.flushProgress()
+            viewModel.resetBubbleNavMode()
         }
     }
 

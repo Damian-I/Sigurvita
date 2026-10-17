@@ -11,6 +11,8 @@ import com.zemmy.sigurvita.core.model.LetterboxParams
 import com.zemmy.sigurvita.core.model.PageBubbles
 import com.zemmy.sigurvita.core.model.ReaderPage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import androidx.core.graphics.createBitmap
 
@@ -271,13 +273,30 @@ fun extractBubbleNormalizedPoints(
 
 class BubbleRepository(
     private val context: Context,
-    private val detector: BubbleDetector = BubbleDetector(context)
+    private val detector1: BubbleDetector = BubbleDetector(context),
+    private val detector2: BubbleDetector = BubbleDetector(context)
 ) {
 
-    // Cache up to 30 pages in memory
-    private val cache = LruCache<Pair<Pair<Int, Int>, Float>, PageBubbles>(30)
+    // Cache up to 100 pages in memory
+    private val cache = LruCache<Pair<Pair<Int, Int>, Float>, PageBubbles>(100)
     // High-resolution (2000px) bitmap cache for bubble magnifier (2 pages)
     private val highResCache = LruCache<Pair<Int, Int>, Bitmap>(2)
+
+    private val detectorMutex = Mutex()
+    private var useDetector1 = true
+
+    private suspend fun <T> withDetector(block: suspend (BubbleDetector) -> T): T {
+        val selectedDetector = detectorMutex.withLock {
+            if (useDetector1) {
+                useDetector1 = false
+                detector1
+            } else {
+                useDetector1 = true
+                detector2
+            }
+        }
+        return block(selectedDetector)
+    }
 
     suspend fun getPageBubbles(chapterId: Int, page: ReaderPage, confidence: Float = 0.10f): PageBubbles? = withContext(Dispatchers.IO) {
         val key = Pair(Pair(chapterId, page.index), confidence)
@@ -308,7 +327,7 @@ class BubbleRepository(
             }
 
             val bitmap = PageBitmapLoader.decodeForInference(context, page, targetSize = 1024) ?: return@withContext null
-            val result = detector.detect(bitmap, page.index, confidence)
+            val result = withDetector { det -> det.detect(bitmap, page.index, confidence) }
             cache.put(key, result)
             return@withContext result
         } catch (e: Exception) {

@@ -17,6 +17,7 @@ import com.zemmy.sigurvita.core.util.orderBubbles
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -124,6 +125,9 @@ class ReaderViewModel : ViewModel() {
 
     private var markedPageJob: Job? = null
     private var bubbleDetectionJobs = mutableMapOf<Int, Job>()
+    private var chapterPreloadJob: Job? = null
+    private var nextChapterPreloadJob: Job? = null
+    private var preloadedNextChapterId: Int = 0
     private var isBubbleNavActive: Boolean = false
     private var completedForwardBubblePageIndex: Int = -1
     private var completedBackwardBubblePageIndex: Int = -1
@@ -143,8 +147,12 @@ class ReaderViewModel : ViewModel() {
 
         bubbleDetectionJobs.values.forEach { it.cancel() }
         bubbleDetectionJobs.clear()
-        resetBubbleNavMode()
-        _uiState.value = _uiState.value.copy(bubblesByPage = emptyMap())
+        completedForwardBubblePageIndex = -1
+        completedBackwardBubblePageIndex = -1
+        _uiState.value = _uiState.value.copy(
+            bubblesByPage = emptyMap(),
+            magnifiedBubble = null
+        )
 
         markedPageJob?.cancel()
         markedPageJob = viewModelScope.launch {
@@ -314,8 +322,7 @@ class ReaderViewModel : ViewModel() {
                 promptPageNum = if (hasSavedProgress) savedPageNum else 0
             )
 
-            ensureBubbles(activeIndex)
-            ensureBubbles(activeIndex + 1)
+            startChapterPreload(activeIndex)
         }
     }
 
@@ -364,6 +371,151 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
+    private fun startChapterPreload(fromIndex: Int) {
+        chapterPreloadJob?.cancel()
+        chapterPreloadJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val state = _uiState.value
+            if (!state.settings.speechBubbleDetectionEnabled) return@launch
+            if (state.settings.readingMode == ReadingMode.WEBTOON) return@launch
+
+            val pages = state.pages
+            val chapterId = state.chapterId
+            if (pages.isEmpty() || chapterId <= 0) return@launch
+
+            // Phase 1: Parallel image download & decode across ALL remaining pages in chapter
+            launch {
+                val pagesToFetch = pages.subList(fromIndex, pages.size)
+                pagesToFetch.map { page ->
+                    async {
+                        try {
+                            com.zemmy.sigurvita.core.ml.PageBitmapLoader.decodeForInference(app, page)
+                        } catch (_: Exception) {}
+                    }
+                }.awaitAll()
+            }
+
+            // Phase 2: Parallel dual-worker TFLite detection queue for ALL remaining pages in chapter
+            val pageChannel = kotlinx.coroutines.channels.Channel<Int>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+            for (i in fromIndex until pages.size) {
+                if (!_uiState.value.bubblesByPage.containsKey(i)) {
+                    pageChannel.trySend(i)
+                }
+            }
+            pageChannel.close()
+
+            coroutineScope {
+                repeat(2) {
+                    launch {
+                        for (i in pageChannel) {
+                            if (!_uiState.value.settings.speechBubbleDetectionEnabled) break
+                            if (_uiState.value.chapterId != chapterId) break
+
+                            if (i >= pages.size - 10) {
+                                preloadNextChapterBubbles()
+                            }
+
+                            val job = bubbleDetectionJobs[i]
+                            if (job != null && job.isActive) {
+                                job.join()
+                            } else {
+                                ensureBubbles(i)
+                                bubbleDetectionJobs[i]?.join()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun preloadNextChapterBubbles() {
+        val state = _uiState.value
+        val currentChapterId = state.chapterId
+        if (currentChapterId <= 0) return
+        if (preloadedNextChapterId == currentChapterId) return
+        if (!state.settings.speechBubbleDetectionEnabled) return
+        if (state.settings.readingMode == ReadingMode.WEBTOON) return
+
+        preloadedNextChapterId = currentChapterId
+
+        nextChapterPreloadJob?.cancel()
+        nextChapterPreloadJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val effectiveReadingListId = if (state.readingListId > 0) {
+                state.readingListId
+            } else if (state.seriesId > 0) {
+                val savedContext = preferencesRepository.seriesReadContextsFlow.first()[state.seriesId]
+                if (savedContext?.originType == "READING_LIST" && savedContext.readingListId > 0) {
+                    savedContext.readingListId
+                } else 0
+            } else 0
+
+            var nextChapterId: Int = 0
+            var nextTotalPages: Int = 0
+
+            if (effectiveReadingListId > 0) {
+                val listRes = readingListRepository.getReadingListItems(effectiveReadingListId)
+                if (listRes.isSuccess) {
+                    val items = listRes.getOrNull() ?: emptyList()
+                    val currentIndex = items.indexOfFirst { it.chapterId == currentChapterId }
+                    if (currentIndex in 0 until items.size - 1) {
+                        val nextItem = items[currentIndex + 1]
+                        if (nextItem.chapterId != null && nextItem.chapterId > 0) {
+                            nextChapterId = nextItem.chapterId
+                            nextTotalPages = nextItem.pages
+                        }
+                    }
+                }
+            } else if (state.seriesId > 0) {
+                val volumesRes = seriesRepository.getSeriesVolumes(state.seriesId)
+                if (volumesRes.isSuccess) {
+                    val allChapters = volumesRes.getOrDefault(emptyList()).flatMap { it.chapters }
+                    val currentIndex = allChapters.indexOfFirst { it.id == currentChapterId }
+                    if (currentIndex in 0 until allChapters.size - 1) {
+                        val nextChapter = allChapters[currentIndex + 1]
+                        nextChapterId = nextChapter.id
+                        nextTotalPages = nextChapter.pages
+                    }
+                }
+            }
+
+            if (nextChapterId <= 0) return@launch
+
+            val nextPages = readerRepository.getPages(nextChapterId, nextTotalPages)
+            if (nextPages.isEmpty()) return@launch
+
+            val pagesToPreload = nextPages.take(6)
+            val isRtl = (state.settings.readingMode == ReadingMode.RTL)
+            val isPanelAware = state.settings.panelAwareOrderEnabled
+
+            for (page in pagesToPreload) {
+                if (!_uiState.value.settings.speechBubbleDetectionEnabled) break
+                try {
+                    val bitmap = com.zemmy.sigurvita.core.ml.PageBitmapLoader.decodeForInference(app, page)
+                    if (bitmap != null) {
+                        coroutineScope {
+                            val panelDeferred = if (isPanelAware) {
+                                async { app.panelRepository.getPanelMap(nextChapterId, page, bitmap) }
+                            } else null
+
+                            val bubbleDeferred = async {
+                                app.bubbleRepository.getPageBubbles(nextChapterId, page, state.settings.speechBubbleConfidence)
+                            }
+
+                            val pMap = panelDeferred?.await()
+                            val pBubbles = bubbleDeferred.await()
+
+                            if (pBubbles != null) {
+                                orderBubbles(pBubbles, pMap, isRtl, isPanelAware)
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Ignore background preload failures
+                }
+            }
+        }
+    }
+
     fun updateSpeechBubbleDetectionEnabled(enabled: Boolean) {
         resetBubbleNavMode()
         if (!enabled) {
@@ -378,8 +530,9 @@ class ReaderViewModel : ViewModel() {
             _uiState.value = _uiState.value.copy(
                 settings = _uiState.value.settings.copy(speechBubbleDetectionEnabled = true)
             )
-            ensureBubbles(_uiState.value.currentPageIndex)
-            ensureBubbles(_uiState.value.currentPageIndex + 1)
+            for (offset in 0..3) {
+                ensureBubbles(_uiState.value.currentPageIndex + offset)
+            }
         }
         viewModelScope.launch {
             preferencesRepository.updateSpeechBubbleDetectionEnabled(enabled)
@@ -408,8 +561,9 @@ class ReaderViewModel : ViewModel() {
             preferencesRepository.updateSpeechBubbleConfidence(confidence)
         }
         app.bubbleRepository.clearChapter(_uiState.value.chapterId)
-        ensureBubbles(_uiState.value.currentPageIndex)
-        ensureBubbles(_uiState.value.currentPageIndex + 1)
+        for (offset in 0..3) {
+            ensureBubbles(_uiState.value.currentPageIndex + offset)
+        }
     }
 
     private var screenWidthPx: Int = 1080
@@ -696,6 +850,13 @@ class ReaderViewModel : ViewModel() {
                 isRead = (index + 1 >= totalPages && totalPages > 0)
             )
 
+            if (index != completedForwardBubblePageIndex) {
+                completedForwardBubblePageIndex = -1
+            }
+            if (index != completedBackwardBubblePageIndex) {
+                completedBackwardBubblePageIndex = -1
+            }
+
             _uiState.value = _uiState.value.copy(
                 currentPageIndex = index,
                 currentChapter = updatedCh ?: currentCh
@@ -705,8 +866,13 @@ class ReaderViewModel : ViewModel() {
                 scheduleAutoHideControls()
             }
 
-            ensureBubbles(index)
-            ensureBubbles(index + 1)
+            // Cancel any stale detection jobs for pages behind current position
+            val keysToCancel = bubbleDetectionJobs.keys.filter { it < index }
+            keysToCancel.forEach { pageIdx ->
+                bubbleDetectionJobs.remove(pageIdx)?.cancel()
+            }
+
+            startChapterPreload(index)
             progressSaveFlow.tryEmit(
                 ProgressEvent(
                     seriesId = _uiState.value.seriesId,

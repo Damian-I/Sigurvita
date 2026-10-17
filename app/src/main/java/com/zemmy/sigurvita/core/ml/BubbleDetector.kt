@@ -70,7 +70,8 @@ class BubbleDetector(
             val modelBuffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
 
             val options = Interpreter.Options().apply {
-                setNumThreads(4)
+                val cores = Runtime.getRuntime().availableProcessors()
+                setNumThreads(minOf(cores, 4))
                 setUseXNNPACK(true)
             }
             val interp = Interpreter(modelBuffer, options)

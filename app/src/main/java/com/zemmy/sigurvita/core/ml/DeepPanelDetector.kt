@@ -56,7 +56,8 @@ class DeepPanelDetector(private val context: Context) {
             val modelBuffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
 
             val options = Interpreter.Options().apply {
-                setNumThreads(4)
+                val cores = Runtime.getRuntime().availableProcessors()
+                setNumThreads(minOf(cores, 4))
                 setUseXNNPACK(true)
             }
             interpreter = Interpreter(modelBuffer, options)
