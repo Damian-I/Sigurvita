@@ -22,6 +22,7 @@ import java.nio.channels.FileChannel
 import java.util.concurrent.Executors
 import kotlin.math.min
 import androidx.core.graphics.createBitmap
+import kotlin.math.max
 
 private const val TAG = "DeepPanelDetector"
 
@@ -254,14 +255,9 @@ class DeepPanelDetector(private val context: Context) {
                 }
             }
 
-            // Step 3b: Split merged grid panels along constant-color vertical and horizontal gutters
-            val (refinedLabels, totalPanelLabels) = splitMergedPanels(
-                modelInputImageSize,
-                modelInputImageSize,
-                rawMatrix,
-                pixels,
-                finalLabels,
-                currentNormLabel
+            // Step 3b: Split merged panels along full-resolution gutters
+            val (refinedLabels, totalPanelLabels) = splitByFullResGutters(
+                bitmap, letterbox, finalLabels, currentNormLabel
             )
 
             // Step 4: Compute bounds and build PanelInfo list
@@ -523,9 +519,139 @@ class DeepPanelDetector(private val context: Context) {
 
         return Pair(updatedLabels, newNormLabel)
     }
+    private fun splitByFullResGutters(
+        bitmap: Bitmap,
+        letterbox: LetterboxParams,
+        labels: ShortArray,
+        labelCount: Int
+    ): Pair<ShortArray, Int> {
+        val n = modelInputImageSize
+        val (gray, w, h) = toWorkingGray(bitmap)
+        val out = labels.clone()
+        var total = labelCount
 
+        for (l in 1..labelCount) {
+            var minX = n; var maxX = -1; var minY = n; var maxY = -1
+            for (j in 0 until n) for (i in 0 until n) {
+                if (labels[j * n + i].toInt() == l) {
+                    if (i < minX) minX = i
+                    if (i > maxX) maxX = i
+                    if (j < minY) minY = j
+                    if (j > maxY) maxY = j
+                }
+            }
+            if (maxX < 0) continue
+
+            val (nl, nt) = letterbox.letterboxToNorm(minX.toFloat(), minY.toFloat())
+            val (nr, nb) = letterbox.letterboxToNorm((maxX + 1).toFloat(), (maxY + 1).toFloat())
+            val rl = (nl * w).toInt().coerceIn(0, w - 1)
+            val rt = (nt * h).toInt().coerceIn(0, h - 1)
+            val rr = (nr * w).toInt().coerceIn(rl + 1, w)
+            val rb = (nb * h).toInt().coerceIn(rt + 1, h)
+
+            val cutter = GutterCutter(gray, w, h)
+            cutter.run(rl, rt, rr, rb, 0)
+            val leaves = cutter.leaves
+            if (leaves.size < 2) continue
+            Log.i(TAG, "Label $l split into ${leaves.size} panels by full-res gutters")
+
+            val leafLabel = IntArray(leaves.size) { if (it == 0) l else ++total }
+            for (j in minY..maxY) for (i in minX..maxX) {
+                if (labels[j * n + i].toInt() != l) continue
+                val (cx, cy) = letterbox.letterboxToNorm(i + 0.5f, j + 0.5f)
+                val px = (cx * w).toInt(); val py = (cy * h).toInt()
+                var assigned = 0   // 0 = gutter pixel, dropped
+                for (k in leaves.indices) {
+                    val r = leaves[k]
+                    if (px >= r[0] && px < r[2] && py >= r[1] && py < r[3]) { assigned = leafLabel[k]; break }
+                }
+                out[j * n + i] = assigned.toShort()
+            }
+        }
+        return Pair(out, total)
+    }
+
+    /** Repeated-halving downscale to ~WORK_WIDTH (avoids bilinear aliasing of thin gutters). */
+    private fun toWorkingGray(src: Bitmap): Triple<IntArray, Int, Int> {
+        var cur = src
+        while (cur.width / 2 >= WORK_WIDTH) {
+            val next = Bitmap.createScaledBitmap(cur, cur.width / 2, cur.height / 2, true)
+            if (cur !== src) cur.recycle()
+            cur = next
+        }
+        if (cur.width > WORK_WIDTH) {
+            val next = Bitmap.createScaledBitmap(cur, WORK_WIDTH, (cur.height * WORK_WIDTH.toFloat() / cur.width).toInt(), true)
+            if (cur !== src) cur.recycle()
+            cur = next
+        }
+        val w = cur.width; val h = cur.height
+        val px = IntArray(w * h)
+        cur.getPixels(px, 0, w, 0, 0, w, h)
+        if (cur !== src) cur.recycle()
+        val gray = IntArray(w * h) {
+            val p = px[it]
+            (0.299f * ((p shr 16) and 0xFF) + 0.587f * ((p shr 8) and 0xFF) + 0.114f * (p and 0xFF)).toInt()
+        }
+        return Triple(gray, w, h)
+    }
     fun close() {
         interpreter?.close()
         interpreter = null
+    }
+}
+
+private const val WORK_WIDTH = 720
+private const val GUTTER_MAX_STD = 8f      // row/col must be near-uniform
+private const val GUTTER_DARK_MAX = 30f    // ...and near-black
+private const val GUTTER_LIGHT_MIN = 225f  // ...or near-white
+private const val GUTTER_MIN_FRAC = 0.005f // min gutter thickness, fraction of the cut axis
+private const val PART_MIN_FRAC = 0.02f    // drop pieces thinner than this fraction of the page
+
+private class GutterCutter(private val g: IntArray, private val w: Int, private val h: Int) {
+    val leaves = mutableListOf<IntArray>()   // [left, top, right, bottom)
+
+    fun run(l: Int, t: Int, r: Int, b: Int, depth: Int) {
+        val parts = if (depth > 8) null else (cut(l, t, r, b, true) ?: cut(l, t, r, b, false))
+        if (parts == null) { leaves += intArrayOf(l, t, r, b); return }
+        for (p in parts) run(p[0], p[1], p[2], p[3], depth + 1)
+    }
+
+    private fun isGutter(i: Int, horizontal: Boolean, l: Int, t: Int, r: Int, b: Int): Boolean {
+        var sum = 0L; var sq = 0L; val n: Int
+        if (horizontal) { n = r - l; for (x in l until r) { val v = g[i * w + x]; sum += v; sq += v * v } }
+        else { n = b - t; for (y in t until b) { val v = g[y * w + i]; sum += v; sq += v * v } }
+        val mean = sum.toFloat() / n
+        val variance = sq.toFloat() / n - mean * mean
+        return variance < GUTTER_MAX_STD * GUTTER_MAX_STD && (mean < GUTTER_DARK_MAX || mean > GUTTER_LIGHT_MIN)
+    }
+
+    /** null = no gutter found on this axis. Leading/trailing gutter runs are trimmed as margins. */
+    private fun cut(l: Int, t: Int, r: Int, b: Int, horizontal: Boolean): List<IntArray>? {
+        val len = if (horizontal) b - t else r - l
+        val span = if (horizontal) r - l else b - t
+        if (len < 8 || span < 8) return null
+        val base = if (horizontal) t else l
+        val minGap = max(3, (len * GUTTER_MIN_FRAC).toInt())
+        val minPart = max(8, ((if (horizontal) h else w) * PART_MIN_FRAC).toInt())
+
+        val runs = ArrayList<IntArray>()
+        var s = -1
+        for (i in 0 until len) {
+            if (isGutter(base + i, horizontal, l, t, r, b)) { if (s < 0) s = i }
+            else if (s >= 0) { if (i - s >= minGap) runs += intArrayOf(s, i); s = -1 }
+        }
+        if (s >= 0 && len - s >= minGap) runs += intArrayOf(s, len)
+        if (runs.isEmpty()) return null
+
+        val parts = ArrayList<IntArray>()
+        var pos = 0
+        for (run in runs + intArrayOf(len, len)) {
+            if (run[0] - pos >= minPart) {
+                parts += if (horizontal) intArrayOf(l, t + pos, r, t + run[0])
+                else intArrayOf(l + pos, t, l + run[0], b)
+            }
+            pos = run[1]
+        }
+        return parts.ifEmpty { null }
     }
 }
