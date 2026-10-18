@@ -386,10 +386,16 @@ class ReaderViewModel : ViewModel() {
         val needPanels = isPanelAware && cachedPanels == null
         if (!needBubbles && !needPanels) return Pair(cachedBubbles, cachedPanels)
 
+        val t0 = android.os.SystemClock.elapsedRealtime()
         val bitmap = com.zemmy.sigurvita.core.ml.PageBitmapLoader.decodeForInference(app, page)
             ?: return Pair(cachedBubbles, cachedPanels)
+        android.util.Log.i(
+            "DetectTiming",
+            "decode page=${page.index} local=${page.isLocal} ${bitmap.width}x${bitmap.height} " +
+                    "${android.os.SystemClock.elapsedRealtime() - t0}ms"
+        )
 
-        return coroutineScope {
+        val result = coroutineScope {
             val panelDeferred = if (needPanels) {
                 async { detections.getPanelMap(chapterId, page, bitmap) }
             } else null
@@ -402,6 +408,11 @@ class ReaderViewModel : ViewModel() {
                 panelDeferred?.await() ?: cachedPanels
             )
         }
+        android.util.Log.i(
+            "DetectTiming",
+            "total page=${page.index} ${android.os.SystemClock.elapsedRealtime() - t0}ms"
+        )
+        return result
     }
 
     private fun startChapterPreload(fromIndex: Int) {
@@ -420,9 +431,7 @@ class ReaderViewModel : ViewModel() {
                 prefetchedChapterId = chapterId
             }
 
-            // Phase 1: warm the image disk cache for streamed pages only. Bounded concurrency,
-            // no memory-cache writes, tiny decode. Pages already prefetched are skipped, so
-            // restarting on page turns does not repeat work. Local pages need no prefetch.
+            // Phase 1: warm the image disk cache for streamed pages only
             launch {
                 val gate = Semaphore(PREFETCH_CONCURRENCY)
                 pages.subList(fromIndex, pages.size)
@@ -437,7 +446,19 @@ class ReaderViewModel : ViewModel() {
                     .awaitAll()
             }
 
-            // Phase 2: dual-worker detection queue from the current page onward (unchanged)
+            // Current page first: run it alone before queuing neighbours
+            if (!_uiState.value.bubblesByPage.containsKey(fromIndex)) {
+                val existing = bubbleDetectionJobs[fromIndex]
+                if (existing != null && existing.isActive) {
+                    existing.join()
+                } else {
+                    ensureBubbles(fromIndex)
+                    bubbleDetectionJobs[fromIndex]?.join()
+                }
+                if (_uiState.value.chapterId != chapterId) return@launch
+            }
+
+            // Phase 2: dual-worker detection queue from the current page onward
             val pageChannel = kotlinx.coroutines.channels.Channel<Int>(kotlinx.coroutines.channels.Channel.UNLIMITED)
             for (i in fromIndex until pages.size) {
                 if (!_uiState.value.bubblesByPage.containsKey(i)) {
@@ -909,7 +930,7 @@ class ReaderViewModel : ViewModel() {
             }
 
             // Cancel any stale detection jobs for pages behind current position
-            val keysToCancel = bubbleDetectionJobs.keys.filter { it < index }
+            val keysToCancel = bubbleDetectionJobs.keys.filter { it < index || it > index + 3 }
             keysToCancel.forEach { pageIdx ->
                 bubbleDetectionJobs.remove(pageIdx)?.cancel()
             }

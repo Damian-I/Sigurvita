@@ -11,6 +11,7 @@ import com.zemmy.sigurvita.core.util.PanelMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
+import android.os.SystemClock
 
 private const val TAG = "DetectionRepository"
 
@@ -56,7 +57,9 @@ class DetectionRepository(
 
     suspend fun getPageBubbles(chapterId: Int, page: ReaderPage, confidence: Float): PageBubbles? {
         peekBubbles(chapterId, page.index, confidence)?.let { return it }
+        val t0 = SystemClock.elapsedRealtime()
         val result = bubbleRepository.getPageBubbles(chapterId, page, confidence) ?: return null
+        Log.i(TAG, "TIMING bubbles page=${page.index} ${SystemClock.elapsedRealtime() - t0}ms")
         bubbleMem.put(Triple(chapterId, page.index, confKey(confidence)), result)
         withContext(Dispatchers.IO) {
             DetectionStore.saveBubbles(context, chapterId, page.index, confidence, result)
@@ -66,7 +69,9 @@ class DetectionRepository(
 
     suspend fun getPanelMap(chapterId: Int, page: ReaderPage, sharedBitmap: Bitmap? = null): PanelMap? {
         peekPanelMap(chapterId, page.index)?.let { return it }
+        val t0 = SystemClock.elapsedRealtime()
         val result = panelRepository.getPanelMap(chapterId, page, sharedBitmap) ?: return null
+        Log.i(TAG, "TIMING panels page=${page.index} ${SystemClock.elapsedRealtime() - t0}ms")
         panelMem.put(Pair(chapterId, page.index), result)
         withContext(Dispatchers.IO) {
             DetectionStore.savePanelMap(context, chapterId, page.index, result)
