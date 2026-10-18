@@ -28,6 +28,16 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.seconds
+import coil.imageLoader
+import coil.request.CachePolicy
+import coil.request.ImageRequest
+import coil.request.SuccessResult
+import com.zemmy.sigurvita.core.model.PageBubbles
+import com.zemmy.sigurvita.core.util.PanelMap
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+
+private const val PREFETCH_CONCURRENCY = 3
 
 data class ReaderUiState(
     val pages: List<ReaderPage> = emptyList(),
@@ -128,6 +138,8 @@ class ReaderViewModel : ViewModel() {
     private var chapterPreloadJob: Job? = null
     private var nextChapterPreloadJob: Job? = null
     private var preloadedNextChapterId: Int = 0
+    private var prefetchedChapterId: Int = 0
+    private val prefetchedPages: MutableSet<Int> = java.util.concurrent.ConcurrentHashMap.newKeySet()
     private var isBubbleNavActive: Boolean = false
     private var completedForwardBubblePageIndex: Int = -1
     private var completedBackwardBubblePageIndex: Int = -1
@@ -151,6 +163,7 @@ class ReaderViewModel : ViewModel() {
         completedBackwardBubblePageIndex = -1
         _uiState.value = _uiState.value.copy(
             bubblesByPage = emptyMap(),
+            panelMapsByPage = emptyMap(),
             magnifiedBubble = null
         )
 
@@ -335,28 +348,13 @@ class ReaderViewModel : ViewModel() {
 
         val page = state.pages[pageIdx]
         val chapterId = state.chapterId
+        val confidence = state.settings.speechBubbleConfidence
 
         bubbleDetectionJobs[pageIdx] = viewModelScope.launch {
             val isRtl = (_uiState.value.settings.readingMode == ReadingMode.RTL)
             val isPanelAware = _uiState.value.settings.panelAwareOrderEnabled
 
-            val bitmap = com.zemmy.sigurvita.core.ml.PageBitmapLoader.decodeForInference(app, page)
-
-            // Run panel and bubble detection concurrently — each uses its own single-thread dispatcher
-            val (panelMap, pageBubbles) = coroutineScope {
-                val panelDeferred = if (isPanelAware && bitmap != null) {
-                    async { app.panelRepository.getPanelMap(chapterId, page, bitmap) }
-                } else null
-
-                val bubbleDeferred = if (bitmap != null) {
-                    async { app.bubbleRepository.getPageBubbles(chapterId, page, state.settings.speechBubbleConfidence) }
-                } else null
-
-                Pair(
-                    panelDeferred?.await(),
-                    bubbleDeferred?.await()
-                )
-            }
+            val (pageBubbles, panelMap) = loadDetections(chapterId, page, confidence, isPanelAware)
 
             if (pageBubbles != null) {
                 val sortedBubbles = pageBubbles.copy(
@@ -371,6 +369,41 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Memory -> disk -> models. The page bitmap is only decoded if something is actually missing.
+     * Panel and bubble detection still run concurrently when both are missing.
+     */
+    private suspend fun loadDetections(
+        chapterId: Int,
+        page: ReaderPage,
+        confidence: Float,
+        isPanelAware: Boolean
+    ): Pair<PageBubbles?, PanelMap?> {
+        val detections = app.detectionRepository
+        val cachedBubbles = detections.peekBubbles(chapterId, page.index, confidence)
+        val cachedPanels = if (isPanelAware) detections.peekPanelMap(chapterId, page.index) else null
+        val needBubbles = cachedBubbles == null
+        val needPanels = isPanelAware && cachedPanels == null
+        if (!needBubbles && !needPanels) return Pair(cachedBubbles, cachedPanels)
+
+        val bitmap = com.zemmy.sigurvita.core.ml.PageBitmapLoader.decodeForInference(app, page)
+            ?: return Pair(cachedBubbles, cachedPanels)
+
+        return coroutineScope {
+            val panelDeferred = if (needPanels) {
+                async { detections.getPanelMap(chapterId, page, bitmap) }
+            } else null
+            val bubbleDeferred = if (needBubbles) {
+                async { detections.getPageBubbles(chapterId, page, confidence) }
+            } else null
+
+            Pair(
+                bubbleDeferred?.await() ?: cachedBubbles,
+                panelDeferred?.await() ?: cachedPanels
+            )
+        }
+    }
+
     private fun startChapterPreload(fromIndex: Int) {
         chapterPreloadJob?.cancel()
         chapterPreloadJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -382,19 +415,29 @@ class ReaderViewModel : ViewModel() {
             val chapterId = state.chapterId
             if (pages.isEmpty() || chapterId <= 0) return@launch
 
-            // Phase 1: Parallel image download & decode across ALL remaining pages in chapter
-            launch {
-                val pagesToFetch = pages.subList(fromIndex, pages.size)
-                pagesToFetch.map { page ->
-                    async {
-                        try {
-                            com.zemmy.sigurvita.core.ml.PageBitmapLoader.decodeForInference(app, page)
-                        } catch (_: Exception) {}
-                    }
-                }.awaitAll()
+            if (prefetchedChapterId != chapterId) {
+                prefetchedPages.clear()
+                prefetchedChapterId = chapterId
             }
 
-            // Phase 2: Parallel dual-worker TFLite detection queue for ALL remaining pages in chapter
+            // Phase 1: warm the image disk cache for streamed pages only. Bounded concurrency,
+            // no memory-cache writes, tiny decode. Pages already prefetched are skipped, so
+            // restarting on page turns does not repeat work. Local pages need no prefetch.
+            launch {
+                val gate = Semaphore(PREFETCH_CONCURRENCY)
+                pages.subList(fromIndex, pages.size)
+                    .filter { !it.isLocal && it.index !in prefetchedPages }
+                    .map { page ->
+                        async {
+                            gate.withPermit {
+                                if (prefetchPage(page)) prefetchedPages.add(page.index)
+                            }
+                        }
+                    }
+                    .awaitAll()
+            }
+
+            // Phase 2: dual-worker detection queue from the current page onward (unchanged)
             val pageChannel = kotlinx.coroutines.channels.Channel<Int>(kotlinx.coroutines.channels.Channel.UNLIMITED)
             for (i in fromIndex until pages.size) {
                 if (!_uiState.value.bubblesByPage.containsKey(i)) {
@@ -425,6 +468,21 @@ class ReaderViewModel : ViewModel() {
                     }
                 }
             }
+        }
+    }
+
+    private suspend fun prefetchPage(page: ReaderPage): Boolean {
+        return try {
+            val request = ImageRequest.Builder(app)
+                .data(page.imageUrl)
+                .size(64, 64)
+                .memoryCachePolicy(CachePolicy.DISABLED)
+                .build()
+            app.imageLoader.execute(request) is SuccessResult
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -484,31 +542,15 @@ class ReaderViewModel : ViewModel() {
             if (nextPages.isEmpty()) return@launch
 
             val pagesToPreload = nextPages.take(6)
-            val isRtl = (state.settings.readingMode == ReadingMode.RTL)
             val isPanelAware = state.settings.panelAwareOrderEnabled
+            val confidence = state.settings.speechBubbleConfidence
 
             for (page in pagesToPreload) {
                 if (!_uiState.value.settings.speechBubbleDetectionEnabled) break
                 try {
-                    val bitmap = com.zemmy.sigurvita.core.ml.PageBitmapLoader.decodeForInference(app, page)
-                    if (bitmap != null) {
-                        coroutineScope {
-                            val panelDeferred = if (isPanelAware) {
-                                async { app.panelRepository.getPanelMap(nextChapterId, page, bitmap) }
-                            } else null
-
-                            val bubbleDeferred = async {
-                                app.bubbleRepository.getPageBubbles(nextChapterId, page, state.settings.speechBubbleConfidence)
-                            }
-
-                            val pMap = panelDeferred?.await()
-                            val pBubbles = bubbleDeferred.await()
-
-                            if (pBubbles != null) {
-                                orderBubbles(pBubbles, pMap, isRtl, isPanelAware)
-                            }
-                        }
-                    }
+                    loadDetections(nextChapterId, page, confidence, isPanelAware)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     // Ignore background preload failures
                 }

@@ -18,6 +18,7 @@ import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import com.zemmy.sigurvita.core.data.repository.DetectionRepository
 
 class SigurvitaApp : Application(), ImageLoaderFactory {
 
@@ -67,6 +68,10 @@ class SigurvitaApp : Application(), ImageLoaderFactory {
 
     val panelRepository: com.zemmy.sigurvita.core.data.repository.PanelRepository by lazy {
         com.zemmy.sigurvita.core.data.repository.PanelRepository(this)
+    }
+
+    val detectionRepository: DetectionRepository by lazy {
+        DetectionRepository(this, bubbleRepository, panelRepository)
     }
 
     override fun onCreate() {

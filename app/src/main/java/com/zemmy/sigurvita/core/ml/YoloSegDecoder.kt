@@ -422,4 +422,3 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
         return if (unionArea > 0f) interArea / unionArea else 0f
     }
 }
-
