@@ -22,6 +22,7 @@ import java.nio.channels.FileChannel
 import java.util.concurrent.Executors
 import kotlin.math.min
 import androidx.core.graphics.createBitmap
+import kotlin.math.abs
 import kotlin.math.max
 
 private const val TAG = "DeepPanelDetector"
@@ -335,190 +336,6 @@ class DeepPanelDetector(private val context: Context) {
         }
     }
 
-    private fun isConstantVerticalGutter(
-        pixels: IntArray,
-        gridW: Int,
-        splitX: Int,
-        minGy: Int,
-        maxGy: Int
-    ): Boolean {
-        val h = maxGy - minGy + 1
-        if (h <= 0) return false
-
-        var darkCount = 0
-        var lightCount = 0
-
-        for (j in minGy..maxGy) {
-            val px = pixels[j * gridW + splitX]
-            val r = (px shr 16) and 0xFF
-            val g = (px shr 8) and 0xFF
-            val b = px and 0xFF
-            val brightness = (0.299f * r + 0.587f * g + 0.114f * b).toInt()
-
-            if (brightness < 60) darkCount++
-            else if (brightness > 195) lightCount++
-        }
-
-        val darkRatio = darkCount.toFloat() / h
-        val lightRatio = lightCount.toFloat() / h
-
-        return darkRatio >= 0.60f || lightRatio >= 0.60f
-    }
-
-    private fun isConstantHorizontalGutter(
-        pixels: IntArray,
-        gridW: Int,
-        splitY: Int,
-        minGx: Int,
-        maxGx: Int
-    ): Boolean {
-        val w = maxGx - minGx + 1
-        if (w <= 0) return false
-
-        var darkCount = 0
-        var lightCount = 0
-
-        for (i in minGx..maxGx) {
-            val px = pixels[splitY * gridW + i]
-            val r = (px shr 16) and 0xFF
-            val g = (px shr 8) and 0xFF
-            val b = px and 0xFF
-            val brightness = (0.299f * r + 0.587f * g + 0.114f * b).toInt()
-
-            if (brightness < 60) darkCount++
-            else if (brightness > 195) lightCount++
-        }
-
-        val darkRatio = darkCount.toFloat() / w
-        val lightRatio = lightCount.toFloat() / w
-
-        return darkRatio >= 0.60f || lightRatio >= 0.60f
-    }
-
-    private fun splitMergedPanels(
-        gridW: Int,
-        gridH: Int,
-        rawMatrix: IntArray,
-        pixels: IntArray,
-        finalLabels: ShortArray,
-        currentNormLabel: Int
-    ): Pair<ShortArray, Int> {
-        var newNormLabel = currentNormLabel
-        val updatedLabels = finalLabels.clone()
-
-        var passNum = 0
-        var splitAny = true
-
-        while (splitAny && passNum < 3) {
-            splitAny = false
-            passNum++
-
-            val labelCountThisPass = newNormLabel
-            for (l in 1..labelCountThisPass) {
-                var minGx = gridW
-                var maxGx = 0
-                var minGy = gridH
-                var maxGy = 0
-                var pixelCount = 0
-
-                for (j in 0 until gridH) {
-                    for (i in 0 until gridW) {
-                        if (updatedLabels[j * gridW + i].toInt() == l) {
-                            if (i < minGx) minGx = i
-                            if (i > maxGx) maxGx = i
-                            if (j < minGy) minGy = j
-                            if (j > maxGy) maxGy = j
-                            pixelCount++
-                        }
-                    }
-                }
-
-                if (pixelCount == 0) continue
-
-                val width = maxGx - minGx + 1
-                val height = maxGy - minGy + 1
-
-                // Check 1: Vertical Gutter Split (Left / Right merged panels)
-                val spansHorizontally = (minGx < (gridW * 0.45).toInt() && maxGx > (gridW * 0.55).toInt()) || width >= (gridW * 0.52).toInt()
-                if (spansHorizontally && width >= 25 && height >= 10 && (width.toFloat() / height) >= 1.20f) {
-                    val searchStart = minGx + (width * 0.35).toInt()
-                    val searchEnd = minGx + (width * 0.65).toInt()
-
-                    var minContentCount = Int.MAX_VALUE
-                    var bestSplitX = -1
-
-                    for (i in searchStart..searchEnd) {
-                        var contentCount = 0
-                        for (j in minGy..maxGy) {
-                            if (rawMatrix[j * gridW + i] != 0 && updatedLabels[j * gridW + i].toInt() == l) {
-                                contentCount++
-                            }
-                        }
-                        if (contentCount < minContentCount) {
-                            minContentCount = contentCount
-                            bestSplitX = i
-                        }
-                    }
-
-                    val isGutterLine = bestSplitX != -1 && isConstantVerticalGutter(pixels, gridW, bestSplitX, minGy, maxGy)
-                    val isDeepContentDip = bestSplitX != -1 && minContentCount <= (height * 0.15).toInt()
-
-                    if (bestSplitX != -1 && (isGutterLine || isDeepContentDip) && minContentCount <= (height * 0.50).toInt()) {
-                        val rightLabel = ++newNormLabel
-                        for (j in minGy..maxGy) {
-                            for (i in (bestSplitX + 1)..maxGx) {
-                                if (updatedLabels[j * gridW + i].toInt() == l) {
-                                    updatedLabels[j * gridW + i] = rightLabel.toShort()
-                                }
-                            }
-                        }
-                        splitAny = true
-                        continue
-                    }
-                }
-
-                // Check 2: Horizontal Gutter Split (Top / Bottom merged panels)
-                val spansVertically = (minGy < (gridH * 0.45).toInt() && maxGy > (gridH * 0.55).toInt()) || height >= (gridH * 0.52).toInt()
-                if (spansVertically && height >= 25 && width >= 10 && (height.toFloat() / width) >= 1.20f) {
-                    val searchStart = minGy + (height * 0.35).toInt()
-                    val searchEnd = minGy + (height * 0.65).toInt()
-
-                    var minContentCount = Int.MAX_VALUE
-                    var bestSplitY = -1
-
-                    for (j in searchStart..searchEnd) {
-                        var contentCount = 0
-                        for (i in minGx..maxGx) {
-                            if (rawMatrix[j * gridW + i] != 0 && updatedLabels[j * gridW + i].toInt() == l) {
-                                contentCount++
-                            }
-                        }
-                        if (contentCount < minContentCount) {
-                            minContentCount = contentCount
-                            bestSplitY = j
-                        }
-                    }
-
-                    val isGutterLine = bestSplitY != -1 && isConstantHorizontalGutter(pixels, gridW, bestSplitY, minGx, maxGx)
-                    val isDeepContentDip = bestSplitY != -1 && minContentCount <= (width * 0.15).toInt()
-
-                    if (bestSplitY != -1 && (isGutterLine || isDeepContentDip) && minContentCount <= (width * 0.50).toInt()) {
-                        val bottomLabel = ++newNormLabel
-                        for (j in (bestSplitY + 1)..maxGy) {
-                            for (i in minGx..maxGx) {
-                                if (updatedLabels[j * gridW + i].toInt() == l) {
-                                    updatedLabels[j * gridW + i] = bottomLabel.toShort()
-                                }
-                            }
-                        }
-                        splitAny = true
-                    }
-                }
-            }
-        }
-
-        return Pair(updatedLabels, newNormLabel)
-    }
     private fun splitByFullResGutters(
         bitmap: Bitmap,
         letterbox: LetterboxParams,
@@ -527,6 +344,8 @@ class DeepPanelDetector(private val context: Context) {
     ): Pair<ShortArray, Int> {
         val n = modelInputImageSize
         val (gray, w, h) = toWorkingGray(bitmap)
+        val bg = estimateMarginGray(gray, w, h)
+        Log.i(TAG, "page margin gray = $bg")
         val out = labels.clone()
         var total = labelCount
 
@@ -549,12 +368,15 @@ class DeepPanelDetector(private val context: Context) {
             val rr = (nr * w).toInt().coerceIn(rl + 1, w)
             val rb = (nb * h).toInt().coerceIn(rt + 1, h)
 
-            val cutter = GutterCutter(gray, w, h)
+            val cutter = GutterCutter(gray, w, h, bg)
             cutter.run(rl, rt, rr, rb, 0)
             val leaves = cutter.leaves
             if (leaves.size < 2) continue
             Log.i(TAG, "Label $l split into ${leaves.size} panels by full-res gutters")
-
+            if (!leaves.all { isPlausiblePanel(gray, w, h, bg, it) }) {
+                Log.i(TAG, "Label $l: gutter split rejected (implausible parts)")
+                continue
+            }
             val leafLabel = IntArray(leaves.size) { if (it == 0) l else ++total }
             for (j in minY..maxY) for (i in minX..maxX) {
                 if (labels[j * n + i].toInt() != l) continue
@@ -594,6 +416,33 @@ class DeepPanelDetector(private val context: Context) {
         }
         return Triple(gray, w, h)
     }
+
+
+    /** Median gray of the outer 1% frame = page margin / gutter color. */
+    private fun estimateMarginGray(g: IntArray, w: Int, h: Int): Int {
+        val m = max(2, (w * 0.01f).toInt())
+        val hist = IntArray(256)
+        var cnt = 0
+        for (y in 0 until h) for (x in 0 until w) {
+            if (x < m || x >= w - m || y < m || y >= h - m) { hist[g[y * w + x].coerceIn(0, 255)]++; cnt++ }
+        }
+        var acc = 0
+        for (v in 0..255) { acc += hist[v]; if (acc * 2 >= cnt) return v }
+        return 0
+    }
+
+    private fun isPlausiblePanel(g: IntArray, w: Int, h: Int, bg: Int, r: IntArray): Boolean {
+        val pw = r[2] - r[0]; val ph = r[3] - r[1]
+        if (pw < w * 0.05f || ph < h * 0.035f) return false
+        if (pw.toFloat() * ph < w.toFloat() * h * 0.012f) return false
+        var near = 0; var cnt = 0
+        for (y in r[1] until r[3] step 2) for (x in r[0] until r[2] step 2) {
+            cnt++
+            if (abs(g[y * w + x] - bg) <= GUTTER_TOL) near++
+        }
+        return cnt > 0 && near.toFloat() / cnt < 0.90f   // mostly margin color = not a panel
+    }
+
     fun close() {
         interpreter?.close()
         interpreter = null
@@ -601,13 +450,14 @@ class DeepPanelDetector(private val context: Context) {
 }
 
 private const val WORK_WIDTH = 720
-private const val GUTTER_MAX_STD = 8f      // row/col must be near-uniform
-private const val GUTTER_DARK_MAX = 30f    // ...and near-black
-private const val GUTTER_LIGHT_MIN = 225f  // ...or near-white
-private const val GUTTER_MIN_FRAC = 0.005f // min gutter thickness, fraction of the cut axis
-private const val PART_MIN_FRAC = 0.02f    // drop pieces thinner than this fraction of the page
+private const val GUTTER_TOL = 8            // |gray - pageMarginGray| must be <= this
+private const val GUTTER_FRAC = 0.97f       // share of a row/col that must match the margin color
+private const val GUTTER_MIN_FRAC = 0.005f  // min gutter thickness, fraction of the cut axis
+private const val PART_MIN_FRAC = 0.035f    // drop pieces thinner than this fraction of the page
 
-private class GutterCutter(private val g: IntArray, private val w: Int, private val h: Int) {
+private class GutterCutter(
+    private val g: IntArray, private val w: Int, private val h: Int, private val bg: Int
+) {
     val leaves = mutableListOf<IntArray>()   // [left, top, right, bottom)
 
     fun run(l: Int, t: Int, r: Int, b: Int, depth: Int) {
@@ -617,12 +467,11 @@ private class GutterCutter(private val g: IntArray, private val w: Int, private 
     }
 
     private fun isGutter(i: Int, horizontal: Boolean, l: Int, t: Int, r: Int, b: Int): Boolean {
-        var sum = 0L; var sq = 0L; val n: Int
-        if (horizontal) { n = r - l; for (x in l until r) { val v = g[i * w + x]; sum += v; sq += v * v } }
-        else { n = b - t; for (y in t until b) { val v = g[y * w + i]; sum += v; sq += v * v } }
-        val mean = sum.toFloat() / n
-        val variance = sq.toFloat() / n - mean * mean
-        return variance < GUTTER_MAX_STD * GUTTER_MAX_STD && (mean < GUTTER_DARK_MAX || mean > GUTTER_LIGHT_MIN)
+        var near = 0
+        val n: Int
+        if (horizontal) { n = r - l; for (x in l until r) if (abs(g[i * w + x] - bg) <= GUTTER_TOL) near++ }
+        else { n = b - t; for (y in t until b) if (abs(g[y * w + i] - bg) <= GUTTER_TOL) near++ }
+        return near >= GUTTER_FRAC * n
     }
 
     /** null = no gutter found on this axis. Leading/trailing gutter runs are trimmed as margins. */
@@ -631,7 +480,7 @@ private class GutterCutter(private val g: IntArray, private val w: Int, private 
         val span = if (horizontal) r - l else b - t
         if (len < 8 || span < 8) return null
         val base = if (horizontal) t else l
-        val minGap = max(3, (len * GUTTER_MIN_FRAC).toInt())
+        val minGap = max(4, (len * GUTTER_MIN_FRAC).toInt())
         val minPart = max(8, ((if (horizontal) h else w) * PART_MIN_FRAC).toInt())
 
         val runs = ArrayList<IntArray>()
