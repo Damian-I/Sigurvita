@@ -88,7 +88,21 @@ class DownloadRepository(
         libraryName: String = "Downloads",
         seriesName: String = "",
         chapterNumber: String = ""
-    ) = withContext(Dispatchers.IO) {
+    ): Unit = withContext(Dispatchers.IO) {
+        // Don't reset a finished download: REPLACE would wipe its localPath and the reader would stream it
+        val existing = database.downloadDao().getDownloadByChapterId(chapterId)
+        if (existing != null && existing.status == DownloadStatus.COMPLETED) {
+            val path = existing.localPath
+            val stillValid = !path.isNullOrBlank() && File(path).let { f ->
+                (f.isFile && f.length() > 0L) ||
+                        (f.isDirectory && f.walkTopDown().any { it.isFile && it.length() > 0L })
+            }
+            if (stillValid) {
+                Log.i("DownloadRepository", "Chapter $chapterId already downloaded, skipping enqueue")
+                return@withContext
+            }
+        }
+
         val task = DownloadTaskEntity(
             chapterId = chapterId,
             seriesId = seriesId,

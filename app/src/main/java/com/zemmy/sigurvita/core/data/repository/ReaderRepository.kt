@@ -24,21 +24,31 @@ class ReaderRepository(
     private val preferencesRepository: UserPreferencesRepository,
     private val database: SigurvitaDatabase
 ) {
+    private fun fileHeaderHex(file: File): String = try {
+        file.inputStream().use { input ->
+            val b = ByteArray(8)
+            val n = input.read(b)
+            if (n <= 0) "empty" else b.take(n).joinToString(" ") { "%02X".format(it) }
+        }
+    } catch (_: Exception) { "unreadable" }
+
     suspend fun getPages(chapterId: Int, totalPages: Int): List<ReaderPage> = withContext(Dispatchers.IO) {
         val config = preferencesRepository.serverConfigFlow.first()
         val downloadTask = database.downloadDao().getDownloadByChapterId(chapterId)
         val localPath = downloadTask?.localPath
+        Log.i("ReaderRepository", "getPages chapter=$chapterId taskFound=${downloadTask != null} status=${downloadTask?.status} localPath=$localPath")
 
         fun isSupportedImage(filename: String): Boolean {
             val lower = filename.lowercase()
             return lower.endsWith(".jpg") || lower.endsWith(".jpeg") ||
-                   lower.endsWith(".png") || lower.endsWith(".webp") ||
-                   lower.endsWith(".gif") || lower.endsWith(".bmp")
+                    lower.endsWith(".png") || lower.endsWith(".webp") ||
+                    lower.endsWith(".gif") || lower.endsWith(".bmp")
         }
 
         // Case 1: Downloaded Archive File (.cbz, .zip, etc.)
         if (localPath != null) {
             val archiveFile = File(localPath)
+            Log.i("ReaderRepository", "local file exists=${archiveFile.exists()} isFile=${archiveFile.isFile} size=${archiveFile.length()} header=${fileHeaderHex(archiveFile)}")
             if (archiveFile.exists() && archiveFile.isFile && archiveFile.length() > 0L) {
                 try {
                     val cacheDir = File(context.cacheDir, "cbz_extracted/$chapterId").apply { mkdirs() }
@@ -48,13 +58,14 @@ class ReaderRepository(
                         val entries = zip.entries().asSequence()
                             .filter { entry ->
                                 !entry.isDirectory &&
-                                !File(entry.name).name.startsWith(".") &&
-                                isSupportedImage(entry.name)
+                                        !File(entry.name).name.startsWith(".") &&
+                                        isSupportedImage(entry.name)
                             }
                             .sortedWith { e1, e2 ->
                                 naturalCompare(File(e1.name).name, File(e2.name).name)
                             }
                             .toList()
+                        Log.i("ReaderRepository", "archive entries total=${zip.size()} images=${entries.size}")
 
                         entries.forEachIndexed { idx, entry ->
                             val pageFile = File(cacheDir, "page_$idx.webp")
@@ -82,7 +93,7 @@ class ReaderRepository(
                         return@withContext extractedFiles
                     }
                 } catch (e: Exception) {
-                    Log.w("ReaderRepository", "Failed to extract archive at $localPath: ${e.message}")
+                    Log.w("ReaderRepository", "Failed to extract archive at $localPath", e)
                 }
             }
         }
@@ -94,8 +105,8 @@ class ReaderRepository(
                 val imageFiles = localFolder.walkTopDown()
                     .filter { file ->
                         file.isFile &&
-                        !file.name.startsWith(".") &&
-                        isSupportedImage(file.name)
+                                !file.name.startsWith(".") &&
+                                isSupportedImage(file.name)
                     }
                     .sortedWith { f1, f2 -> naturalCompare(f1.name, f2.name) }
                     .toList()
@@ -112,6 +123,8 @@ class ReaderRepository(
                 }
             }
         }
+
+        Log.w("ReaderRepository", "chapter=$chapterId has no usable local copy, streaming")
 
         // Case 3: Online Streaming Fallback
         var pageCount = totalPages
