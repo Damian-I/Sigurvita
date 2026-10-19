@@ -23,7 +23,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 
 enum class ReviewTagFilter(val displayName: String) {
@@ -273,7 +272,7 @@ class MarkedPagesViewModel : ViewModel() {
         val pageBubbles = _uiState.value.testedPageBubbles ?: return
         val bubble = pageBubbles.bubbles.find { it.id == bubbleId } ?: return
         val dummyPage = ReaderPage(
-            index = 0,
+            index = page.pageIndex,
             pageNumber = page.pageIndex + 1,
             imageUrl = page.imageUrl
         )
@@ -328,7 +327,7 @@ class MarkedPagesViewModel : ViewModel() {
             _uiState.value = _uiState.value.copy(isTestingMl = true)
             try {
                 val dummyPage = ReaderPage(
-                    index = 0,
+                    index = page.pageIndex,
                     pageNumber = page.pageIndex + 1,
                     imageUrl = page.imageUrl
                 )
