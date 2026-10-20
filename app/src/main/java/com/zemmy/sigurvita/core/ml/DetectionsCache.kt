@@ -9,14 +9,6 @@ import com.zemmy.sigurvita.core.model.PageBubbles
 import com.zemmy.sigurvita.core.util.PanelInfo
 import com.zemmy.sigurvita.core.util.PanelMap
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import java.io.File
-
-private val jsonFormat = Json {
-    ignoreUnknownKeys = true
-    encodeDefaults = true
-    coerceInputValues = true
-}
 
 const val CURRENT_DETECTION_VERSION = "yolov8m_seg_1024_tails_v2"
 
@@ -77,24 +69,6 @@ data class DetectedBubbleData(
 )
 
 object DetectionsCacheHelper {
-
-    fun saveCache(cacheFile: File, cache: PageDetectionsCache) {
-        try {
-            val jsonStr = jsonFormat.encodeToString(PageDetectionsCache.serializer(), cache)
-            cacheFile.writeText(jsonStr)
-        } catch (_: Exception) {}
-    }
-
-    fun loadCache(cacheFile: File): PageDetectionsCache? {
-        if (!cacheFile.exists()) return null
-        return try {
-            val jsonStr = cacheFile.readText()
-            jsonFormat.decodeFromString(PageDetectionsCache.serializer(), jsonStr)
-        } catch (_: Exception) {
-            null
-        }
-    }
-
     fun toPageBubbles(data: PageDetectionData, pageIndex: Int): PageBubbles {
         val lb = LetterboxParams(
             inputSize = data.letterbox.inputSize,
