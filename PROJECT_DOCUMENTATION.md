@@ -53,9 +53,11 @@ When developing new screens, components, or settings dialogues in Sigurvita, adh
 
 ### 3.2 Networking (`core.data.api`)
 
-- `NetworkClient` builds one shared `OkHttpClient` (connect timeout 15 s, read timeout 30 s, `AuthInterceptor`, `HttpLoggingInterceptor` at `BASIC`) and one `KavitaApi`. JSON config: `ignoreUnknownKeys`, `coerceInputValues`, `isLenient`.
+- `NetworkClient` builds one shared `OkHttpClient` (connect timeout 15 s, read timeout 30 s, `AuthInterceptor`, `TokenAuthenticator`, `HttpLoggingInterceptor` at `BASIC`) and one `KavitaApi`. JSON config: `ignoreUnknownKeys`, `coerceInputValues`, `isLenient`.
 - **Dynamic base URL**: Retrofit is built with the placeholder base URL `http://localhost/`. `AuthInterceptor` reads `UserPreferencesRepository.currentServerConfig` (a volatile, always-current copy of the stored config) and rewrites each request's **scheme, host and port** to the configured server. The same trick is used by `DownloadWorker`, which builds `http://localhost/...` requests by hand.
 - **Auth header**: `Authorization: Bearer <jwtToken>` if a JWT is stored, otherwise `Bearer <apiKey>`.
+- **Automatic token renewal (`TokenAuthenticator`)**: runs only when the server answers HTTP 401. It calls `POST /api/Plugin/authenticate` with the stored API key through a separate plain `OkHttpClient` (no interceptors, so it cannot loop), saves the new JWT, and retries the original request once. Requests to `/api/Plugin/authenticate` itself are never renewed. Concurrent 401s are serialized under a lock, and a request that waited reuses a token another request just obtained. A 4xx from the renewal call means the session is rejected: `SessionEvents.markExpired()` is called and renewal is not retried for 30 s. A network error or 5xx is **not** treated as an expired session.
+- **Log masking**: the HTTP log lines go to Logcat under tag `okhttp.OkHttpClient` with every `apiKey=...` query value replaced by `apiKey=***`. Logging is still enabled in release builds.
 - **Images are authenticated differently**: Coil uses its own HTTP stack (no `AuthInterceptor`), so every image URL the app builds carries `apiKey=` as a query parameter (cover URLs and `/api/Reader/image` page URLs). All cover and reader image URLs are constructed centrally using `KavitaUrlBuilder.kt` extension methods (`getSeriesCoverUrl`, `getChapterCoverUrl`, `getPersonCoverUrl`, `getReaderImageUrl`, `resolvePageImageUri`).
 
 ### 3.3 Authentication flow
@@ -64,7 +66,8 @@ When developing new screens, components, or settings dialogues in Sigurvita, adh
 2. `AuthRepository.testConnectionAndSave` trims/saves the config, then calls `POST /api/Plugin/authenticate` (`pluginName = "Sigurvita"`). If a token is returned it is stored as `jwtToken`. Otherwise, it falls back to `GET /api/Account` and stores `userId`.
 3. `ServerConfig.isLoggedIn` is `serverUrl` non-blank **and** (`apiKey` or `jwtToken` non-blank).
 4. `MainActivity` collects `serverConfigFlow`; while it is still `null` it shows `LoadingState`, then starts at `Screen.Home` if logged in, else `Screen.Auth`.
-5. Logout (Settings) calls `clearServerConfig()` (removes URL, API key, JWT, user ID only) and navigates to `Auth` with `popUpTo(0)`. It does not clear the Room database, downloaded files, the detection store, or other preferences.
+5. **Session trust and expiry**: the app trusts the stored session at startup and does not block on a login call. If the server later rejects it and `TokenAuthenticator` cannot renew it, `SessionEvents.sessionExpired` becomes true and `MainActivity` shows a "Session expired" dialog (not on the Auth screen) with **Sign in** (navigates to `Auth`, clearing the back stack) and **Not now** (dismisses; cached content stays visible). `AuthRepository` clears the flag after a successful sign-in.
+6. Logout (Settings) calls `clearServerConfig()` (removes URL, API key, JWT, user ID only) and navigates to `Auth` with `popUpTo(0)`. It does not clear the Room database, downloaded files, the detection store, or other preferences.
 
 ### 3.4 Persistence
 
@@ -93,17 +96,21 @@ When developing new screens, components, or settings dialogues in Sigurvita, adh
 | :--- | :--- | :--- | :--- |
 | `download_tasks` | DownloadRepository and DownloadWorker | DownloadRepository and ReaderRepository | Active source of truth for download state and local path. |
 | `marked_pages` | MarkedPageRepository | Reader and Page Review screen | Active, stores review tag and local preview path. |
-| `cached_series` | LibraryRepository | ReadingListRepository | Small write-through cache for series lookup. |
+| `cached_series` | LibraryRepository | LibraryRepository, ReadingListRepository | Small write-through cache for series lookup and issue counts. Only rows that changed are rewritten, and only the needed IDs are read (`getSeriesByIds`). |
 | `cached_reading_lists` | ReadingListRepository | None | Written but never read. |
 | `cached_chapters` | None | None | Unused lookup table. |
 
 Consequence: Sigurvita is **network-first**. Browsing screens always call the Kavita API; Room is not an offline-first source of truth. Offline *reading* works only for downloaded chapters, via `download_tasks.localPath`. Room migrations include `MIGRATION_3_4`, `MIGRATION_4_5`, and `MIGRATION_5_6`.
 
-**Detection store** (plain files, not Room; `DetectionStore` in `core.ml`): `noBackupFilesDir/detections/<chapterId>/` holds one gzip JSON file per page and kind: `p<page>_b<confidence*1000>.json.gz` (bubbles, one file per exact confidence value) and `p<page>_panel.json.gz` (panel map). It is keyed only by chapter ID and page index, so it works for streamed, CBZ and image-folder chapters. Total size is capped at 300 MB (checked every 40 writes; least recently used chapter folders are evicted first, never the chapter being written). Writes are atomic (temp file, then rename); unreadable files are deleted and treated as a miss. Entries carry a version string and are deleted on read when it no longer matches `CURRENT_DETECTION_VERSION` (bubbles) or `DetectionStore.PANEL_DETECTION_VERSION` (panels). The store is not cleared on chapter deletion or logout, and is excluded from backups.
+**Detection store** (plain files, not Room; `DetectionStore` in `core.ml`): `noBackupFilesDir/detections/<chapterId>/` holds one gzip JSON file per page and kind: `p<page>_b<confidence*1000>.json.gz` (bubbles, one file per exact confidence value) and `p<page>_panel.json.gz` (panel map). It is keyed only by chapter ID and page index, so it works for streamed, CBZ and image-folder chapters. Total size is capped at 300 MB (checked every 40 writes; least recently used chapter folders are evicted first, never the chapter being written). Writes are atomic (temp file, then rename); unreadable files are deleted and treated as a miss. Entries carry a version string and are deleted on read when it no longer matches `CURRENT_DETECTION_VERSION` (bubbles) or `DetectionStore.PANEL_DETECTION_VERSION` (panels). A chapter's folder is deleted when its download is deleted (`DownloadRepository.deleteLocalChapter`, including auto-delete), when a download row is dropped by `validateExternalDeletions`, and for every completed download by "Clear completed". The store is **not** cleared on logout. It lives in `noBackupFilesDir`, so it is excluded from backups.
+
+**Snapshots** (plain JSON files, `core.data.cache.SnapshotStore`): `noBackupFilesDir/snapshots/` holds `home.json` (libraries, On Deck, Recently Updated, Newly Added), `all_series.json` (every series, used only for Home search) and `drawer.json` (drawer libraries and reading lists). They exist so the next launch can draw the last-seen content immediately while fresh data loads in the background. Each file carries an `accountKey` (first 16 hex characters of SHA-256 of server URL and API key); a snapshot for a different account is ignored. A late snapshot never overwrites live data (`liveHomeDataApplied`). Snapshots are not cleared on logout (`SnapshotStore.clearAll()` exists but nothing calls it).
+
+**Backups**: `data_extraction_rules.xml` (API 31+) and `backup_rules.xml` (API 30 and below) exclude `datastore/` and the whole `databases/` domain from both cloud backup and device transfer, so the API key, JWT and download records are not backed up. `allowBackup` is still `true`.
 
 ### 3.5 Repositories
 
-Repositories wrap `KavitaApi` calls in `withContext(Dispatchers.IO)` and return `Result<T>` for most calls. ViewModels never call `KavitaApi` directly, with two exceptions in `ReaderViewModel` (it resolves a chapter's series/volume IDs with `app.kavitaApi.getChapterById` when navigation arguments are missing).
+Repositories wrap `KavitaApi` calls in `withContext(Dispatchers.IO)` and return `Result<T>` for most calls. Catch blocks around suspend calls rethrow `CancellationException` so cancelled work stops. ViewModels never call `KavitaApi` directly, with two exceptions in `ReaderViewModel` (it resolves a chapter's series/volume IDs with `app.kavitaApi.getChapterById` when navigation arguments are missing).
 
 - **`AuthRepository`**: see 3.3.
 - **`LibraryRepository`**
@@ -111,22 +118,22 @@ Repositories wrap `KavitaApi` calls in `withContext(Dispatchers.IO)` and return 
   - `getOnDeckSeries()`: `POST /api/Series/on-deck` (page size 20); falls back to `series/v2` (first 20) when empty.
   - `getRecentlyUpdatedSeries()`: `POST /api/Series/recently-updated-series` (grouped DTOs); falls back to `series/v2`.
   - `getNewlyAddedSeries()`: `POST /api/Series/recently-added-v2` with `SortOptionsDto(sortField = 2, isAscending = false)`; falls back to `series/v2` with the same filter.
-  - `getSeriesForLibrary(libraryId)`: `series/v2` with page size **5000**. For `libraryId > 0` it sends a `FilterStatementDto(field = 19, comparison = 0, value = libraryId)`; if that fails/returns empty it fetches everything and filters client-side by `libraryId`. `libraryId == 0` means all libraries.
+  - `getSeriesForLibrary(libraryId)`: `series/v2` with page size **5000**. For `libraryId > 0` it sends a `FilterStatementDto(field = 19, comparison = 0, value = libraryId)`; if that fails/returns empty it fetches everything and filters client-side by `libraryId`. `libraryId == 0` means all libraries. Issue counts that are not cached are resolved with `getSeriesDetail` calls limited to **4 concurrent requests** (`detailLimiter`).
 - **`SeriesRepository`**: `getSeriesDetail` (combines `series/metadata` summary with `GET /api/Series/{id}`, falling back to `series-detail`, then to a placeholder `Series` so the screen still opens), `getSeriesVolumes` (maps volumes and chapters), and `markChapterRead/Unread` (`mark-multiple-read/unread` with `chapterIds`) and `markSeriesRead/Unread` (`mark-read/unread`). Chapter read state is computed as `pagesRead >= pages`. Chapter numbers go through `extractChapterNumber`, and the display title prefers `titleName`, then `title`, avoiding a title that merely repeats the number. All mark-read methods are no-ops in Incognito mode.
 - **`ReadingListRepository`**
-  - `getReadingLists()`: `POST /api/ReadingList/lists` (no request body; `includePromoted=true`, `sortByLastModified=true`, `PageNumber=1`, `PageSize=100`). Resolves item progress for each list in parallel (`async`/`awaitAll`) to compute `totalPages`, `pagesRead`, and `issuesRead`.
+  - `getReadingLists()`: `POST /api/ReadingList/lists` (no request body; `includePromoted=true`, `sortByLastModified=true`, `PageNumber=1`, `PageSize=100`). Resolves item progress for each list in parallel (`async`/`awaitAll`, at most **4 requests at a time** through `requestLimiter`) to compute `totalPages`, `pagesRead`, and `issuesRead`. `NavGraph` uses `pagesRead > 0` from this result to mark in-progress lists, so no extra request per list is made.
   - `getReadingListItems(id)`: loads items, then resolves each item in parallel (`async`/`awaitAll`): chapter metadata via `GET /api/Series/chapter`, formatted title, cover URL, series name, pages/pagesRead/isRead.
-  - `hasReadingListProgress(id)`: fetches the list's items and returns `true` if any `pagesRead > 0`.
+  - `hasReadingListProgress(id)`: fetches the list's items and returns `true` if any `pagesRead > 0`. Currently has no callers.
   - `getChapterReadingLists(seriesId)`: maps `chapterId` to the reading lists containing it.
 - **`ReaderRepository`**: see 3.6.
 - **`DownloadRepository`**: see 3.7.
-- **`BubbleRepository` & `PanelRepository`**: on-device AI inference, contour extraction and panel map decoding, each with an in-memory `LruCache` (100 entries). **`DetectionRepository`** sits in front of both and adds the disk layer (see 3.9); the reader calls it, not the two repositories directly. The old `detections.json` sidecar lookup inside the two repositories is dead code: nothing writes that file any more.
+- **`BubbleRepository` & `PanelRepository`**: on-device AI inference, contour extraction and panel map decoding, each with an in-memory `LruCache` (100 entries). **`DetectionRepository`** sits in front of both and adds the disk layer (see 3.9); the reader calls it, not the two repositories directly. The old `detections.json` sidecar lookup has been removed from both repositories.
 
 ### 3.6 `ReaderRepository` (pages & progress)
 
 `getPages(chapterId, totalPages)` returns a `List<ReaderPage>` (`index`, `pageNumber`, `imageUrl`, `isLocal`) using the first case that applies:
 
-1. **Downloaded archive**: if `download_tasks.localPath` points to an existing, non-empty file, it is opened as a ZIP (CBZ). Entries with supported image extensions (jpg, jpeg, png, webp, gif, bmp) are natural-sorted and **all** extracted (entries already extracted are skipped) to `cacheDir/cbz_extracted/<chapterId>/page_<idx>.webp`. `isLocal = true`, `imageUrl` = absolute file path.
+1. **Downloaded archive**: if `download_tasks.localPath` points to an existing, non-empty file, it is opened as a ZIP (CBZ). Entries with supported image extensions (jpg, jpeg, png, webp, gif, bmp) are natural-sorted and **all** extracted (entries already extracted are skipped) to `cacheDir/cbz_extracted/<chapterId>/page_<idx>.webp`. `isLocal = true`, `imageUrl` = absolute file path. `ReaderRepository.trimExtractedCache()` runs at every app start (`SigurvitaApp.onCreate`) and deletes **every** `cbz_extracted/<chapterId>` folder (its `keepChapterId` parameter defaults to none), so extraction is redone the next time a chapter is opened. There is no size cap while the app is running.
 2. **Downloaded image folder**: image files in that folder, natural-sorted. `isLocal = true`.
 3. **Streaming**: `imageUrl = <serverUrl>/api/Reader/image?chapterId=..&page=..&apiKey=..`, `isLocal = false`.
 
@@ -140,12 +147,15 @@ Additionally, supports **previous chapter navigation** and **open-at-last-page p
 
 - `enqueueDownload(...)`: first checks for an existing `COMPLETED` row whose `localPath` still points to a valid file (non-empty) or folder (containing a non-empty file); if so it logs and returns without doing anything, because the `REPLACE` insert would otherwise reset `localPath` and make the reader stream a chapter that is already on disk. Otherwise it inserts/replaces a `download_tasks` row (`QUEUED`) and enqueues unique work `download_<chapterId>`.
 - `pauseDownload`, `resumeDownload`, `cancelDownload`, `clearCompleted`, `deleteLocalChapter`.
+- `deleteLocalChapter(chapterId)` removes the downloaded file or folder, empty parent folders, `cache/cbz_extracted/<chapterId>`, the chapter's `DetectionStore` folder and the `download_tasks` row. It never touches the Kavita server.
+- `clearCompleted()` calls `deleteLocalChapter` for every `COMPLETED` task, so it deletes the files and all on-device data for those chapters, not just the rows. One failing chapter is logged and does not stop the rest. Marked pages, reading progress and settings are not touched.
 - `DownloadWorker`: validates server config, sets progress to `DOWNLOADING`, targets `<root>/<Library>/<Series>/`, downloads via native CBZ archive (`GET /api/Download/chapter`) or page-by-page fallback, and persists the local path. There is no post-download ML scan: detection results are cached lazily by the reader (3.9).
 
 ### 3.8 Concurrency & Search Conventions
 
-- ViewModels expose `StateFlow<UiState>` (mutated with `_uiState.value = _uiState.value.copy(...)`), launched from `viewModelScope`.
-- Independent network calls on a screen load are run concurrently with `async`/`await`.
+- ViewModels expose `StateFlow<UiState>` (mutated with `_uiState.update { it.copy(...) }` so concurrent writers cannot lose updates), launched from `viewModelScope`.
+- Independent network calls on a screen load are run concurrently with `async`/`await`; fan-out over many items is bounded by a `Semaphore` (4).
+- `LibraryViewModel` cancels the previous load when a new one starts. Flows derived from DataStore end with `distinctUntilChanged()`.
 - Repository methods switch to `Dispatchers.IO`. Room DAOs are non-suspending and must only be called from IO contexts.
 - Screens that show server data reload in a `Lifecycle.Event.ON_RESUME` observer in the background without setting `isLoading = true` when content is present.
 - **Search & Filtering**: All list filtering, regex string matching, era parsing, and `naturalCompare` sorting across ViewModels (`HomeViewModel`, `LibraryViewModel`, `ReadingListViewModel`, `SeriesDetailViewModel`, `MarkedPagesViewModel`) are computed on `Dispatchers.Default` using a 150ms debounced flow pipeline (`searchQueryFlow.debounce(150.milliseconds)`). Filtered lists are held in explicit data properties on `UiState` rather than computed getters (`get()`), preventing main-thread UI lag during typing.
@@ -160,10 +170,12 @@ Additionally, supports **previous chapter navigation** and **open-at-last-page p
 - **Reader scheduling (`ReaderViewModel`)**:
   - `ensureBubbles(page)` runs panel and bubble detection concurrently when both are missing, one job per page (deduplicated by `bubbleDetectionJobs`).
   - `startChapterPreload(fromIndex)` restarts on **every page turn** from the current page, so fast skimming (including speech-bubble navigation) always prioritises the page being read. If the current page has no result it is detected **alone first**; then a two-worker queue processes the remaining pages in order, skipping pages already done or in flight.
-  - On a page change, detection jobs behind the current page or more than 3 pages ahead are cancelled.
+  - `startChapterPreload` is **debounced by 200 ms** (`PRELOAD_DEBOUNCE_MS`) inside `onPageChanged`, so scrubbing the slider or flicking through pages starts detection only for the page where the reader stops. The delayed job re-checks that the chapter and page index are still current. Progress saving, page state and auto-delete are not delayed.
+  - On a page change, detection jobs behind the current page or more than 3 pages ahead are cancelled. A TFLite call already running cannot be interrupted, so its work is wasted (see section 10).
   - **Image prefetch** (Phase 1) runs only for streamed pages, once per page per chapter, 3 at a time, with no memory-cache writes and a tiny decode; its only purpose is to warm Coil's disk cache.
   - When within 10 pages of the chapter end, the first 6 pages of the next chapter are preloaded through the same cache layers, so they are persisted to disk as well.
   - `panelMapsByPage` and `bubblesByPage` are both cleared when a chapter loads.
+- **Inference memory**: `BubbleDetector` allocates its large output tensors once per instance and reuses them (it has its own single-thread executor, so reuse is safe). `close()` closes the dispatcher, which shuts the executor down.
 - **Timing logs**: tag `DetectTiming` (`decode` with bitmap size and `local=true/false`, and `total` per page, from `ReaderViewModel.loadDetections`) and tag `DetectionRepository` (`TIMING bubbles` / `TIMING panels` model time per cache miss, plus `bubbles disk hit` / `panels disk hit` debug lines).
 - **Overlay, Magnifier & Interaction**: `ImageReader` canvas overlays (`speechBubbleBoxesEnabled`, `panelDebugOverlayEnabled`), **S-Pen hover magnification** (magnifies on speech bubble hover; persists when unhovering; automatically switches to magnify a new bubble if hovered while another is active; and returns to normal only when pressing down on the screen with the stylus), long-press hit testing (`hitBubble`), `cropBubble` high-res cropping, and `BubbleMagnifierOverlay`.
 
@@ -255,7 +267,7 @@ Pinned header with summary, "Read more...", metadata bottom sheet, resume button
 
 ### 6.6 Reader (`ReaderScreen`)
 
-Horizontal pager (RTL/LTR) or vertical webtoon scrolling, pinch/double-tap zoom, edge-tap/volume-key navigation (performs standard page-by-page navigation by default; magnifying a speech bubble activates speech bubble navigation mode, carrying bubble step-through continuously across both page and chapter/issue transitions until finger/touch input is detected or the reader session is exited to another screen), background detection pre-loader (`startChapterPreload`: current page first, then the rest of the chapter, restarted from the current page on every page turn; image prefetch for streamed pages; upcoming chapter pre-detection), control overlay auto-dismiss, issue detail bottom sheet, swipeable multi-thumbnail timeline preview strip, timeline slider, bottom speech bubble indicator, previous chapter navigation, open-at-last-page support, and **S-Pen hover magnification**.
+Horizontal pager (RTL/LTR) or vertical webtoon scrolling, pinch zoom (zoom and pan state is read in the draw phase through a lambda `graphicsLayer`, so zooming does not recompose the page; in webtoon mode a one-finger drag scrolls the list at 1x, a two-finger pinch zooms, and once zoomed one finger pans), edge-tap/volume-key navigation (performs standard page-by-page navigation by default; magnifying a speech bubble activates speech bubble navigation mode, carrying bubble step-through continuously across both page and chapter/issue transitions until finger/touch input is detected or the reader session is exited to another screen), background detection pre-loader (`startChapterPreload`: current page first, then the rest of the chapter, restarted from the current page on every page turn; image prefetch for streamed pages; upcoming chapter pre-detection), control overlay auto-dismiss, issue detail bottom sheet, swipeable multi-thumbnail timeline preview strip, timeline slider, bottom speech bubble indicator, previous chapter navigation, open-at-last-page support, and **S-Pen hover magnification**.
 
 ### 6.7 Reading lists (`ReadingListScreen`)
 
@@ -263,7 +275,7 @@ Overview with search, era filter chips, sorting, bookmark pins, and **hierarchic
 
 ### 6.8 Downloads (`DownloadQueueScreen`)
 
-Expandable series group cards with summary metrics, individual chapter cards, pause/resume/retry/cancel/delete controls, and clear completed.
+Expandable series group cards with summary metrics, individual chapter cards, pause/resume/retry/cancel/delete controls, and clear completed (which deletes the downloaded files and related on-device data, see 3.7).
 
 ### 6.9 Page Review (`MarkedPagesScreen`)
 
@@ -291,7 +303,8 @@ app/src/main/java/com/zemmy/sigurvita/
 ├── SigurvitaApp.kt                  # Application: DB + DataStore init, lazy singletons, Coil
 ├── core/
 │   ├── data/
-│   │   ├── api/                     # AuthInterceptor, KavitaApi, NetworkClient, Dtos
+│   │   ├── api/                     # AuthInterceptor, TokenAuthenticator, SessionEvents, KavitaApi, NetworkClient, Dtos
+│   │   ├── cache/                   # SnapshotStore (last-seen Home/drawer/all-series JSON snapshots)
 │   │   ├── db/                      # Room database (version 6), Daos, Entities
 │   │   └── repository/              # Repositories (Auth, Library, ReadingList, Series, Reader, Download, Bubble, Panel, Detection, MarkedPage)
 │   ├── datastore/                   # UserPreferencesRepository
@@ -339,7 +352,7 @@ Sigurvita connects to a user's Kavita server (server URL + API key) and lets the
 5. **Reading-list item loading issues one chapter request per item** (parallelized).
 6. **Mass Download entry points.** Opened from reading-list detail and series detail.
 7. **Download-state UI differs by layout.** Comic list layout shows progress/cancel/retry/delete; others show simple download/check icon.
-8. **"Clear completed" removes database rows only.** Files stay on disk, and the chapter is then read as streamed because `ReaderRepository` finds no row for it.
+8. **"Clear completed" is destructive.** It deletes the downloaded files and related on-device data (3.7). There is no confirmation dialog and it cannot be undone.
 9. **Pause/resume restarts a download from the beginning.**
 10. **Reading mode is not persisted.** Reader uses library default plus session-only override.
 11. **Incognito optimistic UI.** Toggling read state updates screen immediately but skips server write.
@@ -352,7 +365,7 @@ Sigurvita connects to a user's Kavita server (server URL + API key) and lets the
 18. **Confidence slider re-runs detection on change.** Cached results exist only for confidence values already used on a page.
 19. **Model transpose check is anchor-agnostic.**
 20. **Magnifier single-pass cropping with S-Pen hover persistence.**
-21. **`BubbleDetector.close()` called on disposal.** `close()` does not shut down the detector's single-thread executor, so every detector instance created leaks one thread (only the app-level singletons exist today).
+21. **`BubbleDetector.close()` called on disposal.** It closes the coroutine dispatcher, which also shuts down its executor.
 22. **Model license.** GPL-3.0 on Hugging Face.
 23. **Detector config default overridden by user preference.**
 24. **ProGuard keep rules.** `app/proguard-rules.pro` exists.
@@ -361,7 +374,10 @@ Sigurvita connects to a user's Kavita server (server URL + API key) and lets the
 27. **Decoder has no fallbacks.**
 28. **Bubble detections are cached per exact confidence value.** They are not filtered at read time, because the decoder merges overlapping bubbles.
 29. **Cached panel maps can differ slightly from live ones** if the page was decoded at a different size (streamed pages come from Coil, local pages are sample-reduced).
-30. **Detection latency.** An uncached page takes about 4 s to detect (bubble model, steady state). The first uncached page after app start was measured at about 15 s, attributed to model cold start (not confirmed; no warm-up exists).
+30. **Detection latency.** Measured on a Galaxy S25 Ultra (Android 16) with two bubble detectors running in parallel: bubble inference is about 4.4-6.3 s per page (roughly 2.2 s per page overall), panel inference about 0.2 s. The first call after launch costs about 1.5 s extra (interpreter construction 0.06-0.24 s, slower first inference). An earlier measurement of about 15 s for the first page was not reproduced, so no warm-up exists.
 31. **A downloaded chapter silently streams when its local copy is unusable** (see 3.6 for the conditions and the `ReaderRepository` log lines).
-32. **Detection store is never cleared** on chapter deletion or logout; it is only evicted by the 300 MB cap or by a version change.
-33. **Legacy sidecar code.** `BubbleRepository` and `PanelRepository` still look for a `detections.json` next to the page file; nothing writes it, so it never matches.
+32. **Detection store is not cleared on logout.** It is cleared per chapter when a download is deleted; otherwise it is evicted only by the 300 MB cap or by a version change. Snapshots are likewise kept after logout (they are ignored for a different account).
+33. **Cancelled inference results are discarded (suspected, not fixed).** The logs showed some pages run through bubble inference twice and one page with no delivered result. `BubbleRepository.getPageBubbles` caches a result only after `detect` returns, and `DetectionRepository` saves it afterwards; if the job is cancelled while inference runs, the finished result is thrown away and the page is queued again. Wrapping that step in `NonCancellable` is the likely fix.
+34. **Reader detection is not stopped when leaving the reader.** `ReaderViewModel` is activity-scoped and no `onReaderClosed` exists, so preload jobs keep running after leaving the screen or backgrounding the app until the chapter finishes.
+35. **Release builds still log HTTP request lines** (with `apiKey` masked).
+36. **The 401 renewal path is untested here.** `TokenAuthenticator` follows the design in its comments, but the server's JWT lifetime was not checked.
