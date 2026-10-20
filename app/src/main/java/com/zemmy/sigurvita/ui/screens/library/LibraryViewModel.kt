@@ -7,6 +7,7 @@ import com.zemmy.sigurvita.core.model.Library
 import com.zemmy.sigurvita.core.model.Series
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -41,6 +42,8 @@ class LibraryViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
+    private var loadJob: Job? = null
+
     init {
         viewModelScope.launch(Dispatchers.Default) {
             searchQueryFlow
@@ -59,9 +62,9 @@ class LibraryViewModel : ViewModel() {
         }
         viewModelScope.launch {
             preferencesRepository.readerSettingsFlow.collect { settings ->
-                _uiState.value = _uiState.value.copy(
-                    isIncognitoMode = settings.isIncognitoMode
-                )
+                _uiState.update {
+                    it.copy(isIncognitoMode = settings.isIncognitoMode)
+                }
             }
         }
     }
@@ -69,11 +72,12 @@ class LibraryViewModel : ViewModel() {
     fun loadLibrary(libraryId: Int) {
         val isInitial = _uiState.value.series.isEmpty()
         if (isInitial) {
-            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null, selectedLibraryId = libraryId)
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, selectedLibraryId = libraryId) }
         } else {
-            _uiState.value = _uiState.value.copy(selectedLibraryId = libraryId, errorMessage = null)
+            _uiState.update { it.copy(selectedLibraryId = libraryId, errorMessage = null) }
         }
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             val librariesRes = async { libraryRepository.getLibraries() }
             val seriesRes = async { libraryRepository.getSeriesForLibrary(libraryId) }
 
@@ -91,14 +95,16 @@ class LibraryViewModel : ViewModel() {
                 }
             }
 
-            _uiState.value = _uiState.value.copy(
-                libraries = libraries,
-                selectedLibraryId = libraryId,
-                libraryName = libName,
-                series = series,
-                filteredSeries = filtered,
-                isLoading = false
-            )
+            _uiState.update {
+                it.copy(
+                    libraries = libraries,
+                    selectedLibraryId = libraryId,
+                    libraryName = libName,
+                    series = series,
+                    filteredSeries = filtered,
+                    isLoading = false
+                )
+            }
         }
     }
 
@@ -107,17 +113,19 @@ class LibraryViewModel : ViewModel() {
     }
 
     fun updateSearchQuery(query: String) {
-        _uiState.value = _uiState.value.copy(searchQuery = query)
+        _uiState.update { it.copy(searchQuery = query) }
         searchQueryFlow.value = query
     }
 
     fun toggleSearchActive() {
         val newSearchState = !_uiState.value.isSearchActive
         val activeQuery = if (!newSearchState) "" else _uiState.value.searchQuery
-        _uiState.value = _uiState.value.copy(
-            isSearchActive = newSearchState,
-            searchQuery = activeQuery
-        )
+        _uiState.update {
+            it.copy(
+                isSearchActive = newSearchState,
+                searchQuery = activeQuery
+            )
+        }
         searchQueryFlow.value = activeQuery
     }
 

@@ -16,6 +16,7 @@ import com.zemmy.sigurvita.core.model.Volume
 import com.zemmy.sigurvita.core.util.extractChapterNumber
 import com.zemmy.sigurvita.core.util.getChapterCoverUrl
 import com.zemmy.sigurvita.core.util.getSeriesCoverUrl
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -115,6 +116,8 @@ class SeriesRepository(
                     Result.failure(Exception("Series not found"))
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             val cached = database.seriesDao().getSeriesById(seriesId)
             if (cached != null) {
@@ -254,6 +257,8 @@ class SeriesRepository(
                     Result.failure(Exception("Failed to fetch volumes"))
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             val completedTasks = database.downloadDao().getCompletedDownloadsForSeries(seriesId)
             if (completedTasks.isNotEmpty()) {
@@ -272,6 +277,8 @@ class SeriesRepository(
             } else {
                 Result.failure(Exception("Failed to fetch series metadata"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -285,6 +292,8 @@ class SeriesRepository(
             val res = api.markMultipleRead(MarkVolumesReadDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
             if (res.isSuccessful) Result.success(true)
             else Result.failure(Exception("Failed to mark chapter read"))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -298,6 +307,8 @@ class SeriesRepository(
             val res = api.markMultipleUnread(MarkVolumesReadDto(seriesId = seriesId, chapterIds = listOf(chapterId)))
             if (res.isSuccessful) Result.success(true)
             else Result.failure(Exception("Failed to mark chapter unread"))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -311,6 +322,8 @@ class SeriesRepository(
             val res = api.markSeriesRead(MarkReadDto(seriesId = seriesId))
             if (res.isSuccessful) Result.success(true)
             else Result.failure(Exception("Failed to mark as read"))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -324,6 +337,8 @@ class SeriesRepository(
             val res = api.markSeriesUnread(MarkReadDto(seriesId = seriesId))
             if (res.isSuccessful) Result.success(true)
             else Result.failure(Exception("Failed to mark as unread"))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -337,6 +352,8 @@ class SeriesRepository(
             } else {
                 Result.failure(Exception("Failed to fetch chapter $chapterId"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }

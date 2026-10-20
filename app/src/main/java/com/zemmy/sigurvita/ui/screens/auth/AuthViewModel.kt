@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class AuthUiState(
@@ -29,20 +30,22 @@ class AuthViewModel : ViewModel() {
     init {
         viewModelScope.launch {
             val config = preferencesRepository.serverConfigFlow.first()
-            _uiState.value = AuthUiState(
-                serverUrl = config.serverUrl,
-                apiKey = config.apiKey,
-                isConnected = config.isLoggedIn
-            )
+            _uiState.update {
+                it.copy(
+                    serverUrl = config.serverUrl,
+                    apiKey = config.apiKey,
+                    isConnected = config.isLoggedIn
+                )
+            }
         }
     }
 
     fun onServerUrlChanged(url: String) {
-        _uiState.value = _uiState.value.copy(serverUrl = url, errorMessage = null)
+        _uiState.update { it.copy(serverUrl = url, errorMessage = null) }
     }
 
     fun onApiKeyChanged(key: String) {
-        _uiState.value = _uiState.value.copy(apiKey = key, errorMessage = null)
+        _uiState.update { it.copy(apiKey = key, errorMessage = null) }
     }
 
     fun connectServer() {
@@ -50,21 +53,23 @@ class AuthViewModel : ViewModel() {
         val key = _uiState.value.apiKey
 
         if (url.isBlank() || key.isBlank()) {
-            _uiState.value = _uiState.value.copy(errorMessage = "Server URL and API Key are required.")
+            _uiState.update { it.copy(errorMessage = "Server URL and API Key are required.") }
             return
         }
 
-        _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
 
         viewModelScope.launch {
             val result = authRepository.testConnectionAndSave(url, key)
             if (result.isSuccess) {
-                _uiState.value = _uiState.value.copy(isLoading = false, isConnected = true)
+                _uiState.update { it.copy(isLoading = false, isConnected = true) }
             } else {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = result.exceptionOrNull()?.message ?: "Failed to connect"
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = result.exceptionOrNull()?.message ?: "Failed to connect"
+                    )
+                }
             }
         }
     }

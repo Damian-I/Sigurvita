@@ -24,6 +24,7 @@ import kotlin.math.min
 import androidx.core.graphics.createBitmap
 import kotlin.math.abs
 import kotlin.math.max
+import androidx.core.graphics.scale
 
 private const val TAG = "DeepPanelDetector"
 
@@ -397,12 +398,12 @@ class DeepPanelDetector(private val context: Context) {
     private fun toWorkingGray(src: Bitmap): Triple<IntArray, Int, Int> {
         var cur = src
         while (cur.width / 2 >= WORK_WIDTH) {
-            val next = Bitmap.createScaledBitmap(cur, cur.width / 2, cur.height / 2, true)
+            val next = cur.scale(cur.width / 2, cur.height / 2)
             if (cur !== src) cur.recycle()
             cur = next
         }
         if (cur.width > WORK_WIDTH) {
-            val next = Bitmap.createScaledBitmap(cur, WORK_WIDTH, (cur.height * WORK_WIDTH.toFloat() / cur.width).toInt(), true)
+            val next = cur.scale(WORK_WIDTH, (cur.height * WORK_WIDTH.toFloat() / cur.width).toInt())
             if (cur !== src) cur.recycle()
             cur = next
         }
@@ -446,6 +447,7 @@ class DeepPanelDetector(private val context: Context) {
     fun close() {
         interpreter?.close()
         interpreter = null
+        singleThreadDispatcher.close()
     }
 }
 

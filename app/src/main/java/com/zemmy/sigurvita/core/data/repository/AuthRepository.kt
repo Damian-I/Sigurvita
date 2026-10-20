@@ -41,6 +41,8 @@ class AuthRepository(
                     Result.failure(Exception("Failed to authenticate with Kavita server (HTTP ${authRes.code()})"))
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }

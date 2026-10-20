@@ -10,10 +10,13 @@ import com.zemmy.sigurvita.core.model.ReadingListItem
 import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
 import com.zemmy.sigurvita.core.util.getChapterCoverUrl
 import com.zemmy.sigurvita.core.util.getSeriesCoverUrl
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 class ReadingListRepository(
@@ -21,6 +24,7 @@ class ReadingListRepository(
     private val database: SigurvitaDatabase,
     private val preferencesRepository: UserPreferencesRepository
 ) {
+    private val requestLimiter = Semaphore(4)
     suspend fun getReadingLists(): Result<List<ReadingList>> = withContext(Dispatchers.IO) {
         try {
             val config = preferencesRepository.serverConfigFlow.first()
@@ -40,7 +44,7 @@ class ReadingListRepository(
                     var issuesRead = 0
 
                     try {
-                        val itemsRes = api.getReadingListItems(dto.id)
+                        val itemsRes = requestLimiter.withPermit { api.getReadingListItems(dto.id) }
                         if (itemsRes.isSuccessful && !itemsRes.body().isNullOrEmpty()) {
                             val items = itemsRes.body()!!
                             for (item in items) {
@@ -53,6 +57,8 @@ class ReadingListRepository(
                                 }
                             }
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (_: Exception) {}
 
                     ReadingList(
@@ -71,6 +77,8 @@ class ReadingListRepository(
 
             val lists = listsDeferred.awaitAll()
             Result.success(lists)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -78,9 +86,11 @@ class ReadingListRepository(
 
     suspend fun hasReadingListProgress(readingListId: Int): Boolean = withContext(Dispatchers.IO) {
         try {
-            val res = api.getReadingListItems(readingListId)
+            val res = requestLimiter.withPermit { api.getReadingListItems(readingListId) }
             val dtoList = if (res.isSuccessful) res.body() else null
             return@withContext dtoList?.any { it.pagesRead > 0 } == true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             false
         }
@@ -191,6 +201,8 @@ class ReadingListRepository(
 
             val items = itemsDeferred.awaitAll()
             Result.success(items)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -231,6 +243,8 @@ class ReadingListRepository(
                     }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {}
         return@withContext map
     }

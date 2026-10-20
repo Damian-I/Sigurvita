@@ -74,6 +74,8 @@ class PanelRepository(
                 cache.put(key, result)
             }
             return@withContext result
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to detect panel map for chapter $chapterId page ${page.index}", e)
             return@withContext null

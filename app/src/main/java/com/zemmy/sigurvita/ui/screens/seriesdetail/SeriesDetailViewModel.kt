@@ -157,16 +157,16 @@ class SeriesDetailViewModel : ViewModel() {
         }
         viewModelScope.launch {
             downloadRepository.downloadsFlow.collect { tasks ->
-                _uiState.value = _uiState.value.copy(
-                    downloadTasks = tasks.associateBy { it.chapterId }
-                )
+                _uiState.update {
+                    it.copy(downloadTasks = tasks.associateBy { t -> t.chapterId })
+                }
             }
         }
         viewModelScope.launch {
             preferencesRepository.readerSettingsFlow.collect { settings ->
-                _uiState.value = _uiState.value.copy(
-                    isIncognitoMode = settings.isIncognitoMode
-                )
+                _uiState.update {
+                    it.copy(isIncognitoMode = settings.isIncognitoMode)
+                }
             }
         }
     }
@@ -252,7 +252,7 @@ class SeriesDetailViewModel : ViewModel() {
     fun loadSeriesDetail(seriesId: Int) {
         val isInitialLoad = _uiState.value.series == null
         if (isInitialLoad) {
-            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
         }
         viewModelScope.launch {
             val seriesDeferred = async { seriesRepository.getSeriesDetail(seriesId) }
@@ -311,59 +311,65 @@ class SeriesDetailViewModel : ViewModel() {
 
                 val isOfflineMode = libraryRes.isFailure || metadataRes.isFailure
 
-                _uiState.value = _uiState.value.copy(
-                    series = updatedSeries,
-                    volumes = volumes,
-                    metadata = metadata,
-                    libraryName = resolvedLibraryName,
-                    libraryId = resolvedLibraryId,
-                    isMangaLibrary = isManga,
-                    totalChapters = computedTotalChapters,
-                    chaptersRead = computedChaptersRead,
-                    totalPages = calculatedTotalPages,
-                    pagesRead = calculatedPagesRead,
-                    isOffline = isOfflineMode,
-                    isLoading = false
-                )
+                _uiState.update {
+                    it.copy(
+                        series = updatedSeries,
+                        volumes = volumes,
+                        metadata = metadata,
+                        libraryName = resolvedLibraryName,
+                        libraryId = resolvedLibraryId,
+                        isMangaLibrary = isManga,
+                        totalChapters = computedTotalChapters,
+                        chaptersRead = computedChaptersRead,
+                        totalPages = calculatedTotalPages,
+                        pagesRead = calculatedPagesRead,
+                        isOffline = isOfflineMode,
+                        isLoading = false
+                    )
+                }
                 filterData()
 
                 launch {
                     try {
                         val readingListsMap = readingListRepository.getChapterReadingLists(seriesId)
-                        _uiState.value = _uiState.value.copy(chapterReadingLists = readingListsMap)
+                        _uiState.update { it.copy(chapterReadingLists = readingListsMap) }
                     } catch (_: Exception) {}
                 }
             } else {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = "Failed to load series"
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = "Failed to load series"
+                    )
+                }
             }
         }
     }
 
     fun updateSearchQuery(query: String) {
-        _uiState.value = _uiState.value.copy(searchQuery = query)
+        _uiState.update { it.copy(searchQuery = query) }
         searchQueryFlow.value = query
     }
 
     fun selectViewFilter(filter: SeriesViewFilter) {
-        _uiState.value = _uiState.value.copy(viewFilter = filter)
+        _uiState.update { it.copy(viewFilter = filter) }
         filterData()
     }
 
     fun toggleSearchActive() {
         val newSearchState = !_uiState.value.isSearchActive
         val activeQuery = if (!newSearchState) "" else _uiState.value.searchQuery
-        _uiState.value = _uiState.value.copy(
-            isSearchActive = newSearchState,
-            searchQuery = activeQuery
-        )
+        _uiState.update {
+            it.copy(
+                isSearchActive = newSearchState,
+                searchQuery = activeQuery
+            )
+        }
         searchQueryFlow.value = activeQuery
     }
 
     fun toggleGridView() {
-        _uiState.value = _uiState.value.copy(isGridView = !_uiState.value.isGridView)
+        _uiState.update { it.copy(isGridView = !it.isGridView) }
     }
 
     fun downloadChapter(chapter: Chapter) {

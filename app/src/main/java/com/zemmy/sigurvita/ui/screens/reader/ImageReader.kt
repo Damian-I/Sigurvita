@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -204,6 +205,12 @@ private fun ZoomableImage(
     onTap: () -> Unit
 ) {
     val context = LocalContext.current
+    val latestOnBubbleHover by rememberUpdatedState(onBubbleHover)
+    val latestOnBubbleLongPress by rememberUpdatedState(onBubbleLongPress)
+    val latestOnNextPage by rememberUpdatedState(onNextPage)
+    val latestOnPreviousPage by rememberUpdatedState(onPreviousPage)
+    val latestOnTap by rememberUpdatedState(onTap)
+
     var scale by remember(page.pageNumber) { mutableFloatStateOf(1f) }
     var offsetX by remember(page.pageNumber) { mutableFloatStateOf(0f) }
     var offsetY by remember(page.pageNumber) { mutableFloatStateOf(0f) }
@@ -266,14 +273,14 @@ private fun ZoomableImage(
                             val hitBubbleId = if (normPoint != null) hitBubble(bubbles, normPoint) else null
                             if (hitBubbleId != null && hitBubbleId != magnifiedBubbleId && hitBubbleId != lastHoveredBubbleId) {
                                 lastHoveredBubbleId = hitBubbleId
-                                triggerMagnify(hitBubbleId, bubbles, contentScale, size, offsetX, offsetY, onBubbleHover)
+                                triggerMagnify(hitBubbleId, bubbles, contentScale, size, offsetX, offsetY, latestOnBubbleHover)
                             }
                         }
                     } else {
                         // Returns to normal ONLY when PRESSING on screen with the S-Pen (pointerChange.pressed == true), NOT when unhovering
                         if (magnifiedBubbleId != null && pointerChange.pressed) {
                             lastHoveredBubbleId = null
-                            onBubbleHover(null, null, null)
+                            latestOnBubbleHover(null, null, null)
                         }
                     }
                 }
@@ -296,24 +303,24 @@ private fun ZoomableImage(
                             when {
                                 offset.x < leftThreshold -> {
                                     if (readingMode == ReadingMode.RTL) {
-                                        onNextPage()
+                                        latestOnNextPage()
                                     } else {
-                                        onPreviousPage()
+                                        latestOnPreviousPage()
                                     }
                                 }
                                 offset.x > rightThreshold -> {
                                     if (readingMode == ReadingMode.RTL) {
-                                        onPreviousPage()
+                                        latestOnPreviousPage()
                                     } else {
-                                        onNextPage()
+                                        latestOnNextPage()
                                     }
                                 }
                                 else -> {
-                                    onTap()
+                                    latestOnTap()
                                 }
                             }
                         } else {
-                            onTap()
+                            latestOnTap()
                         }
                     },
                     onLongPress = { offset ->
@@ -351,7 +358,7 @@ private fun ZoomableImage(
                                         val bw = (hitBubble.box.right - hitBubble.box.left) * dispW
                                         val bh = (hitBubble.box.bottom - hitBubble.box.top) * dispH
 
-                                        onBubbleLongPress(hitId, Offset(centerX, centerY), Size(bw, bh))
+                                        latestOnBubbleLongPress(hitId, Offset(centerX, centerY), Size(bw, bh))
                                     }
                                 }
                             }

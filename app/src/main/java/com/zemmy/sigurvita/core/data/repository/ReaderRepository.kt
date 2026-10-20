@@ -32,6 +32,19 @@ class ReaderRepository(
         }
     } catch (_: Exception) { "unreadable" }
 
+    private fun extractedRoot(): File = File(context.cacheDir, "cbz_extracted")
+
+    suspend fun trimExtractedCache(keepChapterId: Int = -1) = withContext(Dispatchers.IO) {
+        val root = extractedRoot()
+        if (!root.exists() || !root.isDirectory) return@withContext
+        val children = root.listFiles() ?: return@withContext
+        for (child in children) {
+            if (child.isDirectory && child.name.toIntOrNull() != keepChapterId) {
+                child.deleteRecursively()
+            }
+        }
+    }
+
     suspend fun getPages(chapterId: Int, totalPages: Int): List<ReaderPage> = withContext(Dispatchers.IO) {
         val config = preferencesRepository.serverConfigFlow.first()
         val downloadTask = database.downloadDao().getDownloadByChapterId(chapterId)

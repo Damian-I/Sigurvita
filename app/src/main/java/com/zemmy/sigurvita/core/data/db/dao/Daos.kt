@@ -18,6 +18,9 @@ interface SeriesDao {
     @Query("SELECT * FROM cached_series WHERE id = :seriesId")
     fun getSeriesById(seriesId: Int): CachedSeriesEntity?
 
+    @Query("SELECT * FROM cached_series WHERE id IN (:ids)")
+    fun getSeriesByIds(ids: List<Int>): List<CachedSeriesEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertSeries(series: List<CachedSeriesEntity>)
 }

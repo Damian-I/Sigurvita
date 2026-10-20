@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.seconds
 import coil.imageLoader
@@ -161,16 +162,18 @@ class ReaderViewModel : ViewModel() {
         bubbleDetectionJobs.clear()
         completedForwardBubblePageIndex = -1
         completedBackwardBubblePageIndex = -1
-        _uiState.value = _uiState.value.copy(
-            bubblesByPage = emptyMap(),
-            panelMapsByPage = emptyMap(),
-            magnifiedBubble = null
-        )
+        _uiState.update {
+            it.copy(
+                bubblesByPage = emptyMap(),
+                panelMapsByPage = emptyMap(),
+                magnifiedBubble = null
+            )
+        }
 
         markedPageJob?.cancel()
         markedPageJob = viewModelScope.launch {
             app.markedPageRepository.getMarkedPageIndicesForChapter(chapterId).collect { indices ->
-                _uiState.value = _uiState.value.copy(markedPageIndices = indices.toSet())
+                _uiState.update { it.copy(markedPageIndices = indices.toSet()) }
             }
         }
 
@@ -291,23 +294,25 @@ class ReaderViewModel : ViewModel() {
                 }
             }
 
-            _uiState.value = _uiState.value.copy(
-                isLoading = true,
-                settings = effectiveSettings,
-                libraryDefaultMode = defaultMode,
-                chapterId = chapterId,
-                seriesId = targetSeriesId,
-                volumeId = targetVolumeId,
-                readingListId = readingListId,
-                showResumePrompt = false,
-                chapterTitle = fetchedChapterTitle,
-                seriesName = fetchedSeriesName,
-                libraryName = fetchedLibraryName,
-                currentChapter = finalChapter,
-                seriesCoverUrl = fetchedCoverUrl,
-                seriesMetadata = fetchedMetadata,
-                controlsVisible = true
-            )
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    settings = effectiveSettings,
+                    libraryDefaultMode = defaultMode,
+                    chapterId = chapterId,
+                    seriesId = targetSeriesId,
+                    volumeId = targetVolumeId,
+                    readingListId = readingListId,
+                    showResumePrompt = false,
+                    chapterTitle = fetchedChapterTitle,
+                    seriesName = fetchedSeriesName,
+                    libraryName = fetchedLibraryName,
+                    currentChapter = finalChapter,
+                    seriesCoverUrl = fetchedCoverUrl,
+                    seriesMetadata = fetchedMetadata,
+                    controlsVisible = true
+                )
+            }
             scheduleAutoHideControls()
 
             val pageList = readerRepository.getPages(chapterId, totalPages)
@@ -326,14 +331,16 @@ class ReaderViewModel : ViewModel() {
                 pagesRead = activeIndex + 1
             )
 
-            _uiState.value = _uiState.value.copy(
-                pages = pageList,
-                currentPageIndex = activeIndex,
-                currentChapter = updatedChapter,
-                isLoading = false,
-                showResumePrompt = hasSavedProgress,
-                promptPageNum = if (hasSavedProgress) savedPageNum else 0
-            )
+            _uiState.update {
+                it.copy(
+                    pages = pageList,
+                    currentPageIndex = activeIndex,
+                    currentChapter = updatedChapter,
+                    isLoading = false,
+                    showResumePrompt = hasSavedProgress,
+                    promptPageNum = if (hasSavedProgress) savedPageNum else 0
+                )
+            }
 
             startChapterPreload(activeIndex)
         }
@@ -360,10 +367,12 @@ class ReaderViewModel : ViewModel() {
                 val sortedBubbles = pageBubbles.copy(
                     bubbles = orderBubbles(pageBubbles, panelMap, isRtl, isPanelAware)
                 )
-                _uiState.value = _uiState.value.copy(
-                    bubblesByPage = _uiState.value.bubblesByPage + (pageIdx to sortedBubbles),
-                    panelMapsByPage = if (panelMap != null) _uiState.value.panelMapsByPage + (pageIdx to panelMap) else _uiState.value.panelMapsByPage
-                )
+                _uiState.update {
+                    it.copy(
+                        bubblesByPage = it.bubblesByPage + (pageIdx to sortedBubbles),
+                        panelMapsByPage = if (panelMap != null) it.panelMapsByPage + (pageIdx to panelMap) else it.panelMapsByPage
+                    )
+                }
             }
             bubbleDetectionJobs.remove(pageIdx)
         }
@@ -584,15 +593,19 @@ class ReaderViewModel : ViewModel() {
         if (!enabled) {
             bubbleDetectionJobs.values.forEach { it.cancel() }
             bubbleDetectionJobs.clear()
-            _uiState.value = _uiState.value.copy(
-                settings = _uiState.value.settings.copy(speechBubbleDetectionEnabled = false),
-                bubblesByPage = emptyMap(),
-                magnifiedBubble = null
-            )
+            _uiState.update {
+                it.copy(
+                    settings = it.settings.copy(speechBubbleDetectionEnabled = false),
+                    bubblesByPage = emptyMap(),
+                    magnifiedBubble = null
+                )
+            }
         } else {
-            _uiState.value = _uiState.value.copy(
-                settings = _uiState.value.settings.copy(speechBubbleDetectionEnabled = true)
-            )
+            _uiState.update {
+                it.copy(
+                    settings = it.settings.copy(speechBubbleDetectionEnabled = true)
+                )
+            }
             for (offset in 0..3) {
                 ensureBubbles(_uiState.value.currentPageIndex + offset)
             }
@@ -603,9 +616,11 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun updateSpeechBubbleBoxesEnabled(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(
-            settings = _uiState.value.settings.copy(speechBubbleBoxesEnabled = enabled)
-        )
+        _uiState.update {
+            it.copy(
+                settings = it.settings.copy(speechBubbleBoxesEnabled = enabled)
+            )
+        }
         viewModelScope.launch {
             preferencesRepository.updateSpeechBubbleBoxesEnabled(enabled)
         }
@@ -616,10 +631,12 @@ class ReaderViewModel : ViewModel() {
         bubbleDetectionJobs.values.forEach { it.cancel() }
         bubbleDetectionJobs.clear()
 
-        _uiState.value = _uiState.value.copy(
-            settings = _uiState.value.settings.copy(speechBubbleConfidence = confidence),
-            bubblesByPage = emptyMap()
-        )
+        _uiState.update {
+            it.copy(
+                settings = it.settings.copy(speechBubbleConfidence = confidence),
+                bubblesByPage = emptyMap()
+            )
+        }
         viewModelScope.launch {
             preferencesRepository.updateSpeechBubbleConfidence(confidence)
         }
@@ -706,17 +723,19 @@ class ReaderViewModel : ViewModel() {
                 val cropWOnScreen = (cropResult.cropRightNorm - cropResult.cropLeftNorm) * layout.dispW
                 val cropHOnScreen = (cropResult.cropBottomNorm - cropResult.cropTopNorm) * layout.dispH
 
-                _uiState.value = _uiState.value.copy(
-                    magnifiedBubble = com.zemmy.sigurvita.core.model.MagnifiedBubble(
-                        pageIndex = pageIndex,
-                        bubbleId = bubble.id,
-                        bitmap = cropResult.bitmap,
-                        anchorScreenPx = androidx.compose.ui.geometry.Offset(anchorX, anchorY),
-                        cropSizeOnScreen = androidx.compose.ui.geometry.Size(cropWOnScreen, cropHOnScreen),
-                        tipRelOffset = androidx.compose.ui.geometry.Offset(cropResult.relTipX, cropResult.relTipY),
-                        isLiteralBox = cropResult.isLiteralBox
+                _uiState.update {
+                    it.copy(
+                        magnifiedBubble = com.zemmy.sigurvita.core.model.MagnifiedBubble(
+                            pageIndex = pageIndex,
+                            bubbleId = bubble.id,
+                            bitmap = cropResult.bitmap,
+                            anchorScreenPx = androidx.compose.ui.geometry.Offset(anchorX, anchorY),
+                            cropSizeOnScreen = androidx.compose.ui.geometry.Size(cropWOnScreen, cropHOnScreen),
+                            tipRelOffset = androidx.compose.ui.geometry.Offset(cropResult.relTipX, cropResult.relTipY),
+                            isLiteralBox = cropResult.isLiteralBox
+                        )
                     )
-                )
+                }
             }
         }
     }
@@ -751,17 +770,19 @@ class ReaderViewModel : ViewModel() {
                 val cropWOnScreen = (cropResult.cropRightNorm - cropResult.cropLeftNorm) * layout.dispW
                 val cropHOnScreen = (cropResult.cropBottomNorm - cropResult.cropTopNorm) * layout.dispH
 
-                _uiState.value = _uiState.value.copy(
-                    magnifiedBubble = com.zemmy.sigurvita.core.model.MagnifiedBubble(
-                        pageIndex = pageIndex,
-                        bubbleId = bubbleId,
-                        bitmap = cropResult.bitmap,
-                        anchorScreenPx = androidx.compose.ui.geometry.Offset(anchorX, anchorY),
-                        cropSizeOnScreen = androidx.compose.ui.geometry.Size(cropWOnScreen, cropHOnScreen),
-                        tipRelOffset = androidx.compose.ui.geometry.Offset(cropResult.relTipX, cropResult.relTipY),
-                        isLiteralBox = cropResult.isLiteralBox
+                _uiState.update {
+                    it.copy(
+                        magnifiedBubble = com.zemmy.sigurvita.core.model.MagnifiedBubble(
+                            pageIndex = pageIndex,
+                            bubbleId = bubbleId,
+                            bitmap = cropResult.bitmap,
+                            anchorScreenPx = androidx.compose.ui.geometry.Offset(anchorX, anchorY),
+                            cropSizeOnScreen = androidx.compose.ui.geometry.Size(cropWOnScreen, cropHOnScreen),
+                            tipRelOffset = androidx.compose.ui.geometry.Offset(cropResult.relTipX, cropResult.relTipY),
+                            isLiteralBox = cropResult.isLiteralBox
+                        )
                     )
-                )
+                }
             }
         }
     }
@@ -771,7 +792,7 @@ class ReaderViewModel : ViewModel() {
         completedForwardBubblePageIndex = -1
         completedBackwardBubblePageIndex = -1
         if (_uiState.value.magnifiedBubble != null) {
-            _uiState.value = _uiState.value.copy(magnifiedBubble = null)
+            _uiState.update { it.copy(magnifiedBubble = null) }
         }
     }
 
@@ -823,7 +844,7 @@ class ReaderViewModel : ViewModel() {
     fun dismissResumePrompt(startFromBeginning: Boolean) {
         val state = _uiState.value
         val promptPage = state.promptPageNum
-        _uiState.value = state.copy(showResumePrompt = false)
+        _uiState.update { it.copy(showResumePrompt = false) }
         if (startFromBeginning) {
             onPageChanged(0)
         } else {
@@ -838,7 +859,7 @@ class ReaderViewModel : ViewModel() {
         autoHideControlsJob?.cancel()
         autoHideControlsJob = viewModelScope.launch {
             delay(5.seconds)
-            _uiState.value = _uiState.value.copy(controlsVisible = false)
+            _uiState.update { it.copy(controlsVisible = false) }
         }
     }
 
@@ -850,9 +871,9 @@ class ReaderViewModel : ViewModel() {
         val currentVisible = _uiState.value.controlsVisible
         if (currentVisible) {
             cancelAutoHideControls()
-            _uiState.value = _uiState.value.copy(controlsVisible = false)
+            _uiState.update { it.copy(controlsVisible = false) }
         } else {
-            _uiState.value = _uiState.value.copy(controlsVisible = true)
+            _uiState.update { it.copy(controlsVisible = true) }
             scheduleAutoHideControls()
         }
     }
@@ -863,7 +884,7 @@ class ReaderViewModel : ViewModel() {
             isRead = newReadState,
             pagesRead = if (newReadState) chapter.pages else chapter.pagesRead
         )
-        _uiState.value = _uiState.value.copy(currentChapter = updatedChapter)
+        _uiState.update { it.copy(currentChapter = updatedChapter) }
 
         viewModelScope.launch {
             if (newReadState) {
@@ -896,9 +917,11 @@ class ReaderViewModel : ViewModel() {
             downloadRepository.deleteLocalChapter(chapterId)
             val currentCh = _uiState.value.currentChapter
             if (currentCh != null && currentCh.id == chapterId) {
-                _uiState.value = _uiState.value.copy(
-                    currentChapter = currentCh.copy(isDownloaded = false, localPath = null)
-                )
+                _uiState.update {
+                    it.copy(
+                        currentChapter = currentCh.copy(isDownloaded = false, localPath = null)
+                    )
+                }
             }
         }
     }
@@ -920,10 +943,12 @@ class ReaderViewModel : ViewModel() {
                 completedBackwardBubblePageIndex = -1
             }
 
-            _uiState.value = _uiState.value.copy(
-                currentPageIndex = index,
-                currentChapter = updatedCh ?: currentCh
-            )
+            _uiState.update {
+                it.copy(
+                    currentPageIndex = index,
+                    currentChapter = updatedCh ?: currentCh
+                )
+            }
 
             if (_uiState.value.controlsVisible) {
                 scheduleAutoHideControls()
@@ -1125,15 +1150,17 @@ class ReaderViewModel : ViewModel() {
         val reSortedBubblesByPage = _uiState.value.bubblesByPage.mapValues { (_, pageBubbles) ->
             pageBubbles.copy(bubbles = orderBubbles(pageBubbles, null, isRtl))
         }
-        _uiState.value = _uiState.value.copy(
-            settings = currentSettings.copy(readingMode = mode),
-            bubblesByPage = reSortedBubblesByPage
-        )
+        _uiState.update {
+            it.copy(
+                settings = currentSettings.copy(readingMode = mode),
+                bubblesByPage = reSortedBubblesByPage
+            )
+        }
     }
 
     fun updateFitMode(mode: FitMode) {
         val currentSettings = _uiState.value.settings
-        _uiState.value = _uiState.value.copy(settings = currentSettings.copy(fitMode = mode))
+        _uiState.update { it.copy(settings = currentSettings.copy(fitMode = mode)) }
         viewModelScope.launch {
             preferencesRepository.updateFitMode(mode)
         }
@@ -1141,7 +1168,7 @@ class ReaderViewModel : ViewModel() {
 
     fun updateTouchEdgeNav(enabled: Boolean) {
         val currentSettings = _uiState.value.settings
-        _uiState.value = _uiState.value.copy(settings = currentSettings.copy(touchEdgeNavigationEnabled = enabled))
+        _uiState.update { it.copy(settings = currentSettings.copy(touchEdgeNavigationEnabled = enabled)) }
         viewModelScope.launch {
             preferencesRepository.updateTouchEdgeNavigation(enabled)
         }
@@ -1149,7 +1176,7 @@ class ReaderViewModel : ViewModel() {
 
     fun updateKeepScreenOn(keep: Boolean) {
         val currentSettings = _uiState.value.settings
-        _uiState.value = _uiState.value.copy(settings = currentSettings.copy(keepScreenOn = keep))
+        _uiState.update { it.copy(settings = currentSettings.copy(keepScreenOn = keep)) }
         viewModelScope.launch {
             preferencesRepository.updateKeepScreenOn(keep)
         }
@@ -1162,10 +1189,12 @@ class ReaderViewModel : ViewModel() {
             val pMap = _uiState.value.panelMapsByPage[pageIdx]
             pageBubbles.copy(bubbles = orderBubbles(pageBubbles, pMap, isRtl, enabled))
         }
-        _uiState.value = _uiState.value.copy(
-            settings = currentSettings.copy(panelAwareOrderEnabled = enabled),
-            bubblesByPage = reSortedBubblesByPage
-        )
+        _uiState.update {
+            it.copy(
+                settings = currentSettings.copy(panelAwareOrderEnabled = enabled),
+                bubblesByPage = reSortedBubblesByPage
+            )
+        }
         viewModelScope.launch {
             preferencesRepository.updatePanelAwareOrder(enabled)
         }
@@ -1173,9 +1202,11 @@ class ReaderViewModel : ViewModel() {
 
     fun updatePanelDebugOverlay(enabled: Boolean) {
         val currentSettings = _uiState.value.settings
-        _uiState.value = _uiState.value.copy(
-            settings = currentSettings.copy(panelDebugOverlayEnabled = enabled)
-        )
+        _uiState.update {
+            it.copy(
+                settings = currentSettings.copy(panelDebugOverlayEnabled = enabled)
+            )
+        }
         viewModelScope.launch {
             preferencesRepository.updatePanelDebugOverlay(enabled)
         }
@@ -1202,7 +1233,7 @@ class ReaderViewModel : ViewModel() {
                     return true
                 } else {
                     completedForwardBubblePageIndex = pageIdx
-                    _uiState.value = _uiState.value.copy(magnifiedBubble = null)
+                    _uiState.update { it.copy(magnifiedBubble = null) }
                     return true
                 }
             } else {
@@ -1212,7 +1243,7 @@ class ReaderViewModel : ViewModel() {
                     return true
                 } else {
                     completedBackwardBubblePageIndex = pageIdx
-                    _uiState.value = _uiState.value.copy(magnifiedBubble = null)
+                    _uiState.update { it.copy(magnifiedBubble = null) }
                     return true
                 }
             }

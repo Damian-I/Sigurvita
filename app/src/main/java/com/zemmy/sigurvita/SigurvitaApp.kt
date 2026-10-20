@@ -86,6 +86,7 @@ class SigurvitaApp : Application(), ImageLoaderFactory {
         userPreferencesRepository = UserPreferencesRepository(this)
         CoroutineScope(Dispatchers.IO).launch {
             downloadRepository.validateExternalDeletions()
+            readerRepository.trimExtractedCache()
         }
     }
 

@@ -33,6 +33,10 @@ class BubbleDetector(
 
     private val singleThreadDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
 
+    private var reuseFloatDet: Array<Array<FloatArray>>? = null
+    private var reuseDeqDet: Array<Array<FloatArray>>? = null
+    private var reuseDeqProto: Array<Array<Array<FloatArray>>>? = null
+
     private var interpreter: Interpreter? = null
     private var inputSize = 640
 
@@ -249,7 +253,8 @@ class BubbleDetector(
         var byteDetArray: Array<Array<ByteArray>>? = null
 
         if (detDataType == DataType.FLOAT32) {
-            floatDetArray = Array(1) { Array(detShape[1]) { FloatArray(detShape[2]) } }
+            floatDetArray = reuseFloatDet?.takeIf { it[0].size == detShape[1] && it[0][0].size == detShape[2] }
+                ?: Array(1) { Array(detShape[1]) { FloatArray(detShape[2]) } }.also { reuseFloatDet = it }
             outputs[detTensorIdx] = floatDetArray
         } else {
             byteDetArray = Array(1) { Array(detShape[1]) { ByteArray(detShape[2]) } }
@@ -275,7 +280,8 @@ class BubbleDetector(
         if (detArray == null && byteDetArray != null) {
             val d1 = detShape[1]
             val d2 = detShape[2]
-            detArray = Array(1) { Array(d1) { FloatArray(d2) } }
+            detArray = reuseDeqDet?.takeIf { it[0].size == d1 && it[0][0].size == d2 }
+                ?: Array(1) { Array(d1) { FloatArray(d2) } }.also { reuseDeqDet = it }
             val scale = if (detQuantScale > 0f) detQuantScale else 1f
             val zp = detQuantZeroPoint
             val isUnsigned = (detDataType == DataType.UINT8)
@@ -307,7 +313,8 @@ class BubbleDetector(
             val p1 = protoShape[1]
             val p2 = protoShape[2]
             val p3 = protoShape[3]
-            protoArray = Array(1) { Array(p1) { Array(p2) { FloatArray(p3) } } }
+            protoArray = reuseDeqProto?.takeIf { it[0].size == p1 && it[0][0].size == p2 && it[0][0][0].size == p3 }
+                ?: Array(1) { Array(p1) { Array(p2) { FloatArray(p3) } } }.also { reuseDeqProto = it }
             val scale = if (protoQuantScale > 0f) protoQuantScale else 1f
             val zp = protoQuantZeroPoint
             val isUnsigned = (protoDataType == DataType.UINT8)
@@ -344,6 +351,10 @@ class BubbleDetector(
     fun close() {
         interpreter?.close()
         interpreter = null
+        singleThreadDispatcher.close()
+        reuseFloatDet = null
+        reuseDeqDet = null
+        reuseDeqProto = null
     }
 }
 

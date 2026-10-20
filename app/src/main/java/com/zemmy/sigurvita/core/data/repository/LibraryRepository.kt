@@ -12,14 +12,14 @@ import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import com.zemmy.sigurvita.core.model.Library
 import com.zemmy.sigurvita.core.model.Series
 import com.zemmy.sigurvita.core.util.getSeriesCoverUrl
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
-
-import com.zemmy.sigurvita.core.util.getSeriesCoverUrl
 
 class LibraryRepository(
     private val api: KavitaApi,
@@ -46,6 +46,8 @@ class LibraryRepository(
             } ?: emptyList()
 
             Result.success(libraries)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             val cachedSeries = database.seriesDao().getAllSeriesList()
             if (cachedSeries.isNotEmpty()) {
@@ -97,9 +99,13 @@ class LibraryRepository(
             }
     }
 
+    private val detailLimiter = Semaphore(4)
+
     private suspend fun resolveSeriesIssueCounts(seriesDtos: List<SeriesDto>): List<Series> = coroutineScope {
+        if (seriesDtos.isEmpty()) return@coroutineScope emptyList()
         val config = preferencesRepository.serverConfigFlow.first()
-        val cachedMap = database.seriesDao().getAllSeriesList().associateBy { it.id }
+        val ids = seriesDtos.map { it.id }
+        val cachedMap = database.seriesDao().getSeriesByIds(ids).associateBy { it.id }
 
         val deferreds = seriesDtos.map { dto ->
             async {
@@ -109,12 +115,19 @@ class LibraryRepository(
 
                 if (totalIssues == 0) {
                     try {
-                        val detailRes = api.getSeriesDetail(dto.id)
-                        if (detailRes.isSuccessful && detailRes.body() != null) {
-                            val detail = detailRes.body()!!
-                            totalIssues = detail.totalCount
-                            issuesRead = (detail.totalCount - detail.unreadCount).coerceAtLeast(0)
+                        detailLimiter.acquire()
+                        try {
+                            val detailRes = api.getSeriesDetail(dto.id)
+                            if (detailRes.isSuccessful && detailRes.body() != null) {
+                                val detail = detailRes.body()!!
+                                totalIssues = detail.totalCount
+                                issuesRead = (detail.totalCount - detail.unreadCount).coerceAtLeast(0)
+                            }
+                        } finally {
+                            detailLimiter.release()
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (_: Exception) {}
                 }
 
@@ -136,7 +149,7 @@ class LibraryRepository(
         val seriesList = deferreds.awaitAll()
 
         if (seriesList.isNotEmpty()) {
-            database.seriesDao().insertSeries(seriesList.map {
+            val toInsert = seriesList.map {
                 CachedSeriesEntity(
                     id = it.id,
                     libraryId = it.libraryId,
@@ -151,7 +164,14 @@ class LibraryRepository(
                     isCompleted = it.isCompleted,
                     userRating = it.userRating
                 )
-            })
+            }.filter { entity ->
+                val cached = cachedMap[entity.id]
+                cached == null || cached != entity
+            }
+
+            if (toInsert.isNotEmpty()) {
+                database.seriesDao().insertSeries(toInsert)
+            }
         }
         seriesList
     }

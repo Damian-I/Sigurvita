@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -87,6 +88,7 @@ class UserPreferencesRepository(private val context: Context) {
                 isLoggedIn = url.isNotBlank() && (apiKey.isNotBlank() || token.isNotBlank())
             )
         }
+        .distinctUntilChanged()
 
     val readerSettingsFlow: Flow<ReaderSettings> = context.dataStore.data
         .catch { emit(emptyPreferences()) }
@@ -138,6 +140,7 @@ class UserPreferencesRepository(private val context: Context) {
                 panelDebugOverlayEnabled = panelDebugOverlay
             )
         }
+        .distinctUntilChanged()
 
     init {
         scope.launch {
@@ -283,6 +286,7 @@ class UserPreferencesRepository(private val context: Context) {
             if (raw.isBlank()) emptyList()
             else raw.split(",").mapNotNull { it.trim().toIntOrNull() }
         }
+        .distinctUntilChanged()
 
     suspend fun addCompletedChapter(chapterId: Int) {
         context.dataStore.edit { preferences ->
@@ -316,6 +320,7 @@ class UserPreferencesRepository(private val context: Context) {
             if (raw.isBlank()) emptyList()
             else raw.split(",").mapNotNull { it.trim().toIntOrNull() }
         }
+        .distinctUntilChanged()
 
     suspend fun updateLibraryOrder(order: List<Int>) {
         context.dataStore.edit { preferences ->
@@ -330,6 +335,7 @@ class UserPreferencesRepository(private val context: Context) {
             if (raw.isBlank()) emptyList()
             else raw.split(",").mapNotNull { it.trim().toIntOrNull() }
         }
+        .distinctUntilChanged()
 
     suspend fun addChosenReadingList(listId: Int) {
         context.dataStore.edit { preferences ->
@@ -367,6 +373,7 @@ class UserPreferencesRepository(private val context: Context) {
                 }
             }
         }
+        .distinctUntilChanged()
 
     suspend fun saveSeriesReadContext(
         seriesId: Int,

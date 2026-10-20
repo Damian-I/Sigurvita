@@ -95,13 +95,13 @@ class MarkedPagesViewModel : ViewModel() {
                     val resolvedUrl = config.resolvePageImageUri(page.imageUrl, page.chapterId, page.pageIndex)
                     if (resolvedUrl != page.imageUrl) page.copy(imageUrl = resolvedUrl) else page
                 }
-                _uiState.value = _uiState.value.copy(markedPages = resolvedPages)
+                _uiState.update { it.copy(markedPages = resolvedPages) }
                 filterData()
             }
         }
         viewModelScope.launch {
             preferencesRepository.readerSettingsFlow.collect { settings ->
-                _uiState.value = _uiState.value.copy(readerSettings = settings)
+                _uiState.update { it.copy(readerSettings = settings) }
                 val currentPreview = _uiState.value.previewingPage
                 if (currentPreview != null) {
                     testMlOnPage(currentPreview)
@@ -171,22 +171,22 @@ class MarkedPagesViewModel : ViewModel() {
     }
 
     fun updateSearchQuery(query: String) {
-        _uiState.value = _uiState.value.copy(searchQuery = query)
+        _uiState.update { it.copy(searchQuery = query) }
         searchQueryFlow.value = query
     }
 
     fun setTagFilter(filter: ReviewTagFilter) {
-        _uiState.value = _uiState.value.copy(selectedTagFilter = filter)
+        _uiState.update { it.copy(selectedTagFilter = filter) }
         filterData()
     }
 
     fun setGrouping(grouping: MarkedPageGrouping) {
-        _uiState.value = _uiState.value.copy(selectedGrouping = grouping)
+        _uiState.update { it.copy(selectedGrouping = grouping) }
         filterData()
     }
 
     fun setSorting(sorting: MarkedPageSorting) {
-        _uiState.value = _uiState.value.copy(selectedSorting = sorting)
+        _uiState.update { it.copy(selectedSorting = sorting) }
         filterData()
     }
 
@@ -219,13 +219,15 @@ class MarkedPagesViewModel : ViewModel() {
             )
         } else emptyList()
 
-        _uiState.value = _uiState.value.copy(
-            previewingPage = page,
-            readerPages = pageList,
-            testedPageBubbles = null,
-            testedPanelMap = null,
-            magnifiedBubble = null
-        )
+        _uiState.update {
+            it.copy(
+                previewingPage = page,
+                readerPages = pageList,
+                testedPageBubbles = null,
+                testedPanelMap = null,
+                magnifiedBubble = null
+            )
+        }
         if (page != null) {
             testMlOnPage(page)
         }
@@ -303,28 +305,30 @@ class MarkedPagesViewModel : ViewModel() {
                 val cropWOnScreen = (cropResult.cropRightNorm - cropResult.cropLeftNorm) * dispW
                 val cropHOnScreen = (cropResult.cropBottomNorm - cropResult.cropTopNorm) * dispH
 
-                _uiState.value = _uiState.value.copy(
-                    magnifiedBubble = MagnifiedBubble(
-                        pageIndex = pageIndex,
-                        bubbleId = bubbleId,
-                        bitmap = cropResult.bitmap,
-                        anchorScreenPx = Offset(anchorX, anchorY),
-                        cropSizeOnScreen = Size(cropWOnScreen, cropHOnScreen),
-                        tipRelOffset = Offset(cropResult.relTipX, cropResult.relTipY),
-                        isLiteralBox = cropResult.isLiteralBox
+                _uiState.update {
+                    it.copy(
+                        magnifiedBubble = MagnifiedBubble(
+                            pageIndex = pageIndex,
+                            bubbleId = bubbleId,
+                            bitmap = cropResult.bitmap,
+                            anchorScreenPx = Offset(anchorX, anchorY),
+                            cropSizeOnScreen = Size(cropWOnScreen, cropHOnScreen),
+                            tipRelOffset = Offset(cropResult.relTipX, cropResult.relTipY),
+                            isLiteralBox = cropResult.isLiteralBox
+                        )
                     )
-                )
+                }
             }
         }
     }
 
     fun dismissBubble() {
-        _uiState.value = _uiState.value.copy(magnifiedBubble = null)
+        _uiState.update { it.copy(magnifiedBubble = null) }
     }
 
     fun testMlOnPage(page: MarkedPageEntity) {
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.value = _uiState.value.copy(isTestingMl = true)
+            _uiState.update { it.copy(isTestingMl = true) }
             try {
                 val dummyPage = ReaderPage(
                     index = page.pageIndex,
@@ -339,16 +343,18 @@ class MarkedPagesViewModel : ViewModel() {
                     } else null
 
                     val panelMap = app.panelRepository.getPanelMap(page.chapterId, dummyPage, bitmap)
-                    _uiState.value = _uiState.value.copy(
-                        isTestingMl = false,
-                        testedPageBubbles = bubbles,
-                        testedPanelMap = panelMap
-                    )
+                    _uiState.update {
+                        it.copy(
+                            isTestingMl = false,
+                            testedPageBubbles = bubbles,
+                            testedPanelMap = panelMap
+                        )
+                    }
                 } else {
-                    _uiState.value = _uiState.value.copy(isTestingMl = false)
+                    _uiState.update { it.copy(isTestingMl = false) }
                 }
             } catch (_: Exception) {
-                _uiState.value = _uiState.value.copy(isTestingMl = false)
+                _uiState.update { it.copy(isTestingMl = false) }
             }
         }
     }

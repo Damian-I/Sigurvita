@@ -84,19 +84,19 @@ class ReadingListViewModel : ViewModel() {
         }
         viewModelScope.launch {
             downloadRepository.downloadsFlow.collect { tasks ->
-                _uiState.value = _uiState.value.copy(
-                    downloadTasks = tasks.associateBy { it.chapterId }
-                )
+                _uiState.update {
+                    it.copy(downloadTasks = tasks.associateBy { t -> t.chapterId })
+                }
             }
         }
         viewModelScope.launch {
             preferencesRepository.chosenReadingListsFlow.collect { ids ->
-                _uiState.value = _uiState.value.copy(chosenReadingListIds = ids.toSet())
+                _uiState.update { it.copy(chosenReadingListIds = ids.toSet()) }
             }
         }
         viewModelScope.launch {
             preferencesRepository.readerSettingsFlow.collect { settings ->
-                _uiState.value = _uiState.value.copy(isIncognitoMode = settings.isIncognitoMode)
+                _uiState.update { it.copy(isIncognitoMode = settings.isIncognitoMode) }
             }
         }
         loadReadingLists()
@@ -155,29 +155,35 @@ class ReadingListViewModel : ViewModel() {
     }
 
     fun loadReadingLists() {
-        _uiState.value = _uiState.value.copy(
-            selectedListId = null,
-            selectedListItems = emptyList(),
-            selectedListTitle = null,
-            selectedEraName = "All",
-            searchQuery = "",
-            isLoading = true,
-            errorMessage = null
-        )
+        _uiState.update {
+            it.copy(
+                selectedListId = null,
+                selectedListItems = emptyList(),
+                selectedListTitle = null,
+                selectedEraName = "All",
+                searchQuery = "",
+                isLoading = true,
+                errorMessage = null
+            )
+        }
         searchQueryFlow.value = ""
         viewModelScope.launch {
             val result = repository.getReadingLists()
             if (result.isSuccess) {
-                _uiState.value = _uiState.value.copy(
-                    readingLists = result.getOrNull() ?: emptyList(),
-                    isLoading = false
-                )
+                _uiState.update {
+                    it.copy(
+                        readingLists = result.getOrNull() ?: emptyList(),
+                        isLoading = false
+                    )
+                }
                 filterData()
             } else {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = result.exceptionOrNull()?.message ?: "Failed to load Reading Lists"
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = result.exceptionOrNull()?.message ?: "Failed to load Reading Lists"
+                    )
+                }
             }
         }
     }
@@ -196,20 +202,24 @@ class ReadingListViewModel : ViewModel() {
     fun loadListDetail(listId: Int, title: String) {
         val isInitialForList = _uiState.value.selectedListId != listId || _uiState.value.selectedListItems.isEmpty()
         if (isInitialForList) {
-            _uiState.value = _uiState.value.copy(
-                isLoading = true,
-                selectedListId = listId,
-                selectedListTitle = title,
-                searchQuery = "",
-                errorMessage = null
-            )
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    selectedListId = listId,
+                    selectedListTitle = title,
+                    searchQuery = "",
+                    errorMessage = null
+                )
+            }
             searchQueryFlow.value = ""
         } else {
-            _uiState.value = _uiState.value.copy(
-                selectedListId = listId,
-                selectedListTitle = title,
-                errorMessage = null
-            )
+            _uiState.update {
+                it.copy(
+                    selectedListId = listId,
+                    selectedListTitle = title,
+                    errorMessage = null
+                )
+            }
         }
         viewModelScope.launch {
             val result = repository.getReadingListItems(listId)
@@ -220,27 +230,31 @@ class ReadingListViewModel : ViewModel() {
                 val computedTotalPages = items.sumOf { it.pages }
                 val computedPagesRead = items.sumOf { it.pagesRead }
 
-                _uiState.value = _uiState.value.copy(
-                    selectedListItems = items,
-                    totalIssues = computedTotalIssues,
-                    issuesRead = computedIssuesRead,
-                    totalPages = computedTotalPages,
-                    pagesRead = computedPagesRead,
-                    isLoading = false
-                )
+                _uiState.update {
+                    it.copy(
+                        selectedListItems = items,
+                        totalIssues = computedTotalIssues,
+                        issuesRead = computedIssuesRead,
+                        totalPages = computedTotalPages,
+                        pagesRead = computedPagesRead,
+                        isLoading = false
+                    )
+                }
                 filterData()
             } else {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = result.exceptionOrNull()?.message ?: "Failed to load items for $title"
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = result.exceptionOrNull()?.message ?: "Failed to load items for $title"
+                    )
+                }
             }
         }
     }
 
     fun selectReadingListById(readingListId: Int) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             val result = repository.getReadingLists()
             if (result.isSuccess) {
                 val lists = result.getOrNull() ?: emptyList()
@@ -248,27 +262,27 @@ class ReadingListViewModel : ViewModel() {
                 if (targetList != null) {
                     loadListDetail(readingListId, targetList.title)
                 } else {
-                    _uiState.value = _uiState.value.copy(readingLists = lists, isLoading = false)
+                    _uiState.update { it.copy(readingLists = lists, isLoading = false) }
                     filterData()
                 }
             } else {
-                _uiState.value = _uiState.value.copy(isLoading = false, errorMessage = "Failed to load reading list")
+                _uiState.update { it.copy(isLoading = false, errorMessage = "Failed to load reading list") }
             }
         }
     }
 
     fun updateSearchQuery(query: String) {
-        _uiState.value = _uiState.value.copy(searchQuery = query)
+        _uiState.update { it.copy(searchQuery = query) }
         searchQueryFlow.value = query
     }
 
     fun selectEra(eraName: String) {
-        _uiState.value = _uiState.value.copy(selectedEraName = eraName)
+        _uiState.update { it.copy(selectedEraName = eraName) }
         filterData()
     }
 
     fun selectSortOption(option: ReadingListSortOption) {
-        _uiState.value = _uiState.value.copy(sortOption = option)
+        _uiState.update { it.copy(sortOption = option) }
         filterData()
     }
 
