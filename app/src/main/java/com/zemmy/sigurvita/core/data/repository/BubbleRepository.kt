@@ -18,7 +18,8 @@ import androidx.core.graphics.createBitmap
 
 private const val TAG = "BubbleRepository"
 
-private val normPointsCache = LruCache<Int, List<Pair<Float, Float>>>(300)
+private val normPointsCache: MutableMap<DetectedBubble, List<Pair<Float, Float>>> =
+    java.util.Collections.synchronizedMap(java.util.WeakHashMap())
 
 // ~0.33 probability. 128 = 0.5. Lower keeps thin tails, higher tightens the outline. Try 70..110.
 private const val CONTOUR_LEVEL = 90f
@@ -69,8 +70,7 @@ fun extractBubbleNormalizedPoints(
     bubble: DetectedBubble,
     lb: LetterboxParams
 ): List<Pair<Float, Float>> {
-    val cacheKey = System.identityHashCode(bubble)
-    val cached = normPointsCache.get(cacheKey)
+    val cached = normPointsCache[bubble]
     if (cached != null) return cached
 
     val mask = bubble.mask
@@ -177,7 +177,7 @@ fun extractBubbleNormalizedPoints(
             Pair(normRight, normBottom),
             Pair(normLeft, normBottom)
         )
-        normPointsCache.put(cacheKey, rectPoints)
+        normPointsCache[bubble] = rectPoints
         return rectPoints
     }
 
@@ -267,7 +267,7 @@ fun extractBubbleNormalizedPoints(
         normPoints.add(gridToNorm(smX + 0.5f, smY + 0.5f))
     }
 
-    normPointsCache.put(cacheKey, normPoints)
+    normPointsCache[bubble] = normPoints
     return normPoints
 }
 
