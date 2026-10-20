@@ -14,7 +14,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -48,7 +47,11 @@ import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.PageBubbles
 import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReadingMode
-
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.graphics.nativeCanvas
 import com.zemmy.sigurvita.core.util.PanelMap
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -229,12 +232,31 @@ private fun ZoomableImage(
         modifier.fillMaxSize()
     }
 
-    val isZoomedInWebtoon by remember(page.pageNumber) { derivedStateOf { scale > 1.01f } }
-
-    val transformModifier = if (readingMode == ReadingMode.WEBTOON && !isZoomedInWebtoon) {
-        Modifier
-    } else {
-        Modifier.pointerInput(page.pageNumber) {
+    val transformModifier = Modifier.pointerInput(page.pageNumber, readingMode) {
+        if (readingMode == ReadingMode.WEBTOON) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false)
+                do {
+                    val event = awaitPointerEvent()
+                    val multiTouch = event.changes.count { it.pressed } >= 2
+                    if (multiTouch || scale > 1.01f) {
+                        val zoom = event.calculateZoom()
+                        val pan = event.calculatePan()
+                        if (zoom != 1f || pan != Offset.Zero) {
+                            scale = (scale * zoom).coerceIn(1f, 4f)
+                            if (scale > 1f) {
+                                offsetX += pan.x
+                                offsetY += pan.y
+                            } else {
+                                offsetX = 0f
+                                offsetY = 0f
+                            }
+                            event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
+                    }
+                } while (event.changes.any { it.pressed })
+            }
+        } else {
             detectTransformGestures { _, pan, zoom, _ ->
                 scale = (scale * zoom).coerceIn(1f, 4f)
                 if (scale > 1f) {
@@ -276,8 +298,7 @@ private fun ZoomableImage(
                             val hitBubbleId = if (normPoint != null) hitBubble(bubbles, normPoint) else null
                             if (hitBubbleId != null && hitBubbleId != magnifiedBubbleId && hitBubbleId != lastHoveredBubbleId) {
                                 lastHoveredBubbleId = hitBubbleId
-                                triggerMagnify(hitBubbleId, bubbles, contentScale, size, offsetX, offsetY, latestOnBubbleHover)
-                            }
+                                triggerMagnify(hitBubbleId, bubbles, contentScale, size, latestOnBubbleHover)                            }
                         }
                     } else {
                         // Returns to normal ONLY when PRESSING on screen with the S-Pen (pointerChange.pressed == true), NOT when unhovering
@@ -534,8 +555,6 @@ private fun triggerMagnify(
     bubbles: PageBubbles,
     contentScale: ContentScale,
     boxSize: IntSize,
-    offsetX: Float,
-    offsetY: Float,
     onBubbleHover: (Int?, Offset?, Size?) -> Unit
 ) {
     val hitBubble = bubbles.bubbles.find { it.id == hitId } ?: return
