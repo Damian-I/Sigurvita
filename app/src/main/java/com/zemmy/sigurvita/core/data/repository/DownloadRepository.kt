@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
+import com.zemmy.sigurvita.core.ml.DetectionStore
 
 data class BulkDownloadItem(
     val chapterId: Int,
@@ -250,6 +251,7 @@ class DownloadRepository(
             if (cbzCacheDir.exists()) {
                 cbzCacheDir.deleteRecursively()
             }
+            DetectionStore.deleteChapter(context, chapterId)
         } catch (_: Exception) {}
 
         database.downloadDao().deleteDownloadTask(chapterId)
@@ -283,6 +285,7 @@ class DownloadRepository(
                         if (cbzCacheDir.exists()) {
                             cbzCacheDir.deleteRecursively()
                         }
+                        DetectionStore.deleteChapter(context, task.chapterId)
                     } catch (_: Exception) {}
                     if (!path.isNullOrBlank()) {
                         cleanupEmptyDirectories(File(path))

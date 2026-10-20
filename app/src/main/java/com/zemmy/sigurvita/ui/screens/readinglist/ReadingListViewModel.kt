@@ -297,11 +297,13 @@ class ReadingListViewModel : ViewModel() {
         val newIssuesRead = updatedItems.count { it.isRead }
         val newPagesRead = updatedItems.sumOf { if (it.isRead) it.pages else it.pagesRead }
 
-        _uiState.value = _uiState.value.copy(
-            selectedListItems = updatedItems,
-            issuesRead = newIssuesRead,
-            pagesRead = newPagesRead
-        )
+        _uiState.update {
+            it.copy(
+                selectedListItems = updatedItems,
+                issuesRead = newIssuesRead,
+                pagesRead = newPagesRead
+            )
+        }
         filterData()
 
         viewModelScope.launch {
@@ -315,13 +317,15 @@ class ReadingListViewModel : ViewModel() {
                 val result = repository.getReadingListItems(listId)
                 if (result.isSuccess) {
                     val items = result.getOrNull() ?: emptyList()
-                    _uiState.value = _uiState.value.copy(
-                        selectedListItems = items,
-                        totalIssues = items.size,
-                        issuesRead = items.count { it.isRead },
-                        totalPages = items.sumOf { it.pages },
-                        pagesRead = items.sumOf { it.pagesRead }
-                    )
+                    _uiState.update {
+                        it.copy(
+                            selectedListItems = items,
+                            totalIssues = items.size,
+                            issuesRead = items.count { i -> i.isRead },
+                            totalPages = items.sumOf { i -> i.pages },
+                            pagesRead = items.sumOf { i -> i.pagesRead }
+                        )
+                    }
                     filterData()
                 }
             }

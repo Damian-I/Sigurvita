@@ -442,11 +442,13 @@ class SeriesDetailViewModel : ViewModel() {
         val newChaptersRead = updatedVolumes.sumOf { v -> v.chapters.count { it.isRead } }
         val newPagesRead = updatedVolumes.sumOf { v -> v.chapters.sumOf { if (it.isRead) it.pages else it.pagesRead } }
 
-        _uiState.value = _uiState.value.copy(
-            volumes = updatedVolumes,
-            chaptersRead = newChaptersRead,
-            pagesRead = newPagesRead
-        )
+        _uiState.update {
+            it.copy(
+                volumes = updatedVolumes,
+                chaptersRead = newChaptersRead,
+                pagesRead = newPagesRead
+            )
+        }
         filterData()
 
         viewModelScope.launch {
@@ -472,12 +474,14 @@ class SeriesDetailViewModel : ViewModel() {
         val newChaptersRead = if (targetReadState) _uiState.value.totalChapters else 0
         val newPagesRead = if (targetReadState) _uiState.value.totalPages else 0
 
-        _uiState.value = _uiState.value.copy(
-            series = series.copy(isCompleted = targetReadState),
-            volumes = updatedVolumes,
-            chaptersRead = newChaptersRead,
-            pagesRead = newPagesRead
-        )
+        _uiState.update {
+            it.copy(
+                series = series.copy(isCompleted = targetReadState),
+                volumes = updatedVolumes,
+                chaptersRead = newChaptersRead,
+                pagesRead = newPagesRead
+            )
+        }
         filterData()
 
         viewModelScope.launch {
