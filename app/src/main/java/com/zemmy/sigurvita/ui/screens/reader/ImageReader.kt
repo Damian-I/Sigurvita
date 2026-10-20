@@ -14,6 +14,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -228,7 +229,9 @@ private fun ZoomableImage(
         modifier.fillMaxSize()
     }
 
-    val transformModifier = if (readingMode == ReadingMode.WEBTOON && scale <= 1.01f) {
+    val isZoomedInWebtoon by remember(page.pageNumber) { derivedStateOf { scale > 1.01f } }
+
+    val transformModifier = if (readingMode == ReadingMode.WEBTOON && !isZoomedInWebtoon) {
         Modifier
     } else {
         Modifier.pointerInput(page.pageNumber) {
@@ -249,7 +252,7 @@ private fun ZoomableImage(
 
     // S-Pen Hover Magnification Modifier:
     // Magnifies when hovered over a speech bubble. Returns to normal ONLY when PRESSING on screen with the S-Pen, NOT when unhovering.
-    val stylusHoverMagnifyModifier = Modifier.pointerInput(page.pageNumber, speechBubbleDetectionEnabled, bubbles, scale, offsetX, offsetY, magnifiedBubbleId) {
+    val stylusHoverMagnifyModifier = Modifier.pointerInput(page.pageNumber, speechBubbleDetectionEnabled, bubbles, magnifiedBubbleId) {
         awaitPointerEventScope {
             while (true) {
                 val pointerEvent = awaitPointerEvent()
@@ -293,7 +296,7 @@ private fun ZoomableImage(
         modifier = boxModifier
             .then(transformModifier)
             .then(stylusHoverMagnifyModifier)
-            .pointerInput(touchEdgeNavigationEnabled, readingMode, scale) {
+            .pointerInput(touchEdgeNavigationEnabled, readingMode) {
                 detectTapGestures(
                     onTap = { offset ->
                         val width = size.width.toFloat()
@@ -372,21 +375,21 @@ private fun ZoomableImage(
             Modifier
                 .fillMaxWidth()
                 .wrapContentHeight()
-                .graphicsLayer(
-                    scaleX = scale,
-                    scaleY = scale,
-                    translationX = offsetX,
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offsetX
                     translationY = offsetY
-                )
+                }
         } else {
             Modifier
                 .fillMaxSize()
-                .graphicsLayer(
-                    scaleX = scale,
-                    scaleY = scale,
-                    translationX = offsetX,
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offsetX
                     translationY = offsetY
-                )
+                }
         }
 
         AsyncImage(
