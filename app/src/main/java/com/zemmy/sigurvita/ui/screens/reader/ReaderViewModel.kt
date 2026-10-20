@@ -37,9 +37,10 @@ import com.zemmy.sigurvita.core.model.PageBubbles
 import com.zemmy.sigurvita.core.util.PanelMap
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlin.time.Duration.Companion.milliseconds
 
 private const val PREFETCH_CONCURRENCY = 3
-
+private const val PRELOAD_DEBOUNCE_MS = 200L
 data class ReaderUiState(
     val pages: List<ReaderPage> = emptyList(),
     val currentPageIndex: Int = 0,
@@ -138,6 +139,7 @@ class ReaderViewModel : ViewModel() {
     private var bubbleDetectionJobs = mutableMapOf<Int, Job>()
     private var chapterPreloadJob: Job? = null
     private var nextChapterPreloadJob: Job? = null
+    private var preloadDebounceJob: Job? = null
     private var preloadedNextChapterId: Int = 0
     private var prefetchedChapterId: Int = 0
     private val prefetchedPages: MutableSet<Int> = java.util.concurrent.ConcurrentHashMap.newKeySet()
@@ -160,6 +162,7 @@ class ReaderViewModel : ViewModel() {
 
         bubbleDetectionJobs.values.forEach { it.cancel() }
         bubbleDetectionJobs.clear()
+        preloadDebounceJob?.cancel()
         completedForwardBubblePageIndex = -1
         completedBackwardBubblePageIndex = -1
         _uiState.update {
@@ -593,6 +596,7 @@ class ReaderViewModel : ViewModel() {
         if (!enabled) {
             bubbleDetectionJobs.values.forEach { it.cancel() }
             bubbleDetectionJobs.clear()
+            preloadDebounceJob?.cancel()
             _uiState.update {
                 it.copy(
                     settings = it.settings.copy(speechBubbleDetectionEnabled = false),
@@ -630,6 +634,7 @@ class ReaderViewModel : ViewModel() {
         resetBubbleNavMode()
         bubbleDetectionJobs.values.forEach { it.cancel() }
         bubbleDetectionJobs.clear()
+        preloadDebounceJob?.cancel()
 
         _uiState.update {
             it.copy(
@@ -960,7 +965,16 @@ class ReaderViewModel : ViewModel() {
                 bubbleDetectionJobs.remove(pageIdx)?.cancel()
             }
 
-            startChapterPreload(index)
+            preloadDebounceJob?.cancel()
+            val debounceChapterId = _uiState.value.chapterId
+            preloadDebounceJob = viewModelScope.launch {
+                delay(PRELOAD_DEBOUNCE_MS.milliseconds)
+                if (_uiState.value.chapterId == debounceChapterId &&
+                    _uiState.value.currentPageIndex == index
+                ) {
+                    startChapterPreload(index)
+                }
+            }
             progressSaveFlow.tryEmit(
                 ProgressEvent(
                     seriesId = _uiState.value.seriesId,
