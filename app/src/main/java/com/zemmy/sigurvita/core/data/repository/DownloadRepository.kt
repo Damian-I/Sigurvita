@@ -233,7 +233,15 @@ class DownloadRepository(
     }
 
     suspend fun clearCompleted() = withContext(Dispatchers.IO) {
-        database.downloadDao().clearCompleted()
+        database.downloadDao().getAllCompletedDownloads().forEach { task ->
+            try {
+                deleteLocalChapter(task.chapterId)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("DownloadRepository", "Failed to clear chapter ${task.chapterId}", e)
+            }
+        }
     }
 
     suspend fun deleteLocalChapter(chapterId: Int) = withContext(Dispatchers.IO) {
