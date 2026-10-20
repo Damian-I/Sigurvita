@@ -2,6 +2,7 @@ package com.zemmy.sigurvita.core.data.repository
 
 import com.zemmy.sigurvita.core.data.api.KavitaApi
 import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
+import com.zemmy.sigurvita.core.data.api.SessionEvents
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -23,6 +24,7 @@ class AuthRepository(
                     apiKey = apiKey,
                     jwtToken = token
                 )
+                SessionEvents.clear()
                 Result.success(true)
             } else {
                 val accountRes = api.getAccount()
@@ -33,6 +35,7 @@ class AuthRepository(
                         apiKey = apiKey,
                         userId = user.id
                     )
+                    SessionEvents.clear()
                     Result.success(true)
                 } else {
                     Result.failure(Exception("Failed to authenticate with Kavita server (HTTP ${authRes.code()})"))

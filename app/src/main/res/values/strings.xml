@@ -11,6 +11,11 @@
     <string name="clear">Clear</string>
     <string name="sort">Sort</string>
 
+    <string name="session_expired_title">Session expired</string>
+    <string name="session_expired_message">Kavita no longer accepts your saved sign-in. You can keep browsing what is already loaded, or sign in again.</string>
+    <string name="session_expired_sign_in">Sign in</string>
+    <string name="session_expired_dismiss">Not now</string>
+
     <!-- Folder Picker -->
     <string name="select_download_folder">Select Download Folder</string>
     <string name="select_this_folder">Select This Folder</string>

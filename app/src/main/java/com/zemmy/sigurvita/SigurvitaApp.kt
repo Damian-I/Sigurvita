@@ -19,6 +19,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.zemmy.sigurvita.core.data.repository.DetectionRepository
+import com.zemmy.sigurvita.core.data.cache.SnapshotStore
 
 class SigurvitaApp : Application(), ImageLoaderFactory {
 
@@ -72,6 +73,10 @@ class SigurvitaApp : Application(), ImageLoaderFactory {
 
     val detectionRepository: DetectionRepository by lazy {
         DetectionRepository(this, bubbleRepository, panelRepository)
+    }
+
+    val snapshotStore: SnapshotStore by lazy { 
+        SnapshotStore(this)
     }
 
     override fun onCreate() {

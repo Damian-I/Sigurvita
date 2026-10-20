@@ -37,6 +37,7 @@ object NetworkClient {
                 OkHttpClient.Builder()
                     .addInterceptor(AuthInterceptor(userPreferencesRepository))
                     .addInterceptor(logging)
+                    .authenticator(TokenAuthenticator(userPreferencesRepository))
                     .connectTimeout(15, TimeUnit.SECONDS)
                     .readTimeout(30, TimeUnit.SECONDS)
                     .build().also { cachedClient = it }

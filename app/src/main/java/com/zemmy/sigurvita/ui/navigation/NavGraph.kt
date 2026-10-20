@@ -77,8 +77,11 @@ import com.zemmy.sigurvita.ui.screens.readinglist.ReadingListScreen
 import com.zemmy.sigurvita.ui.screens.seriesdetail.SeriesDetailScreen
 import com.zemmy.sigurvita.ui.screens.settings.SettingsScreen
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
+import com.zemmy.sigurvita.core.data.cache.DrawerSnapshot
+import com.zemmy.sigurvita.core.data.cache.SnapshotNames
+import com.zemmy.sigurvita.core.data.cache.toModel
+import com.zemmy.sigurvita.core.data.cache.toSnap
 
 @Composable
 fun SigurvitaNavGraph(
@@ -121,25 +124,50 @@ fun SigurvitaNavGraph(
 
     val serverConfig by prefsRepo.serverConfigFlow.collectAsState(initial = com.zemmy.sigurvita.core.model.ServerConfig())
 
-    LaunchedEffect(serverConfig.isLoggedIn, serverConfig.serverUrl) {
+    LaunchedEffect(serverConfig.isLoggedIn, serverConfig.serverUrl, serverConfig.apiKey) {
         if (serverConfig.isLoggedIn) {
-            val libRes = libraryRepo.getLibraries()
+            val snapshots = app.snapshotStore
+            val accountKey = snapshots.accountKey(serverConfig)
+
+            // Show what was saved last time straight away
+            val saved = snapshots.read(SnapshotNames.DRAWER, DrawerSnapshot.serializer())
+            if (saved != null && saved.accountKey == accountKey) {
+                if (libraries.isEmpty()) libraries = saved.libraries.map { it.toModel() }
+                if (readingLists.isEmpty()) {
+                    readingLists = saved.readingLists.map { it.toModel() }
+                    inProgressReadingListIds = saved.readingLists
+                        .filter { it.pagesRead > 0 }
+                        .map { it.id }
+                        .toSet()
+                }
+            }
+
+            // Refresh in the background, both requests in parallel
+            val librariesDeferred = async { libraryRepo.getLibraries() }
+            val readingListsDeferred = async { readingListRepo.getReadingLists() }
+
+            val libRes = librariesDeferred.await()
             if (libRes.isSuccess) libraries = libRes.getOrDefault(emptyList())
 
-            val rlRes = readingListRepo.getReadingLists()
+            val rlRes = readingListsDeferred.await()
             if (rlRes.isSuccess) {
                 val fetchedLists = rlRes.getOrDefault(emptyList())
                 readingLists = fetchedLists
+                // getReadingLists() already totals pagesRead per list: no extra request per list is needed
+                inProgressReadingListIds = fetchedLists.filter { it.pagesRead > 0 }.map { it.id }.toSet()
+            }
 
-                val deferreds = fetchedLists.map { rl ->
-                    async {
-                        if (readingListRepo.hasReadingListProgress(rl.id)) {
-                            rl.id
-                        } else null
-                    }
-                }
-                val inProgressIds = deferreds.awaitAll().filterNotNull()
-                inProgressReadingListIds = inProgressIds.toSet()
+            if (libRes.isSuccess || rlRes.isSuccess) {
+                snapshots.write(
+                    SnapshotNames.DRAWER,
+                    DrawerSnapshot.serializer(),
+                    DrawerSnapshot(
+                        accountKey = accountKey,
+                        savedAt = System.currentTimeMillis(),
+                        libraries = libraries.map { it.toSnap() },
+                        readingLists = readingLists.map { it.toSnap() }
+                    )
+                )
             }
         } else {
             libraries = emptyList()

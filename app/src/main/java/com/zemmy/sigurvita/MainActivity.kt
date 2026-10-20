@@ -15,6 +15,11 @@ import com.zemmy.sigurvita.ui.navigation.Screen
 import com.zemmy.sigurvita.ui.navigation.SigurvitaNavGraph
 import com.zemmy.sigurvita.ui.screens.reader.ReaderViewModel
 import com.zemmy.sigurvita.ui.theme.SigurvitaTheme
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.res.stringResource
+import com.zemmy.sigurvita.core.data.api.SessionEvents
 
 class MainActivity : ComponentActivity() {
 
@@ -46,6 +51,26 @@ class MainActivity : ComponentActivity() {
                         navController = navController,
                         startDestination = startDestination
                     )
+
+                    val sessionExpired by SessionEvents.sessionExpired.collectAsState()
+                    if (sessionExpired && currentRoute != Screen.Auth.route) {
+                        AlertDialog(
+                            onDismissRequest = { SessionEvents.clear() },
+                            title = { Text(stringResource(R.string.session_expired_title)) },
+                            text = { Text(stringResource(R.string.session_expired_message)) },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    SessionEvents.clear()
+                                    navController.navigate(Screen.Auth.route) { popUpTo(0) { inclusive = true } }
+                                }) { Text(stringResource(R.string.session_expired_sign_in)) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { SessionEvents.clear() }) {
+                                    Text(stringResource(R.string.session_expired_dismiss))
+                                }
+                            }
+                        )
+                    }
                 } else {
                     LoadingState()
                 }

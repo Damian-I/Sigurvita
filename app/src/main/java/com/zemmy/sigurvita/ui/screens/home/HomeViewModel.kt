@@ -3,17 +3,24 @@ package com.zemmy.sigurvita.ui.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
+import com.zemmy.sigurvita.core.data.cache.AllSeriesSnapshot
+import com.zemmy.sigurvita.core.data.cache.HomeSnapshot
+import com.zemmy.sigurvita.core.data.cache.SnapshotNames
+import com.zemmy.sigurvita.core.data.cache.toModel
+import com.zemmy.sigurvita.core.data.cache.toSnap
 import com.zemmy.sigurvita.core.datastore.SeriesReadContext
 import com.zemmy.sigurvita.core.model.Library
 import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.model.Series
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.async
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
@@ -35,6 +42,17 @@ data class HomeUiState(
     val errorMessage: String? = null
 )
 
+/** The full series list (up to 5000, plus issue-count lookups) is a heavy fetch used only by search. */
+private const val ALL_SERIES_MAX_AGE_MS = 6L * 60L * 60L * 1000L
+
+private fun filterSeries(list: List<Series>, query: String): List<Series> {
+    if (query.isBlank()) return emptyList()
+    return list.filter {
+        it.name.contains(query, ignoreCase = true) ||
+            (it.localizedName?.contains(query, ignoreCase = true) == true)
+    }
+}
+
 @OptIn(FlowPreview::class)
 class HomeViewModel : ViewModel() {
 
@@ -42,120 +60,218 @@ class HomeViewModel : ViewModel() {
     private val preferencesRepository = app.userPreferencesRepository
     private val libraryRepository = app.libraryRepository
     private val downloadRepository = app.downloadRepository
+    private val snapshotStore = app.snapshotStore
 
     private val searchQueryFlow = MutableStateFlow("")
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    private var refreshJob: Job? = null
+    private var allSeriesJob: Job? = null
+
+    // Set once any live (network) data has been applied, so a late snapshot never overwrites it
+    private var liveHomeDataApplied = false
+
     init {
         viewModelScope.launch(Dispatchers.Default) {
             searchQueryFlow
                 .debounce(150.milliseconds)
                 .collect { query ->
-                    val seriesList = _uiState.value.allSeries
-                    val results = if (query.isBlank()) {
-                        emptyList()
-                    } else {
-                        seriesList.filter {
-                            it.name.contains(query, ignoreCase = true) || (it.localizedName?.contains(query, ignoreCase = true) == true)
-                        }
-                    }
+                    val results = filterSeries(_uiState.value.allSeries, query)
                     _uiState.update { it.copy(searchResults = results) }
                 }
         }
         viewModelScope.launch {
             preferencesRepository.readerSettingsFlow.collect { settings ->
-                _uiState.value = _uiState.value.copy(
-                    isIncognitoMode = settings.isIncognitoMode
-                )
+                _uiState.update { it.copy(isIncognitoMode = settings.isIncognitoMode) }
             }
         }
         viewModelScope.launch {
             downloadRepository.downloadedSeriesFlow.collect { downloaded ->
-                _uiState.value = _uiState.value.copy(
-                    downloadedSeries = downloaded
-                )
+                _uiState.update { it.copy(downloadedSeries = downloaded) }
             }
         }
         viewModelScope.launch {
             preferencesRepository.seriesReadContextsFlow.collect { contexts ->
-                _uiState.value = _uiState.value.copy(
-                    seriesReadContexts = contexts
-                )
+                _uiState.update { it.copy(seriesReadContexts = contexts) }
             }
         }
+        restoreSnapshots()
         loadData()
     }
 
-    fun loadData() {
-        val hasContent = _uiState.value.onDeckSeries.isNotEmpty() ||
-                         _uiState.value.recentlyUpdatedSeries.isNotEmpty() ||
-                         _uiState.value.newlyAddedSeries.isNotEmpty() ||
-                         _uiState.value.downloadedSeries.isNotEmpty()
-        if (!hasContent) {
-            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
-        }
+    /** Draws what was saved last time. Runs alongside [loadData]; it never overwrites live data. */
+    private fun restoreSnapshots() {
         viewModelScope.launch {
-            val librariesDeferred = async { libraryRepository.getLibraries() }
-            val onDeckDeferred = async { libraryRepository.getOnDeckSeries() }
-            val recentlyUpdatedDeferred = async { libraryRepository.getRecentlyUpdatedSeries() }
-            val newlyAddedDeferred = async { libraryRepository.getNewlyAddedSeries() }
-            val allSeriesDeferred = async { libraryRepository.getSeriesForLibrary(0) }
+            val accountKey = snapshotStore.accountKey(preferencesRepository.serverConfigFlow.first())
 
-            val librariesRes = librariesDeferred.await()
-            val onDeckRes = onDeckDeferred.await()
-            val recentlyUpdatedRes = recentlyUpdatedDeferred.await()
-            val newlyAddedRes = newlyAddedDeferred.await()
-            val allSeriesRes = allSeriesDeferred.await()
+            val home = snapshotStore.read(SnapshotNames.HOME, HomeSnapshot.serializer())
+            if (home != null && home.accountKey == accountKey && !liveHomeDataApplied) {
+                _uiState.update {
+                    it.copy(
+                        libraries = home.libraries.map { l -> l.toModel() },
+                        onDeckSeries = home.onDeck.map { s -> s.toModel() },
+                        recentlyUpdatedSeries = home.recentlyUpdated.map { s -> s.toModel() },
+                        newlyAddedSeries = home.newlyAdded.map { s -> s.toModel() },
+                        isLoading = false
+                    )
+                }
+            }
 
-            val isAnyNetworkSuccess = librariesRes.isSuccess && onDeckRes.isSuccess && recentlyUpdatedRes.isSuccess && newlyAddedRes.isSuccess && allSeriesRes.isSuccess
-            val onDeck = onDeckRes.getOrDefault(emptyList())
-            val recentlyUpdated = recentlyUpdatedRes.getOrDefault(emptyList())
-            val newlyAdded = newlyAddedRes.getOrDefault(emptyList())
-            val allSeries = allSeriesRes.getOrDefault(emptyList())
-            val libraries = librariesRes.getOrDefault(emptyList())
+            val all = snapshotStore.read(SnapshotNames.ALL_SERIES, AllSeriesSnapshot.serializer())
+            if (all != null && all.accountKey == accountKey && _uiState.value.allSeries.isEmpty()) {
+                val list = all.series.map { it.toModel() }
+                _uiState.update {
+                    it.copy(allSeries = list, searchResults = filterSeries(list, it.searchQuery))
+                }
+            }
+        }
+    }
 
-            val hasAnyData = onDeck.isNotEmpty() || recentlyUpdated.isNotEmpty() || newlyAdded.isNotEmpty() || allSeries.isNotEmpty() || _uiState.value.downloadedSeries.isNotEmpty()
+    /**
+     * Refreshes the four Home sections. Each section is shown as soon as its own request finishes, so a slow
+     * request no longer holds back the others. Sections that fail keep what is already on screen.
+     */
+    fun loadData() {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            val state = _uiState.value
+            val hasContent = state.onDeckSeries.isNotEmpty() ||
+                state.recentlyUpdatedSeries.isNotEmpty() ||
+                state.newlyAddedSeries.isNotEmpty() ||
+                state.downloadedSeries.isNotEmpty()
+            if (!hasContent) {
+                _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            }
+
+            // All collectors below run on the main thread (viewModelScope), so this counter needs no lock
+            var failedSections = 0
+
+            coroutineScope {
+                launch {
+                    libraryRepository.getLibraries()
+                        .onSuccess { list ->
+                            liveHomeDataApplied = true
+                            _uiState.update { it.copy(libraries = list) }
+                        }
+                        .onFailure { failedSections++ }
+                }
+                launch {
+                    libraryRepository.getOnDeckSeries()
+                        .onSuccess { list ->
+                            liveHomeDataApplied = true
+                            _uiState.update { it.copy(onDeckSeries = list) }
+                        }
+                        .onFailure { failedSections++ }
+                }
+                launch {
+                    libraryRepository.getRecentlyUpdatedSeries()
+                        .onSuccess { list ->
+                            liveHomeDataApplied = true
+                            _uiState.update { it.copy(recentlyUpdatedSeries = list) }
+                        }
+                        .onFailure { failedSections++ }
+                }
+                launch {
+                    libraryRepository.getNewlyAddedSeries()
+                        .onSuccess { list ->
+                            liveHomeDataApplied = true
+                            _uiState.update { it.copy(newlyAddedSeries = list) }
+                        }
+                        .onFailure { failedSections++ }
+                }
+            }
+
+            val current = _uiState.value
+            val hasAnyData = current.onDeckSeries.isNotEmpty() ||
+                current.recentlyUpdatedSeries.isNotEmpty() ||
+                current.newlyAddedSeries.isNotEmpty() ||
+                current.downloadedSeries.isNotEmpty()
 
             if (hasAnyData) {
-                val query = _uiState.value.searchQuery
-                val results = if (query.isBlank()) emptyList() else allSeries.filter {
-                    it.name.contains(query, ignoreCase = true) || (it.localizedName?.contains(query, ignoreCase = true) == true)
+                _uiState.update {
+                    it.copy(isOffline = failedSections > 0, isLoading = false, errorMessage = null)
                 }
-                _uiState.value = _uiState.value.copy(
-                    libraries = libraries,
-                    onDeckSeries = onDeck,
-                    recentlyUpdatedSeries = recentlyUpdated,
-                    newlyAddedSeries = newlyAdded,
-                    allSeries = allSeries,
-                    searchResults = results,
-                    isOffline = !isAnyNetworkSuccess,
-                    isLoading = false
-                )
+                if (failedSections == 0) persistHomeSnapshot()
             } else {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    isOffline = true,
-                    errorMessage = "Failed to load content from Kavita"
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        isOffline = true,
+                        errorMessage = "Failed to load content from Kavita"
+                    )
+                }
+            }
+
+            // The heavy full-list fetch runs after the visible sections, in its own job
+            refreshAllSeriesIfNeeded()
+        }
+    }
+
+    private suspend fun persistHomeSnapshot() {
+        val state = _uiState.value
+        val accountKey = snapshotStore.accountKey(preferencesRepository.serverConfigFlow.first())
+        snapshotStore.write(
+            SnapshotNames.HOME,
+            HomeSnapshot.serializer(),
+            HomeSnapshot(
+                accountKey = accountKey,
+                savedAt = System.currentTimeMillis(),
+                libraries = state.libraries.map { it.toSnap() },
+                onDeck = state.onDeckSeries.map { it.toSnap() },
+                recentlyUpdated = state.recentlyUpdatedSeries.map { it.toSnap() },
+                newlyAdded = state.newlyAddedSeries.map { it.toSnap() }
+            )
+        )
+    }
+
+    /**
+     * Loads every series (used only for search). This is expensive, so it is done at most every
+     * [ALL_SERIES_MAX_AGE_MS], or when search is opened and there is nothing to search yet. The result
+     * is saved locally and shown immediately on later launches.
+     */
+    private fun refreshAllSeriesIfNeeded() {
+        if (allSeriesJob?.isActive == true) return
+        allSeriesJob = viewModelScope.launch {
+            val fresh = _uiState.value.allSeries.isNotEmpty() &&
+                snapshotStore.ageMillis(SnapshotNames.ALL_SERIES) < ALL_SERIES_MAX_AGE_MS
+            if (fresh) return@launch
+
+            libraryRepository.getSeriesForLibrary(0).onSuccess { list ->
+                _uiState.update {
+                    it.copy(allSeries = list, searchResults = filterSeries(list, it.searchQuery))
+                }
+                val accountKey = snapshotStore.accountKey(preferencesRepository.serverConfigFlow.first())
+                snapshotStore.write(
+                    SnapshotNames.ALL_SERIES,
+                    AllSeriesSnapshot.serializer(),
+                    AllSeriesSnapshot(
+                        accountKey = accountKey,
+                        savedAt = System.currentTimeMillis(),
+                        series = list.map { it.toSnap() }
+                    )
                 )
             }
         }
     }
 
     fun updateSearchQuery(query: String) {
-        _uiState.value = _uiState.value.copy(searchQuery = query)
+        _uiState.update { it.copy(searchQuery = query) }
         searchQueryFlow.value = query
     }
 
     fun toggleSearchActive() {
         val newSearchState = !_uiState.value.isSearchActive
         val activeQuery = if (!newSearchState) "" else _uiState.value.searchQuery
-        _uiState.value = _uiState.value.copy(
-            isSearchActive = newSearchState,
-            searchQuery = activeQuery
-        )
+        _uiState.update {
+            it.copy(
+                isSearchActive = newSearchState,
+                searchQuery = activeQuery
+            )
+        }
         searchQueryFlow.value = activeQuery
+        if (newSearchState) refreshAllSeriesIfNeeded()
     }
 
     fun toggleIncognitoMode() {
