@@ -85,6 +85,9 @@ When developing new screens, components, or settings dialogues in Sigurvita, adh
 | `speech_bubble_confidence`                                                | Detection confidence threshold (default 0.10)                                       |
 | `panel_aware_order`                                                       | Panel-aware reading order toggle (default true)                                     |
 | `panel_debug_overlay`                                                     | Panel map debug overlay toggle (default false)                                      |
+| `show_page_number`                                                        | Page counter (`current / total`) at the bottom of the reader while the controls are hidden (default false) |
+| `reader_orientation`                                                      | `ReaderOrientation` enum name (default `FREE`; an unreadable value falls back to `FREE`) |
+| `reader_background`                                                       | `ReaderBackground` enum name (default `BLACK`; an unreadable value falls back to `BLACK`) |
 | `completed_chapter_history`                                               | Comma-separated chapter IDs for auto-delete                                         |
 | `library_order`                                                           | Comma-separated library IDs                                                         |
 | `chosen_reading_lists`                                                    | Comma-separated reading-list IDs                                                    |
@@ -267,7 +270,16 @@ Pinned header with summary, "Read more...", metadata bottom sheet, resume button
 
 ### 6.6 Reader (`ReaderScreen`)
 
+### 6.6 Reader (`ReaderScreen`)
+
 Horizontal pager (RTL/LTR) or vertical webtoon scrolling, pinch zoom (zoom and pan state is read in the draw phase through a lambda `graphicsLayer`, so zooming does not recompose the page; in webtoon mode a one-finger drag scrolls the list at 1x, a two-finger pinch zooms, and once zoomed one finger pans), edge-tap/volume-key navigation (performs standard page-by-page navigation by default; magnifying a speech bubble activates speech bubble navigation mode, carrying bubble step-through continuously across both page and chapter/issue transitions until finger/touch input is detected or the reader session is exited to another screen), background detection pre-loader (`startChapterPreload`: current page first, then the rest of the chapter, restarted from the current page on every page turn; image prefetch for streamed pages; upcoming chapter pre-detection), control overlay auto-dismiss, issue detail bottom sheet, swipeable multi-thumbnail timeline preview strip, timeline slider, bottom speech bubble indicator, previous chapter navigation, open-at-last-page support, and **S-Pen hover magnification**.
+
+**Reader options sheet** (scrollable; settings persist through `UserPreferencesRepository` and are applied immediately via `ReaderViewModel`):
+- **Reading mode** and **fit mode** (chips).
+- **Background colour** (`ReaderBackground`: Black, Gray, White, Auto). Black, Gray and White are fixed colours (`ReaderBackground.fixedColor()`). **Auto** is decided per page: once a page has loaded, `estimatePageEdgeColor` (`ReaderBackgroundColor.kt`) decodes a 256 px copy through Coil (memory cache disabled) and takes the per-channel median of a thin ring of pixels just inside the edges, so artwork touching the edge does not skew the result. The colour is computed once per page, stored in `ReaderScreen.pageBackgrounds` (cleared when the chapter changes), and the root background follows the current page's colour. Until it is computed, or if the image cannot be read, the background is black.
+- **Screen orientation** (`ReaderOrientation`: Free, Portrait, Locked portrait, Reverse portrait, Landscape, Locked landscape). Applied through `Activity.requestedOrientation` in a `DisposableEffect`; leaving the reader resets it to `SCREEN_ORIENTATION_UNSPECIFIED`. Portrait/Landscape follow the sensor within that axis; the Locked variants do not.
+- **Page number** toggle: shows `current / total` at the bottom centre only while the controls overlay is hidden.
+- Touch edge navigation, keep screen on, speech bubble detection, highlight boxes, confidence slider, panel-aware order and panel debug overlay (feature options first, debug last, per section 2).
 
 ### 6.7 Reading lists (`ReadingListScreen`)
 
@@ -320,8 +332,7 @@ app/src/main/java/com/zemmy/sigurvita/
     ├── components/                  # Shared UI cards, badges, bottom sheets, dialogs
     ├── navigation/                  # NavGraph, Screen routes
     ├── screens/                     # Feature screens (Auth, Downloads, Home, Library, MarkedPages, Reader, ReadingList, SeriesDetail, Settings)
-    │   └── reader/                  # BubbleHitTest, BubbleMagnifierOverlay, ImageReader, ReaderScreen, ReaderViewModel
-    ├── theme/                       # Color, Theme, Type
+    │   └── reader/                  # BubbleHitTest, BubbleMagnifierOverlay, ImageReader, ReaderBackgroundColor (Auto background sampling, fixedColor), ReaderScreen, ReaderViewModel    ├── theme/                       # Color, Theme, Type
     └── util/                        # OnResumeEffect
 ```
 
