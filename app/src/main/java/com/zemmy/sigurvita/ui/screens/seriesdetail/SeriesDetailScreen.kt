@@ -74,6 +74,11 @@ import com.zemmy.sigurvita.ui.components.LoadingState
 import com.zemmy.sigurvita.ui.components.MassDownloadDialog
 import com.zemmy.sigurvita.ui.components.ReadStatusBadge
 import kotlin.math.abs
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
+import com.zemmy.sigurvita.R
+import com.zemmy.sigurvita.core.util.aniListUrl
 
 private fun formatVolumeHeader(name: String, number: Float): String {
     if (name.contains("100000") || abs(number) >= 10000f) {
@@ -101,6 +106,8 @@ fun SeriesDetailScreen(
     var showSeriesInfoSheet by remember { mutableStateOf(false) }
     var selectedChapterForDetail by remember { mutableStateOf<Chapter?>(null) }
     val focusRequester = remember { FocusRequester() }
+    val uriHandler = LocalUriHandler.current
+    val aniListUrl = remember(state.metadata) { state.metadata?.aniListUrl() }
 
     LaunchedEffect(state.isSearchActive) {
         if (state.isSearchActive) {
@@ -354,6 +361,19 @@ fun SeriesDetailScreen(
                                     horizontalArrangement = Arrangement.spacedBy(0.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    if (aniListUrl != null) {
+                                        IconButton(
+                                            onClick = { runCatching { uriHandler.openUri(aniListUrl) } },
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                                contentDescription = stringResource(R.string.open_anilist),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
                                     IconButton(
                                         onClick = { showMarkReadConfirmDialog = true },
                                         modifier = Modifier.size(36.dp)

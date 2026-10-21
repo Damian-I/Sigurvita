@@ -129,7 +129,7 @@
     <string name="panel_aware_order_subtitle">Traverse speech bubbles by comic panel order during volume key navigation</string>
     <string name="panel_debug_overlay">Panel Debug Overlay</string>
     <string name="panel_debug_overlay_subtitle">Draw panel outlines and bubble sequence numbers</string>
-
+    <string name="open_anilist">Open on AniList</string>
     <string name="reader_orientation">Screen orientation</string>
     <string name="orientation_free">Free</string>
     <string name="orientation_portrait">Portrait</string>

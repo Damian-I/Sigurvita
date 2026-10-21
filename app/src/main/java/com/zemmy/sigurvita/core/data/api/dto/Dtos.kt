@@ -224,7 +224,8 @@ data class SeriesMetadataDto(
     val releaseYear: Int? = null,
     val ageRating: Int? = null,
     val publicationStatus: Int? = null,
-    val language: String? = null
+    val language: String? = null,
+    val webLinks: String? = null
 )
 
 @Serializable
