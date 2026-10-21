@@ -27,6 +27,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import com.zemmy.sigurvita.core.model.ReaderBackground
+import com.zemmy.sigurvita.core.model.ReaderOrientation
 
 @Serializable
 data class SeriesReadContext(
@@ -63,6 +65,9 @@ class UserPreferencesRepository(private val context: Context) {
         val SPEECH_BUBBLE_CONFIDENCE = floatPreferencesKey("speech_bubble_confidence")
         val PANEL_AWARE_ORDER = booleanPreferencesKey("panel_aware_order")
         val PANEL_DEBUG_OVERLAY = booleanPreferencesKey("panel_debug_overlay")
+        val SHOW_PAGE_NUMBER = booleanPreferencesKey("show_page_number")
+        val READER_ORIENTATION = stringPreferencesKey("reader_orientation")
+        val READER_BACKGROUND = stringPreferencesKey("reader_background")
         val COMPLETED_CHAPTER_HISTORY = stringPreferencesKey("completed_chapter_history")
         val LIBRARY_ORDER = stringPreferencesKey("library_order")
         val CHOSEN_READING_LISTS = stringPreferencesKey("chosen_reading_lists")
@@ -123,6 +128,17 @@ class UserPreferencesRepository(private val context: Context) {
             val bubbleConfidence = preferences[Keys.SPEECH_BUBBLE_CONFIDENCE] ?: 0.10f
             val panelAwareOrder = preferences[Keys.PANEL_AWARE_ORDER] ?: true
             val panelDebugOverlay = preferences[Keys.PANEL_DEBUG_OVERLAY] ?: false
+            val showPageNumber = preferences[Keys.SHOW_PAGE_NUMBER] ?: false
+            val orientation = try {
+                preferences[Keys.READER_ORIENTATION]?.let { ReaderOrientation.valueOf(it) } ?: ReaderOrientation.FREE
+            } catch (_: Exception) {
+                ReaderOrientation.FREE
+            }
+            val readerBackground = try {
+                preferences[Keys.READER_BACKGROUND]?.let { ReaderBackground.valueOf(it) } ?: ReaderBackground.BLACK
+            } catch (_: Exception) {
+                ReaderBackground.BLACK
+            }
 
             ReaderSettings(
                 readingMode = readingMode,
@@ -137,7 +153,10 @@ class UserPreferencesRepository(private val context: Context) {
                 speechBubbleBoxesEnabled = boxesEnabled,
                 speechBubbleConfidence = bubbleConfidence,
                 panelAwareOrderEnabled = panelAwareOrder,
-                panelDebugOverlayEnabled = panelDebugOverlay
+                panelDebugOverlayEnabled = panelDebugOverlay,
+                showPageNumber = showPageNumber,
+                orientation = orientation,
+                readerBackground = readerBackground
             )
         }
         .distinctUntilChanged()
@@ -279,6 +298,23 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun updateShowPageNumber(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.SHOW_PAGE_NUMBER] = enabled
+        }
+    }
+
+    suspend fun updateReaderOrientation(orientation: ReaderOrientation) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.READER_ORIENTATION] = orientation.name
+        }
+    }
+
+    suspend fun updateReaderBackground(background: ReaderBackground) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.READER_BACKGROUND] = background.name
+        }
+    }
     val completedChapterHistoryFlow: Flow<List<Int>> = context.dataStore.data
         .catch { emit(emptyPreferences()) }
         .map { preferences ->

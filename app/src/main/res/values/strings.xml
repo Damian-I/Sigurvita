@@ -129,4 +129,19 @@
     <string name="panel_aware_order_subtitle">Traverse speech bubbles by comic panel order during volume key navigation</string>
     <string name="panel_debug_overlay">Panel Debug Overlay</string>
     <string name="panel_debug_overlay_subtitle">Draw panel outlines and bubble sequence numbers</string>
+
+    <string name="reader_orientation">Screen orientation</string>
+    <string name="orientation_free">Free</string>
+    <string name="orientation_portrait">Portrait</string>
+    <string name="orientation_locked_portrait">Locked portrait</string>
+    <string name="orientation_reverse_portrait">Reverse portrait</string>
+    <string name="orientation_landscape">Landscape</string>
+    <string name="orientation_locked_landscape">Locked landscape</string>
+    <string name="reader_background">Background colour</string>
+    <string name="background_black">Black</string>
+    <string name="background_gray">Gray</string>
+    <string name="background_white">White</string>
+    <string name="background_auto">Auto</string>
+    <string name="show_page_number">Page number</string>
+    <string name="show_page_number_subtitle">Show current page / total at the bottom</string>
 </resources>

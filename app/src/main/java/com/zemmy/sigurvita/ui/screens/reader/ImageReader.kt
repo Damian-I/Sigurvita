@@ -58,6 +58,8 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
 import com.zemmy.sigurvita.core.model.MagnifiedBubble
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.foundation.background
+import com.zemmy.sigurvita.core.model.ReaderBackground
 
 @Composable
 fun ImageReader(
@@ -78,7 +80,9 @@ fun ImageReader(
     panelDebugOverlayEnabled: Boolean = false,
     onBubbleLongPress: (pageIndex: Int, bubbleId: Int, centerPx: Offset, bubbleSizePx: Size) -> Unit = { _, _, _, _ -> },
     onBubbleHover: (pageIndex: Int, bubbleId: Int?, centerPx: Offset?, bubbleSizePx: Size?) -> Unit = { _, _, _, _ -> },
-    magnifiedBubble: MagnifiedBubble? = null
+    magnifiedBubble: MagnifiedBubble? = null,
+    readerBackground: ReaderBackground = ReaderBackground.BLACK,
+    onPageBackground: (pageIndex: Int, color: Color) -> Unit = { _, _ -> }
 ) {
     if (pages.isEmpty()) return
 
@@ -136,6 +140,8 @@ fun ImageReader(
                         onNextPage = onNextPage,
                         onPreviousPage = onPreviousPage,
                         onTap = onTap,
+                        readerBackground = readerBackground,
+                        onPageBackground = onPageBackground,
                         modifier = Modifier
                             .fillMaxWidth()
                             .wrapContentHeight()
@@ -182,6 +188,8 @@ fun ImageReader(
                     onNextPage = onNextPage,
                     onPreviousPage = onPreviousPage,
                     onTap = onTap,
+                    readerBackground = readerBackground,
+                    onPageBackground = onPageBackground,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -206,7 +214,9 @@ private fun ZoomableImage(
     magnifiedBubbleId: Int? = null,
     onNextPage: () -> Unit,
     onPreviousPage: () -> Unit,
-    onTap: () -> Unit
+    onTap: () -> Unit,
+    readerBackground: ReaderBackground = ReaderBackground.BLACK,
+    onPageBackground: (pageIndex: Int, color: Color) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val latestOnBubbleHover by rememberUpdatedState(onBubbleHover)
@@ -312,9 +322,22 @@ private fun ZoomableImage(
             }
         }
     }
-
+    var pageLoaded by remember(page.pageNumber) { mutableStateOf(false) }
+    var autoBackground by remember(page.pageNumber) { mutableStateOf<Color?>(null) }
+    val latestOnPageBackground by rememberUpdatedState(onPageBackground)
+    LaunchedEffect(page.pageNumber, readerBackground, pageLoaded) {
+        if (readerBackground == ReaderBackground.AUTO && pageLoaded && autoBackground == null) {
+            val color = estimatePageEdgeColor(context, page.imageUrl)
+            if (color != null) {
+                autoBackground = color
+                latestOnPageBackground(page.index, color)
+            }
+        }
+    }
+    val pageBackground = readerBackground.fixedColor() ?: autoBackground ?: Color.Black
     Box(
         modifier = boxModifier
+            .background(pageBackground)
             .then(transformModifier)
             .then(stylusHoverMagnifyModifier)
             .pointerInput(touchEdgeNavigationEnabled, readingMode) {
@@ -422,6 +445,7 @@ private fun ZoomableImage(
                 .build(),
             contentDescription = stringResource(R.string.page_desc, page.pageNumber),
             contentScale = contentScale,
+            onSuccess = { pageLoaded = true },
             modifier = imageModifier
         )
 

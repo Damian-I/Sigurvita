@@ -15,6 +15,21 @@ enum class FitMode(@param:StringRes val stringRes: Int) {
     FIT_SCREEN(R.string.fit_mode_screen)
 }
 
+enum class ReaderOrientation(@param:StringRes val stringRes: Int) {
+    FREE(R.string.orientation_free),
+    PORTRAIT(R.string.orientation_portrait),
+    LOCKED_PORTRAIT(R.string.orientation_locked_portrait),
+    REVERSE_PORTRAIT(R.string.orientation_reverse_portrait),
+    LANDSCAPE(R.string.orientation_landscape),
+    LOCKED_LANDSCAPE(R.string.orientation_locked_landscape)
+}
+
+enum class ReaderBackground(@param:StringRes val stringRes: Int) {
+    BLACK(R.string.background_black),
+    GRAY(R.string.background_gray),
+    WHITE(R.string.background_white),
+    AUTO(R.string.background_auto)
+}
 enum class AutoDeleteOption(@param:StringRes val stringRes: Int) {
     NEVER(R.string.auto_delete_never),
     IMMEDIATELY(R.string.auto_delete_immediately),
@@ -44,15 +59,11 @@ data class ReaderSettings(
     val speechBubbleBoxesEnabled: Boolean = true,
     val speechBubbleConfidence: Float = 0.10f,
     val panelAwareOrderEnabled: Boolean = true,
-    val panelDebugOverlayEnabled: Boolean = false
+    val panelDebugOverlayEnabled: Boolean = false,
+    val showPageNumber: Boolean = false,
+    val orientation: ReaderOrientation = ReaderOrientation.FREE,
+    val readerBackground: ReaderBackground = ReaderBackground.BLACK
 )
-
-enum class BubbleCorner {
-    TOP_LEFT,
-    TOP_RIGHT,
-    BOTTOM_LEFT,
-    BOTTOM_RIGHT
-}
 
 data class MagnifiedBubble(
     val pageIndex: Int,

@@ -34,6 +34,8 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.zemmy.sigurvita.core.model.PageBubbles
+import com.zemmy.sigurvita.core.model.ReaderBackground
+import com.zemmy.sigurvita.core.model.ReaderOrientation
 import com.zemmy.sigurvita.core.util.PanelMap
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -1224,6 +1226,21 @@ class ReaderViewModel : ViewModel() {
         viewModelScope.launch {
             preferencesRepository.updatePanelDebugOverlay(enabled)
         }
+    }
+
+    fun updateShowPageNumber(enabled: Boolean) {
+        _uiState.update { it.copy(settings = it.settings.copy(showPageNumber = enabled)) }
+        viewModelScope.launch { preferencesRepository.updateShowPageNumber(enabled) }
+    }
+
+    fun updateOrientation(orientation: ReaderOrientation) {
+        _uiState.update { it.copy(settings = it.settings.copy(orientation = orientation)) }
+        viewModelScope.launch { preferencesRepository.updateReaderOrientation(orientation) }
+    }
+
+    fun updateReaderBackground(background: ReaderBackground) {
+        _uiState.update { it.copy(settings = it.settings.copy(readerBackground = background)) }
+        viewModelScope.launch { preferencesRepository.updateReaderBackground(background) }
     }
 
     fun handleVolumeKey(isVolumeUp: Boolean): Boolean {

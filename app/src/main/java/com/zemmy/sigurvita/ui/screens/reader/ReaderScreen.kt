@@ -80,7 +80,26 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.ui.components.LoadingState
-
+import android.content.pm.ActivityInfo
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.ScreenLockLandscape
+import androidx.compose.material.icons.filled.ScreenLockPortrait
+import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.StayCurrentLandscape
+import androidx.compose.material.icons.filled.StayCurrentPortrait
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
+import com.zemmy.sigurvita.core.model.ReaderBackground
+import com.zemmy.sigurvita.core.model.ReaderOrientation
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
@@ -142,6 +161,13 @@ fun ReaderScreen(
         }
     }
 
+    DisposableEffect(state.settings.orientation) {
+        activity?.requestedOrientation = state.settings.orientation.toRequestedOrientation()
+        onDispose {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             viewModel.flushProgress()
@@ -150,10 +176,15 @@ fun ReaderScreen(
         }
     }
 
+    val pageBackgrounds = remember(state.chapterId) { mutableStateMapOf<Int, Color>() }
+    val rootBackground = state.settings.readerBackground.fixedColor()
+        ?: pageBackgrounds[state.currentPageIndex]
+        ?: Color.Black
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(rootBackground)
     ) {
         if (state.showResumePrompt) {
             val isFinished = state.promptPageNum >= state.pages.size
@@ -204,7 +235,9 @@ fun ReaderScreen(
                 panelDebugOverlayEnabled = state.settings.panelDebugOverlayEnabled,
                 onBubbleLongPress = { pageIdx, bubbleId, centerPx, bubbleSizePx -> viewModel.onBubbleLongPress(pageIdx, bubbleId, centerPx, bubbleSizePx) },
                 onBubbleHover = { pageIdx, bubbleId, centerPx, bubbleSizePx -> viewModel.onBubbleHover(pageIdx, bubbleId, centerPx, bubbleSizePx) },
-                magnifiedBubble = state.magnifiedBubble
+                magnifiedBubble = state.magnifiedBubble,
+                readerBackground = state.settings.readerBackground,
+                onPageBackground = { index, color -> pageBackgrounds[index] = color }
             )
 
             state.magnifiedBubble?.let { magBubble ->
@@ -220,6 +253,20 @@ fun ReaderScreen(
                         else -> ContentScale.Fit
                     },
                     onBubbleHover = { pageIdx, bubbleId, centerPx, bubbleSizePx -> viewModel.onBubbleHover(pageIdx, bubbleId, centerPx, bubbleSizePx) }
+                )
+            }
+
+            if (state.settings.showPageNumber && !state.controlsVisible && state.pages.isNotEmpty()) {
+                Text(
+                    text = "${state.currentPageIndex + 1} / ${state.pages.size}",
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = 4.dp)
+                        .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
                 )
             }
 
@@ -560,27 +607,37 @@ fun ReaderScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
                             .padding(horizontal = 24.dp, vertical = 16.dp)
                     ) {
                         Text(
                             text = stringResource(R.string.reader_options_title),
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
                             color = Color.White
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        Text(stringResource(R.string.reading_mode), style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                        Text(
+                            stringResource(R.string.reading_mode),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color.White
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
+
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             ReadingMode.entries.forEach { mode ->
-                                val isLibraryDefault = (mode == state.libraryDefaultMode)
+                                val isLibraryDefault = mode == state.libraryDefaultMode
+
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     FilterChip(
-                                        selected = (state.settings.readingMode == mode),
+                                        selected = state.settings.readingMode == mode,
                                         onClick = { viewModel.updateReadingMode(mode) },
                                         label = { Text(stringResource(mode.stringRes)) }
                                     )
+
                                     if (isLibraryDefault) {
                                         Spacer(modifier = Modifier.height(2.dp))
                                         Text(
@@ -595,15 +652,81 @@ fun ReaderScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        Text(stringResource(R.string.fit_mode), style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                        Text(
+                            stringResource(R.string.fit_mode),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color.White
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
+
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FitMode.entries.forEach { mode ->
                                 FilterChip(
-                                    selected = (state.settings.fitMode == mode),
+                                    selected = state.settings.fitMode == mode,
                                     onClick = { viewModel.updateFitMode(mode) },
                                     label = { Text(stringResource(mode.stringRes)) }
                                 )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            stringResource(R.string.reader_background),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ReaderBackground.entries.forEach { bg ->
+                                OptionTile(
+                                    selected = state.settings.readerBackground == bg,
+                                    label = stringResource(bg.stringRes),
+                                    onClick = { viewModel.updateReaderBackground(bg) }
+                                ) {
+                                    val swatch = bg.fixedColor()
+
+                                    if (swatch != null) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .background(swatch, CircleShape)
+                                                .border(1.dp, Color.Gray, CircleShape)
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Default.AutoFixHigh,
+                                            null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            stringResource(R.string.reader_orientation),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.horizontalScroll(rememberScrollState())
+                        ) {
+                            ReaderOrientation.entries.forEach { orientation ->
+                                OptionTile(
+                                    selected = state.settings.orientation == orientation,
+                                    label = stringResource(orientation.stringRes),
+                                    onClick = { viewModel.updateOrientation(orientation) }
+                                ) {
+                                    OrientationIcon(orientation)
+                                }
                             }
                         }
 
@@ -614,9 +737,43 @@ fun ReaderScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(stringResource(R.string.touch_edge_nav), style = MaterialTheme.typography.bodyLarge, color = Color.White)
-                                Text(stringResource(R.string.touch_edge_nav_subtitle), style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                                Text(
+                                    stringResource(R.string.show_page_number),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = Color.White
+                                )
+                                Text(
+                                    stringResource(R.string.show_page_number_subtitle),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.LightGray
+                                )
                             }
+
+                            Switch(
+                                checked = state.settings.showPageNumber,
+                                onCheckedChange = { viewModel.updateShowPageNumber(it) }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    stringResource(R.string.touch_edge_nav),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = Color.White
+                                )
+                                Text(
+                                    stringResource(R.string.touch_edge_nav_subtitle),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.LightGray
+                                )
+                            }
+
                             Switch(
                                 checked = state.settings.touchEdgeNavigationEnabled,
                                 onCheckedChange = { viewModel.updateTouchEdgeNav(it) }
@@ -630,9 +787,18 @@ fun ReaderScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(stringResource(R.string.keep_screen_on), style = MaterialTheme.typography.bodyLarge, color = Color.White)
-                                Text(stringResource(R.string.keep_screen_on_subtitle), style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                                Text(
+                                    stringResource(R.string.keep_screen_on),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = Color.White
+                                )
+                                Text(
+                                    stringResource(R.string.keep_screen_on_subtitle),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.LightGray
+                                )
                             }
+
                             Switch(
                                 checked = state.settings.keepScreenOn,
                                 onCheckedChange = { viewModel.updateKeepScreenOn(it) }
@@ -646,12 +812,23 @@ fun ReaderScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(stringResource(R.string.speech_bubble_detection), style = MaterialTheme.typography.bodyLarge, color = Color.White)
-                                Text(stringResource(R.string.speech_bubble_detection_subtitle), style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                                Text(
+                                    stringResource(R.string.speech_bubble_detection),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = Color.White
+                                )
+                                Text(
+                                    stringResource(R.string.speech_bubble_detection_subtitle),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.LightGray
+                                )
                             }
+
                             Switch(
                                 checked = state.settings.speechBubbleDetectionEnabled,
-                                onCheckedChange = { viewModel.updateSpeechBubbleDetectionEnabled(it) }
+                                onCheckedChange = {
+                                    viewModel.updateSpeechBubbleDetectionEnabled(it)
+                                }
                             )
                         }
 
@@ -665,32 +842,57 @@ fun ReaderScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(stringResource(R.string.speech_bubble_boxes), style = MaterialTheme.typography.bodyLarge, color = Color.White)
-                                    Text(stringResource(R.string.speech_bubble_boxes_subtitle), style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                                    Text(
+                                        stringResource(R.string.speech_bubble_boxes),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        stringResource(R.string.speech_bubble_boxes_subtitle),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.LightGray
+                                    )
                                 }
+
                                 Switch(
                                     checked = state.settings.speechBubbleBoxesEnabled,
-                                    onCheckedChange = { viewModel.updateSpeechBubbleBoxesEnabled(it) }
+                                    onCheckedChange = {
+                                        viewModel.updateSpeechBubbleBoxesEnabled(it)
+                                    }
                                 )
                             }
 
                             Spacer(modifier = Modifier.height(12.dp))
-                            var sliderConfidence by remember(state.settings.speechBubbleConfidence) { mutableFloatStateOf(state.settings.speechBubbleConfidence) }
+
+                            var sliderConfidence by remember(
+                                state.settings.speechBubbleConfidence
+                            ) {
+                                mutableFloatStateOf(state.settings.speechBubbleConfidence)
+                            }
+
                             Text(
-                                stringResource(R.string.detection_confidence, (sliderConfidence * 100).toInt()),
+                                stringResource(
+                                    R.string.detection_confidence,
+                                    (sliderConfidence * 100).toInt()
+                                ),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = Color.White,
                                 modifier = Modifier.padding(start = 16.dp)
                             )
+
                             Spacer(modifier = Modifier.height(4.dp))
+
                             Slider(
                                 value = sliderConfidence,
                                 onValueChange = { sliderConfidence = it },
-                                onValueChangeFinished = { viewModel.updateSpeechBubbleConfidence(sliderConfidence) },
+                                onValueChangeFinished = {
+                                    viewModel.updateSpeechBubbleConfidence(sliderConfidence)
+                                },
                                 valueRange = 0.02f..0.50f,
                                 steps = 48,
                                 modifier = Modifier.padding(start = 16.dp)
                             )
+
                             Spacer(modifier = Modifier.height(12.dp))
 
                             Row(
@@ -700,12 +902,23 @@ fun ReaderScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(stringResource(R.string.panel_aware_order), style = MaterialTheme.typography.bodyLarge, color = Color.White)
-                                    Text(stringResource(R.string.panel_aware_order_subtitle), style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                                    Text(
+                                        stringResource(R.string.panel_aware_order),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        stringResource(R.string.panel_aware_order_subtitle),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.LightGray
+                                    )
                                 }
+
                                 Switch(
                                     checked = state.settings.panelAwareOrderEnabled,
-                                    onCheckedChange = { viewModel.updatePanelAwareOrder(it) }
+                                    onCheckedChange = {
+                                        viewModel.updatePanelAwareOrder(it)
+                                    }
                                 )
                             }
 
@@ -718,12 +931,23 @@ fun ReaderScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(stringResource(R.string.panel_debug_overlay), style = MaterialTheme.typography.bodyLarge, color = Color.White)
-                                    Text(stringResource(R.string.panel_debug_overlay_subtitle), style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                                    Text(
+                                        stringResource(R.string.panel_debug_overlay),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        stringResource(R.string.panel_debug_overlay_subtitle),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.LightGray
+                                    )
                                 }
+
                                 Switch(
                                     checked = state.settings.panelDebugOverlayEnabled,
-                                    onCheckedChange = { viewModel.updatePanelDebugOverlay(it) }
+                                    onCheckedChange = {
+                                        viewModel.updatePanelDebugOverlay(it)
+                                    }
                                 )
                             }
                         }
@@ -735,4 +959,54 @@ fun ReaderScreen(
         }
     }
 }
+private fun ReaderOrientation.toRequestedOrientation(): Int = when (this) {
+    ReaderOrientation.FREE -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    ReaderOrientation.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+    ReaderOrientation.LOCKED_PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    ReaderOrientation.REVERSE_PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+    ReaderOrientation.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    ReaderOrientation.LOCKED_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+}
 
+@Composable
+private fun OrientationIcon(orientation: ReaderOrientation) {
+    val modifier = Modifier.size(24.dp)
+    when (orientation) {
+        ReaderOrientation.FREE -> Icon(Icons.Default.ScreenRotation, null, tint = Color.White, modifier = modifier)
+        ReaderOrientation.PORTRAIT -> Icon(Icons.Default.StayCurrentPortrait, null, tint = Color.White, modifier = modifier)
+        ReaderOrientation.LOCKED_PORTRAIT -> Icon(Icons.Default.ScreenLockPortrait, null, tint = Color.White, modifier = modifier)
+        ReaderOrientation.REVERSE_PORTRAIT -> Icon(Icons.Default.StayCurrentPortrait, null, tint = Color.White, modifier = modifier.rotate(180f))
+        ReaderOrientation.LANDSCAPE -> Icon(Icons.Default.StayCurrentLandscape, null, tint = Color.White, modifier = modifier)
+        ReaderOrientation.LOCKED_LANDSCAPE -> Icon(Icons.Default.ScreenLockLandscape, null, tint = Color.White, modifier = modifier)
+    }
+}
+
+@Composable
+private fun OptionTile(
+    selected: Boolean,
+    label: String,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit
+) {
+    val shape = RoundedCornerShape(12.dp)
+    val borderColor = if (selected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.4f)
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .width(76.dp)
+            .clip(shape)
+            .clickable(onClick = onClick)
+            .border(if (selected) 2.dp else 1.dp, borderColor, shape)
+            .padding(vertical = 10.dp, horizontal = 4.dp)
+    ) {
+        icon()
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (selected) MaterialTheme.colorScheme.primary else Color.White,
+            textAlign = TextAlign.Center,
+            maxLines = 2
+        )
+    }
+}
