@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 
+private const val HOME_ROW_LIMIT = 100
 class LibraryRepository(
     private val api: KavitaApi,
     private val database: SigurvitaDatabase,
@@ -202,9 +203,14 @@ class LibraryRepository(
         try {
             val config = preferencesRepository.serverConfigFlow.first()
             val groupedRes = api.getRecentlyUpdatedSeries()
+
             val seriesList = if (groupedRes.isSuccessful && !groupedRes.body().isNullOrEmpty()) {
-                val cachedMap = database.seriesDao().getAllSeriesList().associateBy { it.id }
-                groupedRes.body()!!.filter { it.seriesId > 0 && !it.seriesName.isNullOrBlank() }.map { dto ->
+                val dtos = groupedRes.body()!!
+                    .filter { it.seriesId > 0 && !it.seriesName.isNullOrBlank() }
+                    .take(HOME_ROW_LIMIT)
+                val cachedMap = database.seriesDao().getSeriesByIds(dtos.map { it.seriesId }).associateBy { it.id }
+
+                dtos.map { dto ->
                     val cached = cachedMap[dto.seriesId]
                     Series(
                         id = dto.seriesId,
