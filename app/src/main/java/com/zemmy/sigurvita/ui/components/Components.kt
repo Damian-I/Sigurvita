@@ -54,9 +54,17 @@ import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.zemmy.sigurvita.core.model.Series
-
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.runtime.remember
 
+fun coverImageRequest(context: android.content.Context, url: String): ImageRequest =
+    ImageRequest.Builder(context)
+        .data(url)
+        .size(coil.size.Size.ORIGINAL)
+        .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+        .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+        .crossfade(false)
+        .build()
 @Composable
 fun CoverImage(
     url: String?,
@@ -67,10 +75,7 @@ fun CoverImage(
     val context = LocalContext.current
     if (!url.isNullOrBlank()) {
         val painter = rememberAsyncImagePainter(
-            model = ImageRequest.Builder(context)
-                .data(url)
-                .crossfade(true)
-                .build()
+            model = remember(url) { coverImageRequest(context, url) }
         )
         val state = painter.state
 

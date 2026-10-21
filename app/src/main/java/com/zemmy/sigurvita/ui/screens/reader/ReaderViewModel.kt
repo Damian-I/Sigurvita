@@ -1338,8 +1338,14 @@ class ReaderViewModel : ViewModel() {
         return true
     }
 
-    override fun onCleared() {
-        flushProgress()
-        super.onCleared()
+    /** Stops background detection when the reader screen is left. Results already computed stay cached. */
+    fun onReaderClosed() {
+        preloadDebounceJob?.cancel()
+        chapterPreloadJob?.cancel()
+        nextChapterPreloadJob?.cancel()
+        bubbleDetectionJobs.values.forEach { it.cancel() }
+        bubbleDetectionJobs.clear()
+        // Allow the next-chapter preload to start again if this chapter is reopened
+        preloadedNextChapterId = 0
     }
 }

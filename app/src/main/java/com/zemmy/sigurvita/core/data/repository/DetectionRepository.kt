@@ -12,7 +12,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 import android.os.SystemClock
-
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import java.util.concurrent.ConcurrentHashMap
 private const val TAG = "DetectionRepository"
 
 /**
@@ -31,6 +36,9 @@ class DetectionRepository(
     private val bubbleMem = LruCache<Triple<Int, Int, Int>, PageBubbles>(100)
     private val panelMem = LruCache<Pair<Int, Int>, PanelMap>(100)
 
+    // Inference cannot be interrupted, so finished work must outlive a cancelled caller and be shared by later callers.
+    private val workScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val bubblesInFlight = ConcurrentHashMap<Triple<Int, Int, Int>, Deferred<PageBubbles?>>()
     private fun confKey(confidence: Float) = (confidence * 1000f).roundToInt()
 
     suspend fun peekBubbles(chapterId: Int, pageIndex: Int, confidence: Float): PageBubbles? {
@@ -57,25 +65,36 @@ class DetectionRepository(
 
     suspend fun getPageBubbles(chapterId: Int, page: ReaderPage, confidence: Float): PageBubbles? {
         peekBubbles(chapterId, page.index, confidence)?.let { return it }
-        val t0 = SystemClock.elapsedRealtime()
-        val result = bubbleRepository.getPageBubbles(chapterId, page, confidence) ?: return null
-        Log.i(TAG, "TIMING bubbles page=${page.index} ${SystemClock.elapsedRealtime() - t0}ms")
-        bubbleMem.put(Triple(chapterId, page.index, confKey(confidence)), result)
-        withContext(Dispatchers.IO) {
-            DetectionStore.saveBubbles(context, chapterId, page.index, confidence, result)
+        val key = Triple(chapterId, page.index, confKey(confidence))
+        val work = bubblesInFlight.computeIfAbsent(key) {
+            workScope.async {
+                try {
+                    val t0 = SystemClock.elapsedRealtime()
+                    val result = bubbleRepository.getPageBubbles(chapterId, page, confidence)
+                    if (result != null) {
+                        Log.i(TAG, "TIMING bubbles page=${page.index} ${SystemClock.elapsedRealtime() - t0}ms")
+                        bubbleMem.put(key, result)
+                        DetectionStore.saveBubbles(context, chapterId, page.index, confidence, result)
+                    }
+                    result
+                } finally {
+                    bubblesInFlight.remove(key)
+                }
+            }
         }
-        return result
+        return work.await()
     }
 
     suspend fun getPanelMap(chapterId: Int, page: ReaderPage, sharedBitmap: Bitmap? = null): PanelMap? {
         peekPanelMap(chapterId, page.index)?.let { return it }
-        val t0 = SystemClock.elapsedRealtime()
-        val result = panelRepository.getPanelMap(chapterId, page, sharedBitmap) ?: return null
-        Log.i(TAG, "TIMING panels page=${page.index} ${SystemClock.elapsedRealtime() - t0}ms")
-        panelMem.put(Pair(chapterId, page.index), result)
-        withContext(Dispatchers.IO) {
+        // Panel inference is short and uses the caller's bitmap, so it stays in the caller but is not cancelled midway
+        return withContext(NonCancellable + Dispatchers.IO) {
+            val t0 = SystemClock.elapsedRealtime()
+            val result = panelRepository.getPanelMap(chapterId, page, sharedBitmap) ?: return@withContext null
+            Log.i(TAG, "TIMING panels page=${page.index} ${SystemClock.elapsedRealtime() - t0}ms")
+            panelMem.put(Pair(chapterId, page.index), result)
             DetectionStore.savePanelMap(context, chapterId, page.index, result)
+            result
         }
-        return result
     }
 }

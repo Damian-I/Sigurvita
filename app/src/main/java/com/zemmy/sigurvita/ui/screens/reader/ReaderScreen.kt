@@ -146,6 +146,7 @@ fun ReaderScreen(
         onDispose {
             viewModel.flushProgress()
             viewModel.resetBubbleNavMode()
+            viewModel.onReaderClosed()
         }
     }
 

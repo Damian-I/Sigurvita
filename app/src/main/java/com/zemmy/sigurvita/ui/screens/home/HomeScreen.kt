@@ -62,6 +62,9 @@ import com.zemmy.sigurvita.R
 import com.zemmy.sigurvita.ui.components.ErrorState
 import com.zemmy.sigurvita.ui.components.LoadingState
 import com.zemmy.sigurvita.ui.components.SeriesCard
+import androidx.compose.ui.platform.LocalContext
+import coil.imageLoader
+import com.zemmy.sigurvita.ui.components.coverImageRequest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,6 +76,15 @@ fun HomeScreen(
     viewModel: HomeViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    LaunchedEffect(state.onDeckSeries, state.recentlyUpdatedSeries, state.newlyAddedSeries, state.downloadedSeries) {
+        val loader = context.imageLoader
+        (state.onDeckSeries + state.recentlyUpdatedSeries + state.newlyAddedSeries + state.downloadedSeries)
+            .mapNotNull { it.coverUrl }
+            .distinct()
+            .take(80)
+            .forEach { loader.enqueue(coverImageRequest(context, it)) }
+    }
     val focusRequester = remember { FocusRequester() }
 
     var dialogSeries by remember { mutableStateOf<Series?>(null) }

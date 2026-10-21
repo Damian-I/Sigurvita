@@ -104,6 +104,7 @@ class SigurvitaApp : Application(), ImageLoaderFactory {
                     .build()
             }
             .crossfade(true)
+            .respectCacheHeaders(false)
             .build()
     }
 
