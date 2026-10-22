@@ -65,7 +65,18 @@ data class ReaderUiState(
     val seriesMetadata: SeriesMetadataDto? = null,
     val bubblesByPage: Map<Int, com.zemmy.sigurvita.core.model.PageBubbles> = emptyMap(),
     val panelMapsByPage: Map<Int, com.zemmy.sigurvita.core.util.PanelMap> = emptyMap(),
-    val magnifiedBubble: com.zemmy.sigurvita.core.model.MagnifiedBubble? = null
+    val magnifiedBubble: com.zemmy.sigurvita.core.model.MagnifiedBubble? = null,
+    val prevChapter: ChapterRef? = null,
+    val nextChapter: ChapterRef? = null
+)
+
+/** A chapter the reader can jump to, resolved from the active context (reading list or series order). */
+data class ChapterRef(
+    val chapterId: Int,
+    val totalPages: Int,
+    val seriesId: Int,
+    val volumeId: Int,
+    val readingListId: Int
 )
 
 class ReaderViewModel : ViewModel() {
@@ -155,7 +166,8 @@ class ReaderViewModel : ViewModel() {
         seriesId: Int,
         volumeId: Int,
         readingListId: Int = 0,
-        openAtLastPage: Boolean = false
+        openAtLastPage: Boolean = false,
+        forceFirstPage: Boolean = false
     ) {
         // Flush progress for the previous chapter before loading a new one
         flushProgress()
@@ -279,7 +291,7 @@ class ReaderViewModel : ViewModel() {
                 isIncognitoMode = userSettings.isIncognitoMode
             )
 
-            if (targetSeriesId > 0) {
+            if (targetSeriesId > 0 && !effectiveSettings.isIncognitoMode) {
                 if (readingListId > 0) {
                     val listTitle = try {
                         val listRes = app.readingListRepository.getReadingLists()
@@ -319,12 +331,12 @@ class ReaderViewModel : ViewModel() {
                 )
             }
             scheduleAutoHideControls()
+            refreshNeighbors(chapterId, targetSeriesId, readingListId)
 
             val pageList = readerRepository.getPages(chapterId, totalPages)
             val savedPageNum = readerRepository.getProgress(chapterId)
 
-            val hasSavedProgress = !openAtLastPage && savedPageNum > 1 && pageList.isNotEmpty()
-
+            val hasSavedProgress = !openAtLastPage && !forceFirstPage && savedPageNum > 1 && pageList.isNotEmpty()
             val activeIndex = if (openAtLastPage && pageList.isNotEmpty()) {
                 pageList.size - 1
             } else if (hasSavedProgress) {
@@ -1001,6 +1013,7 @@ class ReaderViewModel : ViewModel() {
                     )
 
                     val settings = _uiState.value.settings
+                    if (settings.isIncognitoMode) return@launch
                     val currentChapterId = _uiState.value.chapterId
                     when (settings.autoDeleteOption) {
                         AutoDeleteOption.IMMEDIATELY -> {
@@ -1051,111 +1064,121 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
-    fun loadNextChapter() {
-        val state = _uiState.value
-        viewModelScope.launch {
-            val effectiveReadingListId = if (state.readingListId > 0) {
-                state.readingListId
-            } else if (state.seriesId > 0) {
-                val savedContext = preferencesRepository.seriesReadContextsFlow.first()[state.seriesId]
-                if (savedContext?.originType == "READING_LIST" && savedContext.readingListId > 0) {
-                    savedContext.readingListId
-                } else 0
-            } else 0
+    private var neighborsJob: Job? = null
 
-            if (effectiveReadingListId > 0) {
-                val listRes = readingListRepository.getReadingListItems(effectiveReadingListId)
-                if (listRes.isSuccess) {
-                    val items = listRes.getOrNull() ?: emptyList()
-                    val currentIndex = items.indexOfFirst { it.chapterId == state.chapterId }
-                    if (currentIndex in 0 until items.size - 1) {
-                        val nextItem = items[currentIndex + 1]
-                        if (nextItem.chapterId != null && nextItem.chapterId > 0) {
-                            loadChapter(
-                                chapterId = nextItem.chapterId,
-                                totalPages = nextItem.pages,
-                                seriesId = nextItem.seriesId,
-                                volumeId = nextItem.volumeId ?: 0,
-                                readingListId = effectiveReadingListId,
-                                openAtLastPage = false
-                            )
-                            return@launch
-                        }
-                    }
+    /**
+     * Previous/next chapter for the active context. Same rule as Home's On Deck:
+     * reading list (nav argument, or the series' saved READING_LIST context), otherwise series order.
+     * Returns (previous, next); null at a boundary or when the lookup fails.
+     */
+    private suspend fun findNeighbors(
+        chapterId: Int,
+        seriesId: Int,
+        readingListId: Int
+    ): Pair<ChapterRef?, ChapterRef?> {
+        val effectiveReadingListId = if (readingListId > 0) {
+            readingListId
+        } else if (seriesId > 0) {
+            val savedContext = preferencesRepository.seriesReadContextsFlow.first()[seriesId]
+            if (savedContext?.originType == "READING_LIST" && savedContext.readingListId > 0) {
+                savedContext.readingListId
+            } else 0
+        } else 0
+
+        if (effectiveReadingListId > 0) {
+            val items = readingListRepository.getReadingListItems(effectiveReadingListId).getOrNull()
+                ?: return Pair(null, null)
+            val currentIndex = items.indexOfFirst { it.chapterId == chapterId }
+            if (currentIndex < 0) return Pair(null, null)
+
+            fun refAt(index: Int): ChapterRef? {
+                val item = items.getOrNull(index) ?: return null
+                val id = item.chapterId ?: return null
+                if (id <= 0) return null
+                return ChapterRef(id, item.pages, item.seriesId, item.volumeId ?: 0, effectiveReadingListId)
+            }
+            return Pair(refAt(currentIndex - 1), refAt(currentIndex + 1))
+        }
+
+        if (seriesId > 0) {
+            val chapters = seriesRepository.getSeriesVolumes(seriesId).getOrNull()?.flatMap { it.chapters }
+                ?: return Pair(null, null)
+            val currentIndex = chapters.indexOfFirst { it.id == chapterId }
+            if (currentIndex < 0) return Pair(null, null)
+
+            fun refAt(index: Int): ChapterRef? {
+                val chapter = chapters.getOrNull(index) ?: return null
+                return ChapterRef(chapter.id, chapter.pages, seriesId, chapter.volumeId, 0)
+            }
+            return Pair(refAt(currentIndex - 1), refAt(currentIndex + 1))
+        }
+
+        return Pair(null, null)
+    }
+
+    /** Resolves prev/next for the chapter that was just loaded; the overlay buttons read these from state. */
+    private fun refreshNeighbors(chapterId: Int, seriesId: Int, readingListId: Int) {
+        neighborsJob?.cancel()
+        _uiState.update { it.copy(prevChapter = null, nextChapter = null) }
+        neighborsJob = viewModelScope.launch {
+            try {
+                val (prev, next) = findNeighbors(chapterId, seriesId, readingListId)
+                if (_uiState.value.chapterId == chapterId) {
+                    _uiState.update { it.copy(prevChapter = prev, nextChapter = next) }
                 }
-            } else if (state.seriesId > 0) {
-                val volumesRes = seriesRepository.getSeriesVolumes(state.seriesId)
-                if (volumesRes.isSuccess) {
-                    val allChapters = volumesRes.getOrDefault(emptyList()).flatMap { it.chapters }
-                    val currentIndex = allChapters.indexOfFirst { it.id == state.chapterId }
-                    if (currentIndex in 0 until allChapters.size - 1) {
-                        val nextChapter = allChapters[currentIndex + 1]
-                        loadChapter(
-                            chapterId = nextChapter.id,
-                            totalPages = nextChapter.pages,
-                            seriesId = state.seriesId,
-                            volumeId = nextChapter.volumeId,
-                            readingListId = 0,
-                            openAtLastPage = false
-                        )
-                        return@launch
-                    }
-                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Leave the buttons disabled if the lookup fails.
             }
         }
     }
 
+    private fun openChapter(
+        ref: ChapterRef,
+        openAtLastPage: Boolean = false,
+        forceFirstPage: Boolean = false
+    ) {
+        loadChapter(
+            chapterId = ref.chapterId,
+            totalPages = ref.totalPages,
+            seriesId = ref.seriesId,
+            volumeId = ref.volumeId,
+            readingListId = ref.readingListId,
+            openAtLastPage = openAtLastPage,
+            forceFirstPage = forceFirstPage
+        )
+    }
+
+    /** Overlay "next chapter" button. */
+    fun onNextChapterClick() {
+        val next = _uiState.value.nextChapter ?: return
+        openChapter(next)
+    }
+
+    /** Overlay "previous chapter" button: opens page 1 of the previous chapter. */
+    fun onPreviousChapterClick() {
+        val prev = _uiState.value.prevChapter ?: return
+        openChapter(prev, forceFirstPage = true)
+    }
+
+    /** Auto-advance after the last page. */
+    fun loadNextChapter() {
+        val state = _uiState.value
+        viewModelScope.launch {
+            val next = findNeighbors(state.chapterId, state.seriesId, state.readingListId).second
+                ?: return@launch
+            openChapter(next)
+        }
+    }
+
+    /** Swipe/tap back from page 1: opens the previous chapter at its last page. */
     fun loadPreviousChapter() {
         val state = _uiState.value
         viewModelScope.launch {
-            val effectiveReadingListId = if (state.readingListId > 0) {
-                state.readingListId
-            } else if (state.seriesId > 0) {
-                val savedContext = preferencesRepository.seriesReadContextsFlow.first()[state.seriesId]
-                if (savedContext?.originType == "READING_LIST" && savedContext.readingListId > 0) {
-                    savedContext.readingListId
-                } else 0
-            } else 0
-
-            if (effectiveReadingListId > 0) {
-                val listRes = readingListRepository.getReadingListItems(effectiveReadingListId)
-                if (listRes.isSuccess) {
-                    val items = listRes.getOrNull() ?: emptyList()
-                    val currentIndex = items.indexOfFirst { it.chapterId == state.chapterId }
-                    if (currentIndex in 1 until items.size) {
-                        val prevItem = items[currentIndex - 1]
-                        if (prevItem.chapterId != null && prevItem.chapterId > 0) {
-                            loadChapter(
-                                chapterId = prevItem.chapterId,
-                                totalPages = prevItem.pages,
-                                seriesId = prevItem.seriesId,
-                                volumeId = prevItem.volumeId ?: 0,
-                                readingListId = effectiveReadingListId,
-                                openAtLastPage = true
-                            )
-                            return@launch
-                        }
-                    }
-                }
-            } else if (state.seriesId > 0) {
-                val volumesRes = seriesRepository.getSeriesVolumes(state.seriesId)
-                if (volumesRes.isSuccess) {
-                    val allChapters = volumesRes.getOrDefault(emptyList()).flatMap { it.chapters }
-                    val currentIndex = allChapters.indexOfFirst { it.id == state.chapterId }
-                    if (currentIndex in 1 until allChapters.size) {
-                        val prevChapter = allChapters[currentIndex - 1]
-                        loadChapter(
-                            chapterId = prevChapter.id,
-                            totalPages = prevChapter.pages,
-                            seriesId = state.seriesId,
-                            volumeId = prevChapter.volumeId,
-                            readingListId = 0,
-                            openAtLastPage = true
-                        )
-                        return@launch
-                    }
-                }
-            }
+            val prev = findNeighbors(state.chapterId, state.seriesId, state.readingListId).first
+                ?: return@launch
+            openChapter(prev, openAtLastPage = true)
         }
     }
 
@@ -1241,6 +1264,16 @@ class ReaderViewModel : ViewModel() {
     fun updateReaderBackground(background: ReaderBackground) {
         _uiState.update { it.copy(settings = it.settings.copy(readerBackground = background)) }
         viewModelScope.launch { preferencesRepository.updateReaderBackground(background) }
+    }
+
+    fun updateVolumeKeyNavigation(enabled: Boolean) {
+        _uiState.update { it.copy(settings = it.settings.copy(volumeKeyNavigationEnabled = enabled)) }
+        viewModelScope.launch { preferencesRepository.updateVolumeKeyNavigation(enabled) }
+    }
+
+    fun updateVolumeKeyInvert(invert: Boolean) {
+        _uiState.update { it.copy(settings = it.settings.copy(volumeKeyInvert = invert)) }
+        viewModelScope.launch { preferencesRepository.updateVolumeKeyInvert(invert) }
     }
 
     fun handleVolumeKey(isVolumeUp: Boolean): Boolean {

@@ -2,7 +2,6 @@ package com.zemmy.sigurvita.ui.screens.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,26 +21,23 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.res.stringResource
-import com.zemmy.sigurvita.R
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.zemmy.sigurvita.R
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
-import com.zemmy.sigurvita.core.model.FitMode
+import com.zemmy.sigurvita.ui.components.settings.ReaderSettingsActions
+import com.zemmy.sigurvita.ui.components.settings.ReaderSettingsContent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,6 +47,24 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = viewModel()
 ) {
     val settings by viewModel.settings.collectAsState()
+
+    val readerActions = remember(viewModel) {
+        ReaderSettingsActions(
+            onFitMode = viewModel::updateFitMode,
+            onReaderBackground = viewModel::updateReaderBackground,
+            onOrientation = viewModel::updateOrientation,
+            onVolumeKeyNavigation = viewModel::updateVolumeKeyNav,
+            onVolumeKeyInvert = viewModel::updateVolumeKeyInvert,
+            onTouchEdgeNavigation = viewModel::updateTouchEdgeNav,
+            onShowPageNumber = viewModel::updateShowPageNumber,
+            onKeepScreenOn = viewModel::updateKeepScreenOn,
+            onSpeechBubbleDetection = viewModel::updateSpeechBubbleDetectionEnabled,
+            onSpeechBubbleBoxes = viewModel::updateSpeechBubbleBoxesEnabled,
+            onSpeechBubbleConfidence = viewModel::updateSpeechBubbleConfidence,
+            onPanelAwareOrder = viewModel::updatePanelAwareOrder,
+            onPanelDebugOverlay = viewModel::updatePanelDebugOverlay
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -79,201 +93,10 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Text(stringResource(R.string.fit_mode), style = MaterialTheme.typography.bodyLarge)
-            Row(modifier = Modifier.padding(vertical = 8.dp)) {
-                FitMode.entries.forEach { mode ->
-                    FilterChip(
-                        selected = (settings.fitMode == mode),
-                        onClick = { viewModel.updateFitMode(mode) },
-                        label = { Text(stringResource(mode.stringRes)) },
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.volume_key_nav), style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        stringResource(R.string.volume_key_nav_subtitle),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = settings.volumeKeyNavigationEnabled,
-                    onCheckedChange = { viewModel.updateVolumeKeyNav(it) }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.invert_volume_keys), style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        stringResource(R.string.invert_volume_keys_subtitle),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = settings.volumeKeyInvert,
-                    onCheckedChange = { viewModel.updateVolumeKeyInvert(it) }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.touch_edge_nav), style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        stringResource(R.string.touch_edge_nav_subtitle),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = settings.touchEdgeNavigationEnabled,
-                    onCheckedChange = { viewModel.updateTouchEdgeNav(it) }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.keep_screen_on), style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        stringResource(R.string.keep_screen_on_subtitle),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = settings.keepScreenOn,
-                    onCheckedChange = { viewModel.updateKeepScreenOn(it) }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.speech_bubble_detection), style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        stringResource(R.string.speech_bubble_detection_subtitle),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = settings.speechBubbleDetectionEnabled,
-                    onCheckedChange = { viewModel.updateSpeechBubbleDetectionEnabled(it) }
-                )
-            }
-
-            if (settings.speechBubbleDetectionEnabled) {
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.speech_bubble_boxes), style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            stringResource(R.string.speech_bubble_boxes_subtitle),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = settings.speechBubbleBoxesEnabled,
-                        onCheckedChange = { viewModel.updateSpeechBubbleBoxesEnabled(it) }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                var sliderConfidence by remember(settings.speechBubbleConfidence) { mutableFloatStateOf(settings.speechBubbleConfidence) }
-                Text(
-                    stringResource(R.string.detection_confidence, (sliderConfidence * 100).toInt()),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(start = 16.dp)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Slider(
-                    value = sliderConfidence,
-                    onValueChange = { sliderConfidence = it },
-                    onValueChangeFinished = { viewModel.updateSpeechBubbleConfidence(sliderConfidence) },
-                    valueRange = 0.02f..0.50f,
-                    steps = 48,
-                    modifier = Modifier.padding(start = 16.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.panel_aware_order), style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            stringResource(R.string.panel_aware_order_subtitle),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = settings.panelAwareOrderEnabled,
-                        onCheckedChange = { viewModel.updatePanelAwareOrder(it) }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.panel_debug_overlay), style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            stringResource(R.string.panel_debug_overlay_subtitle),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = settings.panelDebugOverlayEnabled,
-                        onCheckedChange = { viewModel.updatePanelDebugOverlay(it) }
-                    )
-                }
-            }
+            ReaderSettingsContent(
+                settings = settings,
+                actions = readerActions
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
 

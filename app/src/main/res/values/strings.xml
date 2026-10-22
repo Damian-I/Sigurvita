@@ -144,4 +144,9 @@
     <string name="background_auto">Auto</string>
     <string name="show_page_number">Page number</string>
     <string name="show_page_number_subtitle">Show current page / total at the bottom</string>
+    <string name="reader_section_reading">Reading</string>
+    <string name="reader_section_navigation">Navigation</string>
+    <string name="reader_section_display">Display</string>
+    <string name="reader_section_speech_bubbles">Speech bubbles</string>
+    <string name="reader_section_debug">Debug</string>
 </resources>

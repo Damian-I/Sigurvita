@@ -12,7 +12,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-
+import com.zemmy.sigurvita.core.model.ReaderBackground
+import com.zemmy.sigurvita.core.model.ReaderOrientation
 class SettingsViewModel : ViewModel() {
 
     private val app = SigurvitaApp.instance
@@ -33,6 +34,25 @@ class SettingsViewModel : ViewModel() {
     fun updateFitMode(mode: FitMode) {
         viewModelScope.launch {
             preferencesRepository.updateFitMode(mode)
+        }
+    }
+
+
+    fun updateReaderBackground(background: ReaderBackground) {
+        viewModelScope.launch {
+            preferencesRepository.updateReaderBackground(background)
+        }
+    }
+
+    fun updateOrientation(orientation: ReaderOrientation) {
+        viewModelScope.launch {
+            preferencesRepository.updateReaderOrientation(orientation)
+        }
+    }
+
+    fun updateShowPageNumber(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updateShowPageNumber(enabled)
         }
     }
 
