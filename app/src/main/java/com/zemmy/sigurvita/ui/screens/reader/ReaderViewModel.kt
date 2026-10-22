@@ -160,6 +160,8 @@ class ReaderViewModel : ViewModel() {
     private var completedForwardBubblePageIndex: Int = -1
     private var completedBackwardBubblePageIndex: Int = -1
 
+    // +1 = current page was reached going forward, -1 = going backward, 0 = unknown
+    private var pageArrivalDirection: Int = 0
     fun loadChapter(
         chapterId: Int,
         totalPages: Int,
@@ -955,6 +957,15 @@ class ReaderViewModel : ViewModel() {
                 isRead = (index + 1 >= totalPages && totalPages > 0)
             )
 
+            // Remember which way the reader just moved so volume-key bubble navigation
+            // can tell "continue" from "reverse". Single-page steps only.
+            val previousIndex = _uiState.value.currentPageIndex
+            if (index == previousIndex + 1) {
+                pageArrivalDirection = 1
+            } else if (index == previousIndex - 1) {
+                pageArrivalDirection = -1
+            }
+
             if (index != completedForwardBubblePageIndex) {
                 completedForwardBubblePageIndex = -1
             }
@@ -1153,12 +1164,14 @@ class ReaderViewModel : ViewModel() {
     /** Overlay "next chapter" button. */
     fun onNextChapterClick() {
         val next = _uiState.value.nextChapter ?: return
+        pageArrivalDirection = 1
         openChapter(next)
     }
 
     /** Overlay "previous chapter" button: opens page 1 of the previous chapter. */
     fun onPreviousChapterClick() {
         val prev = _uiState.value.prevChapter ?: return
+        pageArrivalDirection = 1
         openChapter(prev, forceFirstPage = true)
     }
 
@@ -1168,6 +1181,7 @@ class ReaderViewModel : ViewModel() {
         viewModelScope.launch {
             val next = findNeighbors(state.chapterId, state.seriesId, state.readingListId).second
                 ?: return@launch
+            pageArrivalDirection = 1
             openChapter(next)
         }
     }
@@ -1178,6 +1192,7 @@ class ReaderViewModel : ViewModel() {
         viewModelScope.launch {
             val prev = findNeighbors(state.chapterId, state.seriesId, state.readingListId).first
                 ?: return@launch
+            pageArrivalDirection = -1
             openChapter(prev, openAtLastPage = true)
         }
     }
@@ -1320,7 +1335,11 @@ class ReaderViewModel : ViewModel() {
                     nextPage()
                     return true
                 }
-
+                // Reversing right after arriving on this page: just turn the page.
+                if (pageArrivalDirection < 0) {
+                    nextPage()
+                    return true
+                }
                 val pageBubbles = state.bubblesByPage[pageIdx]
                 if (pageBubbles != null) {
                     val bubbles = pageBubbles.bubbles
@@ -1351,7 +1370,11 @@ class ReaderViewModel : ViewModel() {
                     previousPage()
                     return true
                 }
-
+                // Reversing right after arriving on this page: just turn the page.
+                if (pageArrivalDirection > 0) {
+                    previousPage()
+                    return true
+                }
                 val pageBubbles = state.bubblesByPage[pageIdx]
                 if (pageBubbles != null) {
                     val bubbles = pageBubbles.bubbles
@@ -1395,6 +1418,7 @@ class ReaderViewModel : ViewModel() {
         nextChapterPreloadJob?.cancel()
         bubbleDetectionJobs.values.forEach { it.cancel() }
         bubbleDetectionJobs.clear()
+        pageArrivalDirection = 0
         // Allow the next-chapter preload to start again if this chapter is reopened
         preloadedNextChapterId = 0
     }
