@@ -38,6 +38,9 @@ import com.zemmy.sigurvita.R
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
 import com.zemmy.sigurvita.ui.components.settings.ReaderSettingsActions
 import com.zemmy.sigurvita.ui.components.settings.ReaderSettingsContent
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.Switch
+import androidx.compose.ui.Alignment
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,7 +102,33 @@ fun SettingsScreen(
             )
 
             Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = stringResource(R.string.appearance),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary
+            )
 
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.colorscape_title), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        text = stringResource(R.string.colorscape_subtitle),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = settings.colorScapeEnabled,
+                    onCheckedChange = viewModel::updateColorScapeEnabled
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
             Text(
                 text = stringResource(R.string.offline_downloads),
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),

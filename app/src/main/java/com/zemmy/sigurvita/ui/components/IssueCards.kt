@@ -20,14 +20,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.zemmy.sigurvita.core.model.DownloadTask
-
+import androidx.compose.ui.graphics.Color
+import com.zemmy.sigurvita.ui.theme.colorScapeBorder
 @Immutable
 data class IssueUi(
     val id: Int,
@@ -48,10 +48,6 @@ data class IssueUi(
 }
 
 @Composable
-private fun nextUpBorder(isNextUp: Boolean) =
-    if (isNextUp) CardDefaults.outlinedCardBorder().copy(brush = SolidColor(MaterialTheme.colorScheme.primary)) else null
-
-@Composable
 fun IssueRow(
     issue: IssueUi,
     onOpen: () -> Unit,
@@ -65,11 +61,12 @@ fun IssueRow(
     onTitleClick: (() -> Unit)? = null,
     onSubtitleClick: (() -> Unit)? = null,
     coverSize: DpSize = DpSize(60.dp, 85.dp),
-    contentPadding: Dp = 8.dp
+    contentPadding: Dp = 8.dp,
+    accent: Color? = null
 ) {
     Card(
         modifier = modifier.fillMaxWidth().clickable(onClick = onOpen),
-        border = nextUpBorder(issue.isNextUp),
+        border = colorScapeBorder(issue.isNextUp, accent),
         elevation = CardDefaults.cardElevation(defaultElevation = if (issue.isNextUp) 4.dp else 2.dp)
     ) {
         Row(
@@ -136,11 +133,12 @@ fun IssueGridCard(
     onDeleteLocal: () -> Unit,
     onEraClick: (String) -> Unit,
     onReadingListClick: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    accent: Color? = null
 ) {
     Card(
         modifier = modifier.fillMaxWidth().clickable(onClick = onOpen),
-        border = nextUpBorder(issue.isNextUp),
+        border = colorScapeBorder(issue.isNextUp, accent),
         elevation = CardDefaults.cardElevation(defaultElevation = if (issue.isNextUp) 4.dp else 2.dp)
     ) {
         Column(modifier = Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {

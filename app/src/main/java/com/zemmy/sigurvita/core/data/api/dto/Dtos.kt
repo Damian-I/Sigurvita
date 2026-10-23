@@ -253,3 +253,9 @@ data class MarkVolumesReadDto(
 )
 
 typealias MarkMultipleDto = MarkVolumesReadDto
+
+@Serializable
+data class ColorScapeDto(
+    val primary: String? = null,
+    val secondary: String? = null
+)

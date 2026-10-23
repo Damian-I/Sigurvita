@@ -116,9 +116,15 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
+    fun updateColorScapeEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updateColorScapeEnabled(enabled)
+        }
+    }
     fun logout() {
         viewModelScope.launch {
             preferencesRepository.clearServerConfig()
+            app.colorScapeRepository.clear()
         }
     }
 

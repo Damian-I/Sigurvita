@@ -42,6 +42,14 @@ import com.zemmy.sigurvita.core.model.Chapter
 import com.zemmy.sigurvita.core.model.ServerConfig
 import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
 import java.util.Locale
+import androidx.compose.foundation.background
+import androidx.compose.material3.ButtonDefaults
+import com.zemmy.sigurvita.core.data.repository.ColorScapeKind
+import com.zemmy.sigurvita.ui.theme.accent
+import com.zemmy.sigurvita.ui.theme.headerBrush
+import com.zemmy.sigurvita.ui.theme.isSyntheticPlaceholder
+import com.zemmy.sigurvita.ui.theme.onAccent
+import com.zemmy.sigurvita.ui.theme.rememberColorScape
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,7 +67,8 @@ fun IssueDetailBottomSheet(
 ) {
     val prefs = SigurvitaApp.instance.userPreferencesRepository
     val config by prefs.serverConfigFlow.collectAsState(initial = ServerConfig())
-
+    val colors = rememberColorScape(ColorScapeKind.CHAPTER, if (chapter.isSyntheticPlaceholder()) 0 else chapter.id)
+    val accent = colors?.accent()
     val displayTitle = formatChapterDisplayTitle(chapter.title, chapter.chapterNumber)
     val files = chapter.files
     val totalSizeBytes = files.sumOf { it.bytes }
@@ -73,6 +82,7 @@ fun IssueDetailBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .then(if (colors != null) Modifier.background(colors.headerBrush()) else Modifier)
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp)
                 .verticalScroll(rememberScrollState())
@@ -86,7 +96,7 @@ fun IssueDetailBottomSheet(
                     Icon(
                         imageVector = Icons.Default.Info,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = accent ?: MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
@@ -124,7 +134,7 @@ fun IssueDetailBottomSheet(
                     Text(
                         text = seriesName,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = accent ?: MaterialTheme.colorScheme.primary,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -266,6 +276,8 @@ fun IssueDetailBottomSheet(
                         onDismissRequest()
                         onReadClick(chapter.id, chapter.pages, chapter.volumeId)
                     },
+                    colors = accent?.let { ButtonDefaults.buttonColors(containerColor = it, contentColor = it.onAccent()) }
+                        ?: ButtonDefaults.buttonColors(),
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(

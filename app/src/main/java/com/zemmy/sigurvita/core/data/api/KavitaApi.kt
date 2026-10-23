@@ -1,6 +1,7 @@
 package com.zemmy.sigurvita.core.data.api
 
 import com.zemmy.sigurvita.core.data.api.dto.ChapterDto
+import com.zemmy.sigurvita.core.data.api.dto.ColorScapeDto
 import com.zemmy.sigurvita.core.data.api.dto.FilterV2Dto
 import com.zemmy.sigurvita.core.data.api.dto.GroupedSeriesDto
 import com.zemmy.sigurvita.core.data.api.dto.LibraryDto
@@ -87,6 +88,15 @@ interface KavitaApi {
         @Query("chapterId") chapterId: Int
     ): Response<ChapterDto>
 
+
+    @GET("api/ColorScape/series")
+    suspend fun getSeriesColorScape(@Query("id") id: Int): Response<ColorScapeDto>
+
+    @GET("api/ColorScape/volume")
+    suspend fun getVolumeColorScape(@Query("id") id: Int): Response<ColorScapeDto>
+
+    @GET("api/ColorScape/chapter")
+    suspend fun getChapterColorScape(@Query("id") id: Int): Response<ColorScapeDto>
     @POST("api/ReadingList/lists")
     suspend fun getReadingLists(
         @Query("includePromoted") includePromoted: Boolean = true,

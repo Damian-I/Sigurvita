@@ -149,4 +149,7 @@
     <string name="reader_section_display">Display</string>
     <string name="reader_section_speech_bubbles">Speech bubbles</string>
     <string name="reader_section_debug">Debug</string>
+    <string name="appearance">Appearance</string>
+    <string name="colorscape_title">ColorScape</string>
+    <string name="colorscape_subtitle">Tint series, volume and chapter screens with colors from their covers</string>
 </resources>

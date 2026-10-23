@@ -62,7 +62,8 @@ data class ReaderSettings(
     val panelDebugOverlayEnabled: Boolean = false,
     val showPageNumber: Boolean = false,
     val orientation: ReaderOrientation = ReaderOrientation.FREE,
-    val readerBackground: ReaderBackground = ReaderBackground.BLACK
+    val readerBackground: ReaderBackground = ReaderBackground.BLACK,
+    val colorScapeEnabled: Boolean = true
 )
 
 data class MagnifiedBubble(

@@ -72,6 +72,7 @@ class UserPreferencesRepository(private val context: Context) {
         val LIBRARY_ORDER = stringPreferencesKey("library_order")
         val CHOSEN_READING_LISTS = stringPreferencesKey("chosen_reading_lists")
         val SERIES_READ_CONTEXTS = stringPreferencesKey("series_read_contexts")
+        val COLOR_SCAPE_ENABLED = booleanPreferencesKey("color_scape_enabled")
     }
 
     @Volatile
@@ -156,7 +157,8 @@ class UserPreferencesRepository(private val context: Context) {
                 panelDebugOverlayEnabled = panelDebugOverlay,
                 showPageNumber = showPageNumber,
                 orientation = orientation,
-                readerBackground = readerBackground
+                readerBackground = readerBackground,
+                colorScapeEnabled = preferences[Keys.COLOR_SCAPE_ENABLED] ?: true
             )
         }
         .distinctUntilChanged()
@@ -313,6 +315,11 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun updateReaderBackground(background: ReaderBackground) {
         context.dataStore.edit { preferences ->
             preferences[Keys.READER_BACKGROUND] = background.name
+        }
+    }
+    suspend fun updateColorScapeEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.COLOR_SCAPE_ENABLED] = enabled
         }
     }
     val completedChapterHistoryFlow: Flow<List<Int>> = context.dataStore.data

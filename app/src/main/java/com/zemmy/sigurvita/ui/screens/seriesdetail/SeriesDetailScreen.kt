@@ -79,6 +79,15 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import com.zemmy.sigurvita.R
 import com.zemmy.sigurvita.core.util.aniListUrl
+import androidx.compose.foundation.background
+import com.zemmy.sigurvita.core.data.repository.ColorScapeKind
+import com.zemmy.sigurvita.ui.theme.ColorScapeColors
+import com.zemmy.sigurvita.ui.theme.accent
+import com.zemmy.sigurvita.ui.theme.colorScapeBorder
+import com.zemmy.sigurvita.ui.theme.headerBrush
+import com.zemmy.sigurvita.ui.theme.isSyntheticPlaceholder
+import com.zemmy.sigurvita.ui.theme.onAccent
+import com.zemmy.sigurvita.ui.theme.rememberColorScape
 
 private fun formatVolumeHeader(name: String, number: Float): String {
     if (name.contains("100000") || abs(number) >= 10000f) {
@@ -86,7 +95,14 @@ private fun formatVolumeHeader(name: String, number: Float): String {
     }
     return if (name.isNotBlank()) "Volume $name" else "Volume $number"
 }
-
+@Composable
+private fun rememberItemColorScape(item: SeriesItem): ColorScapeColors? = when (item) {
+    is SeriesItem.VolumeItem -> rememberColorScape(ColorScapeKind.VOLUME, item.volumeId)
+    is SeriesItem.ChapterItem -> rememberColorScape(
+        ColorScapeKind.CHAPTER,
+        if (item.chapter.isSyntheticPlaceholder()) 0 else item.chapter.id
+    )
+}
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -108,6 +124,8 @@ fun SeriesDetailScreen(
     val focusRequester = remember { FocusRequester() }
     val uriHandler = LocalUriHandler.current
     val aniListUrl = remember(state.metadata) { state.metadata?.aniListUrl() }
+    val seriesColors = rememberColorScape(ColorScapeKind.SERIES, seriesId)
+    val seriesAccent = seriesColors?.accent()
 
     LaunchedEffect(state.isSearchActive) {
         if (state.isSearchActive) {
@@ -259,6 +277,7 @@ fun SeriesDetailScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(if (seriesColors != null) Modifier.background(seriesColors.headerBrush()) else Modifier)
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Row(
@@ -303,7 +322,7 @@ fun SeriesDetailScreen(
                                 Text(
                                     text = if (state.isMangaLibrary) "${state.chaptersRead} / ${state.totalChapters} chapters read" else "${state.chaptersRead} / ${state.totalChapters} issues read",
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = seriesAccent ?: MaterialTheme.colorScheme.primary
                                 )
                                 Text(
                                     text = "(${state.pagesRead} / ${state.totalPages} pages)",
@@ -345,7 +364,8 @@ fun SeriesDetailScreen(
                                             contentColor = MaterialTheme.colorScheme.onTertiary
                                         )
                                     } else {
-                                        ButtonDefaults.buttonColors()
+                                        seriesAccent?.let { ButtonDefaults.buttonColors(containerColor = it, contentColor = it.onAccent()) }
+                                            ?: ButtonDefaults.buttonColors()
                                     }
                                 ) {
                                     Icon(
@@ -534,6 +554,7 @@ fun SeriesDetailScreen(
                                     is SeriesItem.VolumeItem -> item.firstChapterId == nextToReadChapterId
                                 }
                                 val readingLists = if (item is SeriesItem.ChapterItem) state.chapterReadingLists[item.chapter.id] else null
+                                val itemColors = rememberItemColorScape(item)
 
                                 Card(
                                     modifier = Modifier
@@ -550,7 +571,7 @@ fun SeriesDetailScreen(
                                                 }
                                             }
                                         },
-                                    border = if (isNextUp) CardDefaults.outlinedCardBorder().copy(brush = SolidColor(MaterialTheme.colorScheme.primary)) else null,
+                                    border = colorScapeBorder(isNextUp, itemColors?.accent()),
                                     elevation = CardDefaults.cardElevation(defaultElevation = if (isNextUp) 4.dp else 2.dp)
                                 ) {
                                     Column(
@@ -625,6 +646,7 @@ fun SeriesDetailScreen(
                                     is SeriesItem.VolumeItem -> item.firstChapterId == nextToReadChapterId
                                 }
                                 val readingLists = if (item is SeriesItem.ChapterItem) state.chapterReadingLists[item.chapter.id] else null
+                                val itemColors = rememberItemColorScape(item)
 
                                 Card(
                                     modifier = Modifier
@@ -641,7 +663,7 @@ fun SeriesDetailScreen(
                                                 }
                                             }
                                         },
-                                    border = if (isNextUp) CardDefaults.outlinedCardBorder().copy(brush = SolidColor(MaterialTheme.colorScheme.primary)) else null,
+                                    border = colorScapeBorder(isNextUp, itemColors?.accent()),
                                     elevation = CardDefaults.cardElevation(defaultElevation = if (isNextUp) 4.dp else 2.dp)
                                 ) {
                                     Row(
@@ -790,8 +812,10 @@ fun SeriesDetailScreen(
                                             isDownloaded = chapter.isDownloaded || downloadTask?.status == DownloadStatus.COMPLETED
                                         )
                                     }
+                                    val accent = rememberColorScape(ColorScapeKind.CHAPTER, chapter.id)?.accent()
                                     com.zemmy.sigurvita.ui.components.IssueGridCard(
                                         issue = issue,
+                                        accent = accent,
                                         onOpen = { onChapterClick(chapter.id, chapter.pages, volume.id) },
                                         onDownload = { viewModel.downloadChapter(chapter) },
                                         onCancelDownload = { viewModel.cancelDownload(chapter.id) },
@@ -839,8 +863,10 @@ fun SeriesDetailScreen(
                                             isDownloaded = chapter.isDownloaded || downloadTask?.status == DownloadStatus.COMPLETED
                                         )
                                     }
+                                    val accent = rememberColorScape(ColorScapeKind.CHAPTER, chapter.id)?.accent()
                                     com.zemmy.sigurvita.ui.components.IssueRow(
                                         issue = issue,
+                                        accent = accent,
                                         onOpen = { onChapterClick(chapter.id, chapter.pages, volume.id) },
                                         onTitleClick = { selectedChapterForDetail = chapter },
                                         onToggleRead = { viewModel.toggleChapterRead(chapter) },
