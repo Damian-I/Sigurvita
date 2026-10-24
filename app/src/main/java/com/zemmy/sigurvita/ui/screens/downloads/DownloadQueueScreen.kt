@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -18,8 +19,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -44,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -51,12 +55,14 @@ import com.zemmy.sigurvita.R
 import com.zemmy.sigurvita.core.model.DownloadStatus
 import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.ui.components.CoverImage
+import com.zemmy.sigurvita.ui.theme.Spacing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DownloadQueueScreen(
     onBackClick: () -> Unit,
     onChapterClick: ((chapterId: Int, totalPages: Int, seriesId: Int, volumeId: Int) -> Unit)? = null,
+    onOpenDrawer: (() -> Unit)? = null,
     viewModel: DownloadQueueViewModel = viewModel()
 ) {
     val downloads by viewModel.downloads.collectAsState()
@@ -78,10 +84,19 @@ fun DownloadQueueScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.offline_downloads)) },
+                title = {
+                    Text(
+                        text = stringResource(R.string.offline_downloads),
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                    IconButton(onClick = onOpenDrawer ?: onBackClick) {
+                        Icon(
+                            imageVector = if (onOpenDrawer != null) Icons.Default.Menu
+                            else Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = if (onOpenDrawer != null) "Open navigation" else stringResource(R.string.back)
+                        )
                     }
                 },
                 actions = {
@@ -107,24 +122,42 @@ fun DownloadQueueScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding),
+                    .padding(innerPadding)
+                    .padding(Spacing.xxl),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(40.dp)
+                )
+                Spacer(modifier = Modifier.height(Spacing.md))
                 Text(
                     text = stringResource(R.string.no_download_tasks),
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(Spacing.xs))
+                Text(
+                    text = "Chapters you download for offline reading will appear here.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
                 )
             }
         } else {
             LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(Spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(Spacing.lg),
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
+                item(key = "summary") {
+                    DownloadSummary(downloads)
+                }
                 groupedDownloads.forEach { (seriesName, tasks) ->
                     val isExpanded = expandedGroups.contains(seriesName)
                     val completedCount = tasks.count { it.status == DownloadStatus.COMPLETED }
@@ -134,11 +167,16 @@ fun DownloadQueueScreen(
                     item(key = "group_$seriesName") {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium,
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
                             )
                         ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
+                            Column(modifier = Modifier.padding(Spacing.md)) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -215,6 +253,50 @@ fun DownloadQueueScreen(
 }
 
 @Composable
+private fun DownloadSummary(downloads: List<DownloadTask>) {
+    val active = downloads.count {
+        it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.QUEUED
+    }
+    val completed = downloads.count { it.status == DownloadStatus.COMPLETED }
+    val failed = downloads.count { it.status == DownloadStatus.FAILED }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(Spacing.lg),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            SummaryStat(value = active.toString(), label = "Active")
+            SummaryStat(value = completed.toString(), label = "Completed")
+            SummaryStat(value = failed.toString(), label = "Failed")
+        }
+    }
+}
+
+@Composable
+private fun SummaryStat(value: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+        )
+    }
+}
+
+@Composable
 private fun DownloadTaskItem(
     task: DownloadTask,
     onPause: () -> Unit,
@@ -262,9 +344,9 @@ private fun DownloadTaskItem(
                         text = stringResource(R.string.status_format, task.status.name, task.downloadedPages, task.totalPages),
                         style = MaterialTheme.typography.bodySmall,
                         color = when (task.status) {
-                            DownloadStatus.COMPLETED -> MaterialTheme.colorScheme.primary
+                            DownloadStatus.COMPLETED -> com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.completed
                             DownloadStatus.FAILED -> MaterialTheme.colorScheme.error
-                            DownloadStatus.PAUSED -> MaterialTheme.colorScheme.tertiary
+                            DownloadStatus.PAUSED -> com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.warning
                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                         }
                     )

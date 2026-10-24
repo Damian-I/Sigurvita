@@ -3,8 +3,12 @@ package com.zemmy.sigurvita.ui.screens.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
+import com.zemmy.sigurvita.core.model.AppearanceSettings
+import com.zemmy.sigurvita.core.model.AppThemeMode
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
 import com.zemmy.sigurvita.core.model.FitMode
+import com.zemmy.sigurvita.core.model.ReaderBackground
+import com.zemmy.sigurvita.core.model.ReaderOrientation
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
 import kotlinx.coroutines.flow.SharingStarted
@@ -12,8 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import com.zemmy.sigurvita.core.model.ReaderBackground
-import com.zemmy.sigurvita.core.model.ReaderOrientation
+
 class SettingsViewModel : ViewModel() {
 
     private val app = SigurvitaApp.instance
@@ -23,6 +26,12 @@ class SettingsViewModel : ViewModel() {
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = ReaderSettings()
+    )
+
+    val appearance: StateFlow<AppearanceSettings> = preferencesRepository.appearanceSettingsFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = AppearanceSettings()
     )
 
     fun updateReadingMode(mode: ReadingMode) {
@@ -121,6 +130,19 @@ class SettingsViewModel : ViewModel() {
             preferencesRepository.updateColorScapeEnabled(enabled)
         }
     }
+
+    fun updateThemeMode(mode: AppThemeMode) {
+        viewModelScope.launch {
+            preferencesRepository.updateAppThemeMode(mode)
+        }
+    }
+
+    fun updateDynamicColor(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updateAppDynamicColor(enabled)
+        }
+    }
+
     fun logout() {
         viewModelScope.launch {
             preferencesRepository.clearServerConfig()

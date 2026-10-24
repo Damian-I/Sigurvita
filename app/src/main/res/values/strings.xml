@@ -150,6 +150,13 @@
     <string name="reader_section_speech_bubbles">Speech bubbles</string>
     <string name="reader_section_debug">Debug</string>
     <string name="appearance">Appearance</string>
+    <string name="appearance_theme">Theme</string>
+    <string name="appearance_dynamic_color">Dynamic colour</string>
+    <string name="appearance_dynamic_color_subtitle">Use your device\'s Material You palette where available</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_amoled">AMOLED</string>
     <string name="colorscape_title">ColorScape</string>
     <string name="colorscape_subtitle">Tint series, volume and chapter screens with colors from their covers</string>
 </resources>

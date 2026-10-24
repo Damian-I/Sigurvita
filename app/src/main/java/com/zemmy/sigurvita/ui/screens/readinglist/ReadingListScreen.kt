@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
@@ -49,6 +50,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -77,6 +79,7 @@ import com.zemmy.sigurvita.ui.components.CoverImage
 import com.zemmy.sigurvita.ui.components.ErrorState
 import com.zemmy.sigurvita.ui.components.LoadingState
 import com.zemmy.sigurvita.ui.components.MassDownloadDialog
+import com.zemmy.sigurvita.ui.theme.Spacing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,6 +89,7 @@ fun ReadingListScreen(
     onBackClick: () -> Unit,
     onSeriesClick: (Int) -> Unit,
     onChapterClick: (chapterId: Int, seriesId: Int, volumeId: Int, readingListId: Int) -> Unit,
+    onOpenDrawer: (() -> Unit)? = null,
     viewModel: ReadingListViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -161,18 +165,32 @@ fun ReadingListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (state.selectedListTitle != null) cleanReadingListTitle(state.selectedListTitle!!) else "Reading Lists") },
+                title = {
+                    Text(
+                        text = if (state.selectedListTitle != null) cleanReadingListTitle(state.selectedListTitle!!) else "Reading Lists",
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
                 navigationIcon = {
+                    val atRoot = state.selectedListTitle == null
                     IconButton(
                         onClick = {
-                            if (state.selectedListTitle != null) {
+                            if (atRoot && onOpenDrawer != null) {
+                                onOpenDrawer()
+                            } else if (!atRoot) {
                                 viewModel.loadReadingLists()
                             } else {
                                 onBackClick()
                             }
                         }
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            imageVector = if (atRoot && onOpenDrawer != null) Icons.Default.Menu
+                            else Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = if (atRoot && onOpenDrawer != null) "Open navigation" else "Back"
+                        )
                     }
                 },
                 actions = {
@@ -180,7 +198,7 @@ fun ReadingListScreen(
                         Icon(
                             imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                             contentDescription = stringResource(R.string.toggle_incognito),
-                            tint = if (state.isIncognitoMode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
+                            tint = if (state.isIncognitoMode) com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.incognito else MaterialTheme.colorScheme.onSurface
                         )
                     }
                     if (state.selectedListTitle != null) {
@@ -213,7 +231,11 @@ fun ReadingListScreen(
                             }
                         }
                     }
-                }
+                },
+                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                )
             )
         }
     ) { innerPadding ->
@@ -226,23 +248,25 @@ fun ReadingListScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                        .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+                    colors = CardDefaults.cardColors(
+                        containerColor = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.infoContainer
+                    )
                 ) {
                     Row(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.padding(Spacing.md),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             Icons.Default.VisibilityOff,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onTertiaryContainer
+                            tint = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onInfoContainer
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(Spacing.md))
                         Text(
                             text = stringResource(R.string.incognito_active_message),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                            color = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onInfoContainer
                         )
                     }
                 }
@@ -262,24 +286,45 @@ fun ReadingListScreen(
                     }
                 },
                 singleLine = true,
+                shape = MaterialTheme.shapes.small,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = Spacing.lg, vertical = Spacing.sm)
             )
 
             // Era/Year Pills (when viewing reading lists overview)
             if (state.selectedListTitle == null && state.eraCategories.size > 1) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(horizontal = Spacing.lg),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         items(state.eraCategories, key = { it.name }) { category ->
+                            val selected = state.selectedEraName == category.name
                             FilterChip(
-                                selected = (state.selectedEraName == category.name),
+                                selected = selected,
                                 onClick = { viewModel.selectEra(category.name) },
-                                label = { Text(category.name) }
+                                shape = MaterialTheme.shapes.small,
+                                label = {
+                                    Text(
+                                        text = category.name,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = selected,
+                                    borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                                    selectedBorderColor = MaterialTheme.colorScheme.primaryContainer
+                                )
                             )
                         }
                     }
@@ -291,10 +336,10 @@ fun ReadingListScreen(
                             text = "Years: ${activeEra.years}",
                             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                            modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.xs)
                         )
                     } else {
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(Spacing.sm))
                     }
                 }
             }
@@ -318,12 +363,19 @@ fun ReadingListScreen(
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            shape = MaterialTheme.shapes.large,
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                            )
                         ) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp)
+                                    .padding(Spacing.lg)
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -332,7 +384,7 @@ fun ReadingListScreen(
                                 ) {
                                     Text(
                                         text = "${state.issuesRead} / ${state.totalIssues} issues read",
-                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        style = MaterialTheme.typography.titleSmall,
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                     Text(
@@ -342,7 +394,7 @@ fun ReadingListScreen(
                                     )
                                 }
                                 if (state.totalPages > 0 || state.totalIssues > 0) {
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(Spacing.sm))
                                     com.zemmy.sigurvita.ui.components.SeriesReadIndicator(
                                         pagesRead = state.pagesRead,
                                         totalPages = state.totalPages,
@@ -353,9 +405,9 @@ fun ReadingListScreen(
 
                                 val nextItem = if (nextUnreadIndex in itemsList.indices) itemsList[nextUnreadIndex] else itemsList.firstOrNull()
                                 if (nextItem?.chapterId != null && nextItem.chapterId > 0) {
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Spacer(modifier = Modifier.height(Spacing.md))
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Spacer(modifier = Modifier.height(Spacing.md))
 
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -367,24 +419,25 @@ fun ReadingListScreen(
                                                 .width(50.dp)
                                                 .height(75.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Spacer(modifier = Modifier.width(Spacing.md))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
                                                 text = "▶ Next to Resume",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                fontWeight = FontWeight.Bold
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                                color = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.nextUp
                                             )
-                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Spacer(modifier = Modifier.height(Spacing.xxs))
                                             Text(
                                                 text = nextItem.seriesName.ifBlank { nextItem.title },
-                                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                style = MaterialTheme.typography.titleSmall,
+                                                color = MaterialTheme.colorScheme.onSurface,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                             Text(
                                                 text = nextItem.title,
                                                 style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
@@ -394,13 +447,17 @@ fun ReadingListScreen(
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
-                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Spacer(modifier = Modifier.width(Spacing.sm))
                                         Button(
                                             onClick = {
                                                 onChapterClick(nextItem.chapterId, nextItem.seriesId, nextItem.volumeId ?: 0, nextItem.readingListId)
                                             },
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
                                             colors = if (state.isIncognitoMode) {
-                                                ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                                                ButtonDefaults.buttonColors(
+                                                    containerColor = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.incognito,
+                                                    contentColor = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onIncognito
+                                                )
                                             } else {
                                                 ButtonDefaults.buttonColors()
                                             }
@@ -548,11 +605,19 @@ fun ReadingListScreen(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .clickable { viewModel.loadListDetail(list.id, list.title) },
-                                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                                shape = MaterialTheme.shapes.medium,
+                                                colors = CardDefaults.cardColors(
+                                                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                                                ),
+                                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                                                border = androidx.compose.foundation.BorderStroke(
+                                                    1.dp,
+                                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                                                )
                                             ) {
                                                 Box(modifier = Modifier.fillMaxWidth()) {
                                                     Row(
-                                                        modifier = Modifier.padding(16.dp),
+                                                        modifier = Modifier.padding(Spacing.md),
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
                                                         CoverImage(
@@ -561,11 +626,12 @@ fun ReadingListScreen(
                                                                 .width(60.dp)
                                                                 .height(90.dp)
                                                         )
-                                                        Spacer(modifier = Modifier.width(16.dp))
+                                                        Spacer(modifier = Modifier.width(Spacing.md))
                                                         Column(modifier = Modifier.weight(1f)) {
                                                             Text(
                                                                 text = displayTitle,
-                                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                                                style = MaterialTheme.typography.titleMedium,
+                                                                color = MaterialTheme.colorScheme.onSurface,
                                                                 modifier = Modifier
                                                                     .padding(end = 28.dp)
                                                                     .basicMarquee(
@@ -573,7 +639,7 @@ fun ReadingListScreen(
                                                                         repeatDelayMillis = 2000
                                                                     )
                                                             )
-                                                            Spacer(modifier = Modifier.height(4.dp))
+                                                            Spacer(modifier = Modifier.height(Spacing.xxs))
                                                             Text(
                                                                 text = eraGroup.eraName,
                                                                 style = MaterialTheme.typography.bodySmall,
@@ -601,7 +667,8 @@ fun ReadingListScreen(
 
                                                     if (list.totalPages > 0 && list.pagesRead >= list.totalPages) {
                                                         Surface(
-                                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.95f),
+                                                            color = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.successContainer.copy(alpha = 0.95f),
+                                                            contentColor = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onSuccessContainer,
                                                             shape = RoundedCornerShape(bottomStart = 8.dp),
                                                             modifier = Modifier.align(Alignment.TopEnd)
                                                         ) {
@@ -612,24 +679,24 @@ fun ReadingListScreen(
                                                                 Icon(
                                                                     imageVector = Icons.Default.CheckCircle,
                                                                     contentDescription = "Completely Read",
-                                                                    tint = MaterialTheme.colorScheme.primary,
+                                                                    tint = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.completed,
                                                                     modifier = Modifier.size(12.dp)
                                                                 )
                                                                 Spacer(modifier = Modifier.width(3.dp))
                                                                 Text(
                                                                     text = "READ",
                                                                     style = MaterialTheme.typography.labelSmall.copy(
-                                                                        fontWeight = FontWeight.Bold,
+                                                                        fontWeight = FontWeight.SemiBold,
                                                                         fontSize = 9.sp
                                                                     ),
-                                                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                                    color = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onSuccessContainer
                                                                 )
                                                             }
                                                         }
                                                     } else if (list.pagesRead > 0 && list.totalPages > 0) {
                                                         Surface(
-                                                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.95f),
-                                                            shape = RoundedCornerShape(bottomStart = 8.dp),
+                                                            color = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.infoContainer.copy(alpha = 0.95f),
+                                                            contentColor = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onInfoContainer,
                                                             modifier = Modifier.align(Alignment.TopEnd)
                                                         ) {
                                                             Text(
@@ -638,7 +705,7 @@ fun ReadingListScreen(
                                                                     fontWeight = FontWeight.Bold,
                                                                     fontSize = 9.sp
                                                                 ),
-                                                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                                color = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onInfoContainer,
                                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                                             )
                                                         }

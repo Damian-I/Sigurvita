@@ -40,6 +40,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -153,7 +154,7 @@ fun MarkedPagesScreen(
                         ) {
                             // Tag Chip (DEBUG / REMOVE)
                             Surface(
-                                color = if (previewPage.reviewTag == "REMOVE") MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer,
+                                color = if (previewPage.reviewTag == "REMOVE") MaterialTheme.colorScheme.errorContainer else com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.warningContainer,
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.clickable {
                                     viewModel.toggleReviewTag(previewPage.id, previewPage.reviewTag)
@@ -166,14 +167,14 @@ fun MarkedPagesScreen(
                                     Icon(
                                         imageVector = if (previewPage.reviewTag == "REMOVE") Icons.Outlined.Delete else Icons.Default.BugReport,
                                         contentDescription = null,
-                                        tint = if (previewPage.reviewTag == "REMOVE") MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer,
+                                        tint = if (previewPage.reviewTag == "REMOVE") MaterialTheme.colorScheme.onErrorContainer else com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onWarningContainer,
                                         modifier = Modifier.size(12.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = if (previewPage.reviewTag == "REMOVE") "TO REMOVE" else "DEBUG",
                                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 8.sp),
-                                        color = if (previewPage.reviewTag == "REMOVE") MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer
+                                        color = if (previewPage.reviewTag == "REMOVE") MaterialTheme.colorScheme.onErrorContainer else com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onWarningContainer
                                     )
                                 }
                             }
@@ -268,7 +269,7 @@ fun MarkedPagesScreen(
                                 Text(
                                     text = "Analyzing speech bubbles & panels...",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.tertiary
+                                    color = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.info
                                 )
                             } else {
                                 val bubblesCount = state.testedPageBubbles?.bubbles?.size
@@ -299,7 +300,12 @@ fun MarkedPagesScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Page Review (${state.markedPages.size})") },
+                title = {
+                    Text(
+                        text = "Page Review (${state.markedPages.size})",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -338,7 +344,11 @@ fun MarkedPagesScreen(
                             Icon(Icons.Default.DeleteSweep, contentDescription = "Clear All")
                         }
                     }
-                }
+                },
+                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                )
             )
         }
     ) { innerPadding ->
@@ -362,6 +372,7 @@ fun MarkedPagesScreen(
                         }
                     },
                     singleLine = true,
+                    shape = MaterialTheme.shapes.small,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp)
@@ -373,10 +384,30 @@ fun MarkedPagesScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(ReviewTagFilter.entries) { filter ->
+                        val selected = state.selectedTagFilter == filter
                         FilterChip(
-                            selected = (state.selectedTagFilter == filter),
+                            selected = selected,
                             onClick = { viewModel.setTagFilter(filter) },
-                            label = { Text(filter.displayName) }
+                            shape = MaterialTheme.shapes.small,
+                            label = {
+                                Text(
+                                    text = filter.displayName,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = selected,
+                                borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                                selectedBorderColor = MaterialTheme.colorScheme.primaryContainer
+                            )
                         )
                     }
                 }
@@ -387,10 +418,30 @@ fun MarkedPagesScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(MarkedPageGrouping.entries) { grouping ->
+                        val selected = state.selectedGrouping == grouping
                         FilterChip(
-                            selected = (state.selectedGrouping == grouping),
+                            selected = selected,
                             onClick = { viewModel.setGrouping(grouping) },
-                            label = { Text("Group: ${grouping.displayName}") }
+                            shape = MaterialTheme.shapes.small,
+                            label = {
+                                Text(
+                                    text = "Group: ${grouping.displayName}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = selected,
+                                borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                                selectedBorderColor = MaterialTheme.colorScheme.secondaryContainer
+                            )
                         )
                     }
                 }
@@ -458,7 +509,15 @@ private fun MarkedPageCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onPreview() },
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+        )
     ) {
         Row(
             modifier = Modifier
@@ -479,10 +538,16 @@ private fun MarkedPageCard(
                     shape = RoundedCornerShape(8.dp)
                 )
 
+                val isRemove = page.reviewTag == "REMOVE"
+                val badgeContainer = if (isRemove) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.95f)
+                else com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.warningContainer.copy(alpha = 0.95f)
+                val badgeContent = if (isRemove) MaterialTheme.colorScheme.onErrorContainer
+                else com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onWarningContainer
+
                 // Tag Pill Badge Overlay (Debug vs Remove)
                 Surface(
-                    color = if (page.reviewTag == "REMOVE") MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.95f)
-                            else MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.95f),
+                    color = badgeContainer,
+                    contentColor = badgeContent,
                     shape = RoundedCornerShape(topStart = 8.dp, bottomEnd = 8.dp),
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -493,21 +558,19 @@ private fun MarkedPageCard(
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                     ) {
                         Icon(
-                            imageVector = if (page.reviewTag == "REMOVE") Icons.Outlined.Delete else Icons.Default.BugReport,
+                            imageVector = if (isRemove) Icons.Outlined.Delete else Icons.Default.BugReport,
                             contentDescription = null,
-                            tint = if (page.reviewTag == "REMOVE") MaterialTheme.colorScheme.onErrorContainer
-                                   else MaterialTheme.colorScheme.onTertiaryContainer,
+                            tint = badgeContent,
                             modifier = Modifier.size(10.dp)
                         )
                         Spacer(modifier = Modifier.width(2.dp))
                         Text(
-                            text = if (page.reviewTag == "REMOVE") "REMOVE" else "DEBUG",
+                            text = if (isRemove) "REMOVE" else "DEBUG",
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 8.sp
                             ),
-                            color = if (page.reviewTag == "REMOVE") MaterialTheme.colorScheme.onErrorContainer
-                                   else MaterialTheme.colorScheme.onTertiaryContainer
+                            color = badgeContent
                         )
                     }
                 }
@@ -519,13 +582,14 @@ private fun MarkedPageCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = page.seriesName.ifBlank { page.chapterTitle },
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.primary
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = page.chapterTitle,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(

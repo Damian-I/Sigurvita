@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,6 +22,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ViewList
@@ -42,6 +44,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -58,9 +61,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -215,14 +218,18 @@ fun SeriesDetailScreen(
                         text = state.series?.name ?: "Series Detail",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleLarge
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                )
             )
         }
     ) { innerPadding ->
@@ -252,7 +259,9 @@ fun SeriesDetailScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 4.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                        colors = CardDefaults.cardColors(
+                            containerColor = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.warningContainer
+                        )
                     ) {
                         Row(
                             modifier = Modifier.padding(10.dp),
@@ -261,13 +270,13 @@ fun SeriesDetailScreen(
                             Icon(
                                 Icons.Default.CloudOff,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onErrorContainer
+                                tint = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onWarningContainer
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
                                 text = "Offline Mode: Showing cached & downloaded content.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer
+                                color = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onWarningContainer
                             )
                         }
                     }
@@ -286,15 +295,17 @@ fun SeriesDetailScreen(
                     ) {
                         CoverImage(
                             url = series.coverUrl,
+                            shape = MaterialTheme.shapes.medium,
                             modifier = Modifier
-                                .width(100.dp)
-                                .height(145.dp)
+                                .width(104.dp)
+                                .height(150.dp)
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(14.dp))
                         Column(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(145.dp),
+                                .heightIn(min = 150.dp)
+                                .padding(vertical = 2.dp),
                             verticalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(modifier = Modifier.fillMaxWidth()) {
@@ -315,10 +326,10 @@ fun SeriesDetailScreen(
                                     Text(
                                         text = "Read more...",
                                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = seriesAccent ?: MaterialTheme.colorScheme.primary
                                     )
                                 }
-                                Spacer(modifier = Modifier.height(2.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Text(
                                     text = if (state.isMangaLibrary) "${state.chaptersRead} / ${state.totalChapters} chapters read" else "${state.chaptersRead} / ${state.totalChapters} issues read",
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
@@ -329,18 +340,33 @@ fun SeriesDetailScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                if (state.totalPages > 0) {
+                                    Spacer(modifier = Modifier.height(5.dp))
+                                    LinearProgressIndicator(
+                                        progress = {
+                                            (state.pagesRead.toFloat() / state.totalPages).coerceIn(0f, 1f)
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(3.dp)
+                                            .clip(RoundedCornerShape(2.dp)),
+                                        color = seriesAccent ?: MaterialTheme.colorScheme.primary,
+                                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                }
                                 if (state.libraryName.isNotBlank()) {
-                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Spacer(modifier = Modifier.height(5.dp))
                                     Surface(
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        shape = MaterialTheme.shapes.extraSmall,
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        shape = RoundedCornerShape(50),
                                         modifier = Modifier.clickable { onLibraryClick(state.libraryId) }
                                     ) {
                                         Text(
                                             text = "Library: ${state.libraryName}",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                         )
                                     }
                                 }
@@ -360,13 +386,14 @@ fun SeriesDetailScreen(
                                     },
                                     colors = if (state.isIncognitoMode) {
                                         ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.tertiary,
-                                            contentColor = MaterialTheme.colorScheme.onTertiary
+                                            containerColor = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.incognito,
+                                            contentColor = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onIncognito
                                         )
                                     } else {
                                         seriesAccent?.let { ButtonDefaults.buttonColors(containerColor = it, contentColor = it.onAccent()) }
                                             ?: ButtonDefaults.buttonColors()
-                                    }
+                                    },
+                                    shape = RoundedCornerShape(50)
                                 ) {
                                     Icon(
                                         imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.PlayArrow,
@@ -401,7 +428,8 @@ fun SeriesDetailScreen(
                                         Icon(
                                             imageVector = Icons.Default.CheckCircle,
                                             contentDescription = if (isSeriesCompleted) "Mark Unread" else "Mark Read",
-                                            tint = if (isSeriesCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            tint = if (isSeriesCompleted) com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.completed
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }
@@ -412,7 +440,8 @@ fun SeriesDetailScreen(
                                         Icon(
                                             imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                             contentDescription = "Toggle Incognito Mode",
-                                            tint = if (state.isIncognitoMode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            tint = if (state.isIncognitoMode) com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.incognito
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }
@@ -448,10 +477,30 @@ fun SeriesDetailScreen(
                             modifier = Modifier.weight(1f)
                         ) {
                             items(SeriesViewFilter.entries.toTypedArray()) { filter ->
+                                val selected = state.viewFilter == filter
                                 FilterChip(
-                                    selected = (state.viewFilter == filter),
+                                    selected = selected,
                                     onClick = { viewModel.selectViewFilter(filter) },
-                                    label = { Text(filter.displayName) }
+                                    shape = MaterialTheme.shapes.small,
+                                    label = {
+                                        Text(
+                                            text = filter.displayName,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                                        )
+                                    },
+                                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    ),
+                                    border = androidx.compose.material3.FilterChipDefaults.filterChipBorder(
+                                        enabled = true,
+                                        selected = selected,
+                                        borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                                        selectedBorderColor = MaterialTheme.colorScheme.primaryContainer
+                                    )
                                 )
                             }
                         }
@@ -607,7 +656,7 @@ fun SeriesDetailScreen(
                                             Text(
                                                 text = if (item.isRead) "• Read" else if (isNextUp) "▶ Next" else "Unread",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = if (item.isRead) MaterialTheme.colorScheme.onSurfaceVariant else if (isNextUp) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+                                                color = if (item.isRead) MaterialTheme.colorScheme.onSurfaceVariant else if (isNextUp) com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.nextUp else MaterialTheme.colorScheme.primary
                                             )
                                             IconButton(
                                                 onClick = {

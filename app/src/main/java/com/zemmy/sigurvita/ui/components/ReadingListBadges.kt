@@ -74,8 +74,8 @@ fun IntegratedReadingListBadge(
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (showEra) {
                 Surface(
-                    color = MaterialTheme.colorScheme.tertiaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.clickable { onEraClick(eraName) }
                 ) {
                     Text(

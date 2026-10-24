@@ -67,6 +67,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -91,6 +92,7 @@ import com.zemmy.sigurvita.ui.components.IssueDetailBottomSheet
 import com.zemmy.sigurvita.ui.components.LoadingState
 import com.zemmy.sigurvita.ui.components.settings.ReaderSettingsActions
 import com.zemmy.sigurvita.ui.components.settings.ReaderSettingsContent
+import com.zemmy.sigurvita.ui.theme.readableOn
 import kotlinx.coroutines.launch
 
 private fun Context.findActivity(): ComponentActivity? {
@@ -169,6 +171,16 @@ fun ReaderScreen(
     val rootBackground = state.settings.readerBackground.fixedColor()
         ?: pageBackgrounds[state.currentPageIndex]
         ?: Color.Black
+    val scapeAccent = com.zemmy.sigurvita.ui.theme.rememberColorScapeAccent(
+        com.zemmy.sigurvita.core.data.repository.ColorScapeKind.SERIES,
+        seriesId
+    ) ?: com.zemmy.sigurvita.ui.theme.rememberColorScapeAccent(
+        com.zemmy.sigurvita.core.data.repository.ColorScapeKind.CHAPTER,
+        chapterId
+    )
+    val chromeSurface = scapeAccent?.tint ?: Color.Black
+    val chromeAccent = (scapeAccent?.source?.primary ?: MaterialTheme.colorScheme.primary)
+        .readableOn(chromeSurface)
 
     Box(
         modifier = Modifier
@@ -294,7 +306,7 @@ fun ReaderScreen(
                                 Icon(
                                     imageVector = Icons.Default.Info,
                                     contentDescription = "Issue Details",
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    tint = chromeAccent,
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
@@ -319,7 +331,8 @@ fun ReaderScreen(
                                 )
                                 if (state.settings.isIncognitoMode) {
                                     Surface(
-                                        color = MaterialTheme.colorScheme.tertiary,
+                                        color = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.incognito,
+                                        contentColor = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onIncognito,
                                         shape = MaterialTheme.shapes.extraSmall
                                     ) {
                                         Row(
@@ -331,12 +344,12 @@ fun ReaderScreen(
                                                 Icons.Default.VisibilityOff,
                                                 contentDescription = "Incognito",
                                                 modifier = Modifier.size(12.dp),
-                                                tint = MaterialTheme.colorScheme.onTertiary
+                                                tint = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onIncognito
                                             )
                                             Text(
                                                 text = "Incognito",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onTertiary
+                                                color = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onIncognito
                                             )
                                         }
                                     }
@@ -358,7 +371,7 @@ fun ReaderScreen(
                             Icon(
                                 imageVector = if (isCurrentPageMarked) Icons.Default.Bookmark else Icons.Outlined.Bookmark,
                                 contentDescription = if (isCurrentPageMarked) "Remove Page Mark" else "Mark Page for Review",
-                                tint = if (isCurrentPageMarked) MaterialTheme.colorScheme.primary else Color.White
+                                tint = if (isCurrentPageMarked) chromeAccent else Color.White
                             )
                         }
                         IconButton(onClick = {
@@ -369,7 +382,7 @@ fun ReaderScreen(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Black.copy(alpha = 0.8f),
+                        containerColor = chromeSurface.copy(alpha = 0.88f),
                         titleContentColor = Color.White,
                         navigationIconContentColor = Color.White,
                         actionIconContentColor = Color.White
@@ -391,8 +404,16 @@ fun ReaderScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color.Black.copy(alpha = 0.85f))
-                            .padding(16.dp),
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        Color.Transparent,
+                                        chromeSurface.copy(alpha = 0.90f),
+                                        chromeSurface.copy(alpha = 0.97f)
+                                    )
+                                )
+                            )
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Box(
@@ -405,7 +426,8 @@ fun ReaderScreen(
                             val currentBubbles = state.bubblesByPage[state.currentPageIndex]
                             if (state.settings.speechBubbleDetectionEnabled && currentBubbles != null) {
                                 Surface(
-                                    color = Color(0xFF333333),
+                                    color = chromeSurface.copy(alpha = 0.9f),
+                                    contentColor = Color.White,
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Row(
@@ -415,7 +437,7 @@ fun ReaderScreen(
                                         Icon(
                                             imageVector = Icons.Default.ChatBubble,
                                             contentDescription = null,
-                                            tint = Color(0xFFFFE500),
+                                            tint = chromeAccent,
                                             modifier = Modifier.size(14.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -481,9 +503,10 @@ fun ReaderScreen(
                                     if (page != null) {
                                         Surface(
                                             shape = MaterialTheme.shapes.small,
-                                            color = Color(0xFF222222),
+                                            color = chromeSurface.copy(alpha = 0.92f),
                                             shadowElevation = if (absOffset == 0) 6.dp else 2.dp,
-                                            border = if (absOffset == 0) BorderStroke(1.5.dp, Color.White) else null,
+                                            border = if (absOffset == 0) BorderStroke(1.5.dp, chromeAccent)
+                                            else BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
                                             modifier = Modifier
                                                 .graphicsLayer { this.alpha = alpha }
                                                 .clickable {
@@ -545,6 +568,11 @@ fun ReaderScreen(
                                     viewModel.onPageChanged(it.toInt())
                                 },
                                 valueRange = 0f..(if (state.pages.isNotEmpty()) (state.pages.size - 1).toFloat() else 0f),
+                                colors = androidx.compose.material3.SliderDefaults.colors(
+                                    thumbColor = chromeAccent,
+                                    activeTrackColor = chromeAccent,
+                                    inactiveTrackColor = Color.White.copy(alpha = 0.22f)
+                                ),
                                 modifier = Modifier.weight(1f)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -612,8 +640,8 @@ fun ReaderScreen(
                         viewModel.scheduleAutoHideControls()
                     },
                     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                    containerColor = Color(0xFF1E1E1E),
-                    contentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    contentColor = MaterialTheme.colorScheme.onSurface
                 ) {
                     Column(
                         modifier = Modifier
@@ -623,10 +651,8 @@ fun ReaderScreen(
                     ) {
                         Text(
                             text = stringResource(R.string.reader_options_title),
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = Color.White
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))

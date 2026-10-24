@@ -1,7 +1,9 @@
 package com.zemmy.sigurvita.ui.screens.library
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,10 +11,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -45,6 +51,7 @@ fun LibraryScreen(
     initialLibraryId: Int = 0,
     onBackClick: () -> Unit,
     onSeriesClick: (Int) -> Unit,
+    onOpenDrawer: (() -> Unit)? = null,
     viewModel: LibraryViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -83,8 +90,14 @@ fun LibraryScreen(
                 onToggleIncognito = { viewModel.toggleIncognitoMode() },
                 focusRequester = focusRequester,
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    if (onOpenDrawer != null) {
+                        IconButton(onClick = onOpenDrawer) {
+                            Icon(Icons.Default.Menu, contentDescription = "Open navigation")
+                        }
+                    } else {
+                        IconButton(onClick = onBackClick) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
                 }
             )
@@ -99,75 +112,88 @@ fun LibraryScreen(
                 modifier = Modifier.padding(innerPadding)
             )
         } else {
-            Column(
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 104.dp),
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
-                    .verticalScroll(rememberScrollState())
+                    .padding(innerPadding),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 8.dp,
+                    bottom = 24.dp
+                ),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 if (state.isIncognitoMode) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.infoContainer
+                            )
                         ) {
-                            Icon(
-                                Icons.Default.VisibilityOff,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onTertiaryContainer
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = stringResource(R.string.incognito_active_message),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer
-                            )
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.VisibilityOff,
+                                    contentDescription = null,
+                                    tint = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onInfoContainer
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = stringResource(R.string.incognito_active_message),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onInfoContainer
+                                )
+                            }
                         }
                     }
                 }
 
-                // Library Filter Chips using modularized FilterChipGroup
-                FilterChipGroup(
-                    items = filterLibraries,
-                    selectedItem = currentSelectedLib,
-                    onItemSelected = { viewModel.selectLibrary(it.id) },
-                    labelMapper = { if (it.id == 0) stringResource(R.string.all_libraries) else it.name }
-                )
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    FilterChipGroup(
+                        items = filterLibraries,
+                        selectedItem = currentSelectedLib,
+                        onItemSelected = { viewModel.selectLibrary(it.id) },
+                        labelMapper = { if (it.id == 0) stringResource(R.string.all_libraries) else it.name },
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    )
+                }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                if (state.filteredSeries.isNotEmpty()) {
-                    val rows = remember(state.filteredSeries) { state.filteredSeries.chunked(3) }
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        rows.forEach { rowItems ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                rowItems.forEach { series ->
-                                    SeriesCard(
-                                        series = series,
-                                        onClick = { onSeriesClick(series.id) },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                repeat(3 - rowItems.size) {
-                                    Spacer(modifier = Modifier.weight(1f))
-                                }
+                if (state.filteredSeries.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "No series in this library yet",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.height(24.dp))
+                } else {
+                    items(state.filteredSeries, key = { it.id }) { series ->
+                        SeriesCard(
+                            series = series,
+                            onClick = { onSeriesClick(series.id) }
+                        )
+                    }
                 }
             }
         }

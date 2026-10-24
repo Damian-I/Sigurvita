@@ -32,14 +32,17 @@ When developing new screens, components, or settings dialogues in Sigurvita, adh
 
 1. **Settings & Options Organization**:
    - **Feature first, debug after**: Primary user-facing features, toggles, highlight boxes, and tuning sliders (e.g., speech bubble AI detection, confidence threshold) must be placed at the top of settings dialogs and sheets. Debug, diagnostic, and overlay options (e.g., panel map debug outlines) must be positioned at the bottom.
-2. **Thumbnail Corner Rounding**:
-   - Match thumbnail corner shape to their environment. Thumbnails at the top of cards where title text/content sits below (such as `SeriesCard` on Home and Library screens) use top-only rounding (`topStart = 8.dp, topEnd = 8.dp, bottomStart = 0.dp, bottomEnd = 0.dp`). Standalone thumbnails or images inside lists/dialogs use all 4 rounded corners (`RoundedCornerShape(8.dp)`).
+2. **Design tokens, not literals**:
+   - Colours come from `MaterialTheme.colorScheme` or `SigurvitaTheme.colors` (semantic roles); never hardcode `Color(0xFF…)` in screen code. Corners come from `MaterialTheme.shapes` / `Radius`; spacing comes from `Spacing`. Per-series accents come from `LocalColorScapeAccent` (see 6.12).
+   - Cards use `MaterialTheme.shapes.medium`, covers use `MaterialTheme.shapes.small`, sheets/dialogs use `large`/`extraLarge`.
 3. **Typography & Text Overflow**:
-   - Long series titles, reading list names, and context badges must use scrolling marquee (`.basicMarquee()`) when constrained in width to prevent truncation and clipping.
+   - Use the M3 type scale from `Type.kt`. Long series titles, reading list names, and context badges must use scrolling marquee (`.basicMarquee()`) when constrained in width to prevent truncation and clipping.
 4. **Layout & Progress Indicators**:
-   - Progress metrics must be laid out using `SpaceBetween` (issue counts on the left, page counts on the right), with progress bars positioned flush at the bottom edge of cards and separated by subtle horizontal dividers (`HorizontalDivider`).
+   - Progress metrics are laid out with `SpaceBetween` (issue counts left, page counts right) and use the semantic `completed`/`inProgress` colours rather than raw `primary`/`tertiary`.
 5. **Hierarchical Navigation**:
    - Grouped content (such as reading lists) should utilize collapsible multi-level trees (**Era** → **Collapsible Part** → **Subparts**) to reduce visual clutter.
+6. **Theming**:
+   - Never assume dark mode. Every screen must be checked in System, Light, Dark and AMOLED, with dynamic colour on and off. Reader chrome may stay immersive, but its accents must still follow the series ColorScape.
 
 ---
 
@@ -223,7 +226,7 @@ Pattern: **MVVM** with Compose screens, one `ViewModel` per screen, and a reposi
 | Language / build | Kotlin 2.1.10, AGP 9.4.1, KSP 2.1.10, Java 17       | build files      |
 | SDK levels       | minSdk 26, targetSdk 35, compileSdk 35              | app build gradle |
 | UI               | Jetpack Compose BOM 2025.02.00, Material 3          | ui package       |
-| Navigation       | Navigation Compose 2.8.8, ModalNavigationDrawer     | ui navigation    |
+| Navigation       | Navigation Compose 2.8.8, bottom bar + drawer        | ui navigation    |
 | Networking       | Retrofit 2.11.0, OkHttp 4.12.0, Serialization 1.8.0 | core data api    |
 | Local database   | Room 2.6.1 with KSP                                 | core data db     |
 | Preferences      | Jetpack DataStore Preferences 1.1.2                 | core datastore   |
@@ -251,9 +254,13 @@ Pattern: **MVVM** with Compose screens, one `ViewModel` per screen, and a reposi
 | MarkedPages       | marked_pages                | none              |
 | Settings          | settings                    | none              |
 
-### 6.2 Navigation drawer (`SigurvitaNavGraph`)
+### 6.2 Navigation shell (`SigurvitaNavGraph`)
 
-A `ModalNavigationDrawer` wraps the `NavHost`. Drawer content: Home, Libraries (with reorderable drag handles), Reading Lists (organized in a **hierarchical tree view**: **Era** → **Collapsible Major Part** → **Subparts**), Downloads, Page Review, and Settings.
+Hybrid navigation: a `ModalNavigationDrawer` wraps a `Scaffold` whose bottom bar shows four primary destinations — Home, Browse (`library/0`), Lists (`reading_lists`) and Downloads. The bar is hidden on Auth, Series Detail, Reading List Detail, Reader, Page Review and Settings so those screens stay immersive.
+
+The drawer is the deep-navigation surface: branded header with server host, sectioned labels, Home/Libraries (reorderable drag handles), the reading-list **hierarchical tree** (**Era** → **Collapsible Major Part** → **Subparts**), Downloads, Page Review and Settings. Top-level screens expose it through a menu icon (Home, Library, Reading Lists at root, Downloads); elsewhere it is available by edge swipe.
+
+When the bottom bar is visible, root `Scaffold` uses `contentWindowInsets = WindowInsets(0)` and consumes the navigation-bar insets so inner screen Scaffolds do not double-pad. When it is hidden, insets propagate normally to the screen.
 
 ### 6.3 Home (`HomeScreen`)
 
@@ -262,13 +269,11 @@ A `ModalNavigationDrawer` wraps the `NavHost`. Drawer content: Home, Libraries (
 
 ### 6.4 Library (`LibraryScreen`)
 
-Series grid (3 columns, `SeriesCard`) for one or all libraries with filter chips, search, and Incognito toggle.
+Adaptive series grid (`LazyVerticalGrid` + `GridCells.Adaptive(104.dp)`, so phones get 3 columns and tablets widen automatically) for one or all libraries. A full-span row carries the library filter chips and the Incognito banner; the grid ends in an explicit empty state. Top bar is `SigurvitaTopBar` with search and the drawer menu icon; when the screen is opened inside a library stack the icon falls back to Back.
 
 ### 6.5 Series detail (`SeriesDetailScreen`)
 
-Pinned header with summary, "Read more...", metadata bottom sheet, resume button, mark read/unread, bulk download dialog, and toggleable comic/manga grid/list layouts with integrated reading list badges.
-
-### 6.6 Reader (`ReaderScreen`)
+Pinned hero with the cover, summary, "Read more...", chapter/page progress (accent-tinted bar) and a ColorScape-tinted gradient wash, plus metadata bottom sheet, pill Resume button, mark read/unread, incognito toggle, bulk download dialog, and toggleable comic/manga grid/list layouts with integrated reading list badges. Offline state uses the semantic warning banner.
 
 ### 6.6 Reader (`ReaderScreen`)
 
@@ -283,23 +288,44 @@ Horizontal pager (RTL/LTR) or vertical webtoon scrolling, pinch zoom (zoom and p
 
 ### 6.7 Reading lists (`ReadingListScreen`)
 
-Overview with search, era filter chips, sorting, bookmark pins, and **hierarchical collapsible tree view** (Era → Collapsible Major Part → Subparts). Detail view with next-to-resume card, item cards with read/download actions, and mass download.
+Overview with search, era filter chips, sorting, bookmark pins, and **hierarchical collapsible tree view** (Era → Collapsible Major Part → Subparts). Detail view with a flat progress/resume card, item cards with read/download actions, and mass download. All cards are zero-elevation, outlined `surfaceContainerLow` cards.
 
 ### 6.8 Downloads (`DownloadQueueScreen`)
 
-Expandable series group cards with summary metrics, individual chapter cards, pause/resume/retry/cancel/delete controls, and clear completed (which deletes the downloaded files and related on-device data, see 3.7).
+A summary card (active / completed / failed) sits above expandable series group cards. Individual chapter cards use the semantic `completed`/`warning`/`error` colours for their status, with pause/resume/retry/cancel/delete controls and clear completed (which deletes the downloaded files and related on-device data, see 3.7). Shows an illustrated empty state when the queue is empty.
 
 ### 6.9 Page Review (`MarkedPagesScreen`)
 
-Testing and cleanup workspace for flagged pages (`marked_pages`). Supports **review tags** (`DEBUG` / `REMOVE`), filtering, grouping, sorting, live TFLite speech bubble and DeepPanel map detection testing, persisted local image cleanup, and full-screen `ImageReader` preview inspection.
+Testing and cleanup workspace for flagged pages (`marked_pages`). Supports **review tags** (`DEBUG` / `REMOVE` — warning and error semantic colours), filtering, grouping, sorting, live TFLite speech bubble and DeepPanel map detection testing, persisted local image cleanup, and full-screen `ImageReader` preview inspection.
 
 ### 6.10 Settings (`SettingsScreen`)
 
-Reader configuration (fit mode, volume keys, edge tap, keep screen on, speech bubble detection, highlight boxes, confidence threshold, panel-aware order, panel map debug overlay), offline downloads auto-delete options, account session refresh, and logout.
+**Appearance**: theme mode chips (System / Light / Dark / AMOLED — AMOLED forces a true-black background and a brighter primary) and a Material You dynamic-colour toggle (Android 12+, disabled with an explanatory hint below). Also the global ColorScape switch, reader configuration (fit mode, volume keys, edge tap, keep screen on, speech bubble detection, highlight boxes, confidence threshold, panel-aware order, panel map debug overlay), offline downloads auto-delete options, account session refresh, and logout.
+
+Appearance is persisted in DataStore (`APP_THEME_MODE`, `APP_DYNAMIC_COLOR`) and applied in `MainActivity`, which also sets light/dark status- and navigation-bar icon appearance to match the resolved background.
 
 ### 6.11 Shared components (`ui.components`)
 
-`CoverImage`, `SeriesCard`, `SeriesReadIndicator`, `SidebarReadingListIndicator`, `LoadingState`, `ErrorState`, `ReadStatusBadge`, `DownloadStatusButton`, `ReadingListBadgeRow`, `IssueCards`, `MassDownloadDialog`, `SeriesInfoBottomSheet`, and `IssueDetailBottomSheet`.
+`CoverImage`, `SeriesCard`, `SeriesReadIndicator`, `SidebarReadingListIndicator`, `LoadingState`, `ErrorState`, `ReadStatusBadge`, `DownloadStatusButton`, `ReadingListBadgeRow`, `IssueCards`, `MassDownloadDialog`, `SeriesInfoBottomSheet`, and `IssueDetailBottomSheet`. Cards are flat (zero elevation) with a hairline `outlineVariant` border, and status colours come from the semantic palette.
+
+### 6.12 Theming & design system (`ui.theme`)
+
+| File | Contents |
+|:--|:--|
+| `Color.kt` | Brand palette: indigo scale (`Indigo*`), graphite/ink neutrals, functional greens/ambers/cyans. |
+| `Theme.kt` | `SigurvitaTheme(themeMode, dynamicColor)`, Light/Dark/AMOLED schemes, `SigurvitaSemanticColors`, `LocalSigurvitaColors`, `LocalIsAmoled`. |
+| `Type.kt` | Full M3 type scale. Uses platform `SansSerif` today so a custom font can be swapped in one place. |
+| `Shape.kt` | `SigurvitaShapes` (M3 `Shapes`) and the `Radius` token object. |
+| `Dimens.kt` | `Spacing` and `Dimens` tokens. |
+| `ColorScape.kt` | Scoped per-series accent system. |
+
+**Themes.** `AppThemeMode` has four values: `SYSTEM`, `LIGHT`, `DARK`, `AMOLED`. AMOLED is a true-black scheme (surfaces `Ink0`…`Ink700`) with a brighter primary for contrast. When Material You is enabled on Android 12+, the dynamic scheme replaces the brand scheme, except that AMOLED still overrides the surfaces so the background stays true black.
+
+**Semantic colours.** Screens must use these instead of overloading `secondary`/`tertiary`: `success`, `warning`, `info`, `inProgress`, `completed`, `downloaded`, `notStarted`, `incognito`, `nextUp`, each with its own `on*` and, where relevant, container pair. Access through `SigurvitaTheme.colors`; never hardcode.
+
+**ColorScape (per-series accent).** `ColorScape.kt` converts server hex colours into a contrast-checked `ColorScapeAccent` (`accent`, `onAccent`, `container`, `onContainer`, `tint`, `gradient`, `headerBrush`). `rememberColorScapeAccent(kind, id)` resolves series/volume/chapter colours when the user has ColorScape enabled, and `ColorScapeTheme` scopes the accent via `LocalColorScapeAccent`. The reader uses the same accent for its chrome, slider, thumbnails and badges, with a gradient scrim rather than a flat black bar.
+
+**Layout rules.** Insets are handled at the root shell (6.2); screens must not add their own navigation-bar padding when the bottom bar is visible. Top-level screens expose the drawer from their top-bar menu icon.
 
 ---
 

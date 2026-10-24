@@ -1,5 +1,6 @@
 package com.zemmy.sigurvita.ui.screens.home
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -65,6 +67,8 @@ import com.zemmy.sigurvita.ui.components.SeriesCard
 import androidx.compose.ui.platform.LocalContext
 import coil.imageLoader
 import com.zemmy.sigurvita.ui.components.coverImageRequest
+import com.zemmy.sigurvita.ui.theme.SigurvitaTheme
+import com.zemmy.sigurvita.ui.theme.Spacing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -141,17 +145,23 @@ fun HomeScreen(
                                 .focusRequester(focusRequester)
                         )
                     } else {
-                        Text(
-                            text = stringResource(R.string.app_name),
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clickable { onOpenDrawer() }
-                        )
+                        Column(modifier = Modifier.clickable { onOpenDrawer() }) {
+                            Text(
+                                text = stringResource(R.string.app_name),
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
                     if (state.isSearchActive) {
                         IconButton(onClick = { viewModel.toggleSearchActive() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close Search")
+                        }
+                    } else {
+                        IconButton(onClick = onOpenDrawer) {
+                            Icon(Icons.Default.Menu, contentDescription = "Open navigation")
                         }
                     }
                 },
@@ -170,7 +180,7 @@ fun HomeScreen(
                             Icon(
                                 imageVector = if (state.isIncognitoMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                 contentDescription = stringResource(R.string.toggle_incognito),
-                                tint = if (state.isIncognitoMode) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
+                                tint = if (state.isIncognitoMode) SigurvitaTheme.colors.incognito else MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
@@ -203,7 +213,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                        colors = CardDefaults.cardColors(containerColor = SigurvitaTheme.colors.warningContainer)
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
@@ -212,13 +222,13 @@ fun HomeScreen(
                             Icon(
                                 Icons.Default.CloudOff,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onErrorContainer
+                                tint = SigurvitaTheme.colors.onWarningContainer
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
                                 text = "Offline Mode: Connection to Kavita failed. Showing cached & downloaded content.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer
+                                color = SigurvitaTheme.colors.onWarningContainer
                             )
                         }
                     }
@@ -229,7 +239,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                        colors = CardDefaults.cardColors(containerColor = SigurvitaTheme.colors.infoContainer)
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
@@ -238,13 +248,13 @@ fun HomeScreen(
                             Icon(
                                 Icons.Default.VisibilityOff,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onTertiaryContainer
+                                tint = SigurvitaTheme.colors.onInfoContainer
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
                                 text = stringResource(R.string.incognito_active_message),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                                color = SigurvitaTheme.colors.onInfoContainer
                             )
                         }
                     }
@@ -321,7 +331,7 @@ fun HomeScreen(
                                             dialogReadingLists = lists
                                         }
                                     },
-                                    modifier = Modifier.width(110.dp)
+                                    modifier = Modifier.width(124.dp)
                                 )
                             }
                         }
@@ -338,7 +348,7 @@ fun HomeScreen(
                                 SeriesCard(
                                     series = series,
                                     onClick = { onSeriesClick(series.id) },
-                                    modifier = Modifier.width(110.dp)
+                                    modifier = Modifier.width(124.dp)
                                 )
                             }
                         }
@@ -355,7 +365,7 @@ fun HomeScreen(
                                 SeriesCard(
                                     series = series,
                                     onClick = { onSeriesClick(series.id) },
-                                    modifier = Modifier.width(110.dp)
+                                    modifier = Modifier.width(124.dp)
                                 )
                             }
                         }
@@ -372,7 +382,7 @@ fun HomeScreen(
                                 SeriesCard(
                                     series = series,
                                     onClick = { onSeriesClick(series.id) },
-                                    modifier = Modifier.width(110.dp)
+                                    modifier = Modifier.width(124.dp)
                                 )
                             }
                         }
@@ -386,12 +396,28 @@ fun HomeScreen(
 
 @Composable
 private fun SectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = Spacing.lg, end = Spacing.lg, top = Spacing.xl, bottom = Spacing.md),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .height(18.dp)
+                .width(3.dp)
+                .background(
+                    MaterialTheme.colorScheme.primary,
+                    androidx.compose.foundation.shape.RoundedCornerShape(2.dp)
+                )
+        )
+        Spacer(modifier = Modifier.width(Spacing.sm))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+    }
 }
 
 @Composable
@@ -461,14 +487,14 @@ fun OnDeckContextSelectionDialog(
                                 .padding(vertical = 4.dp)
                                 .clickable { onSelectReadingList(list.id, list.title) },
                             colors = CardDefaults.cardColors(
-                                containerColor = if (isListSelected) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                                containerColor = if (isListSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow
                             )
                         ) {
                             Row(
                                 modifier = Modifier.padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.Bookmark, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary)
+                                Icon(Icons.Default.Bookmark, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(

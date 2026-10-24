@@ -1,16 +1,21 @@
 package com.zemmy.sigurvita.ui.navigation
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -35,6 +40,7 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
@@ -49,6 +55,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -193,6 +200,10 @@ fun SigurvitaNavGraph(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val isAuthScreen = currentRoute == Screen.Auth.route
+    val showBottomBar = TopDestination.match(currentRoute) != null
+    val currentLibraryId = if (currentRoute?.startsWith("library/") == true) {
+        navBackStackEntry?.arguments?.getInt("libraryId")
+    } else null
 
     if (showAddReadingListDialog) {
         AlertDialog(
@@ -252,19 +263,21 @@ fun SigurvitaNavGraph(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = !isAuthScreen,
+        gesturesEnabled = !isAuthScreen && currentRoute?.startsWith("reader/") != true,
         drawerContent = {
-            ModalDrawerSheet {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "Sigurvita",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-                    color = MaterialTheme.colorScheme.primary
+            ModalDrawerSheet(
+                drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                drawerContentColor = MaterialTheme.colorScheme.onSurface
+            ) {
+                Spacer(modifier = Modifier.height(8.dp))
+                DrawerHeader(serverUrl = serverConfig.serverUrl)
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
                 )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    item { DrawerSectionLabel("Browse") }
+
                     // Home
                     item {
                         NavigationDrawerItem(
@@ -303,6 +316,7 @@ fun SigurvitaNavGraph(
                     // Individual Libraries (clean live drag to reorder)
                     items(drawerLibraries, key = { it.id }) { library ->
                         val isDragging = (draggingItemId == library.id)
+                        val isSelected = currentLibraryId == library.id
 
                         Row(
                             modifier = Modifier
@@ -312,6 +326,12 @@ fun SigurvitaNavGraph(
                                     translationY = if (isDragging) libraryDragOffsetY else 0f
                                     shadowElevation = if (isDragging) 8.dp.toPx() else 0f
                                 }
+                                .padding(horizontal = 12.dp, vertical = 2.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.surfaceContainerLow
+                                )
                                 .clickable {
                                     if (draggingItemId == null) {
                                         scope.launch { drawerState.close() }
@@ -321,12 +341,23 @@ fun SigurvitaNavGraph(
                                         }
                                     }
                                 }
-                                .padding(horizontal = 24.dp, vertical = 12.dp),
+                                .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = "• ${library.name}",
+                                text = library.name,
                                 style = MaterialTheme.typography.bodyMedium,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
                                 modifier = Modifier.weight(1f)
                             )
                             Box(
@@ -380,6 +411,8 @@ fun SigurvitaNavGraph(
                         }
                     }
 
+                    item { DrawerSectionLabel("Reading lists") }
+
                     // Reading Lists Header
                     item {
                         Row(
@@ -387,17 +420,27 @@ fun SigurvitaNavGraph(
                                 .fillMaxWidth()
                                 .clickable {
                                     scope.launch { drawerState.close() }
-                                    navController.navigate(Screen.ReadingLists.route) {
+                                    navController.navigate(Screen.ReadingLists.createRoute()) {
                                         launchSingleTop = true
                                         restoreState = true
                                     }
                                 }
-                                .padding(horizontal = 24.dp, vertical = 12.dp),
+                                .padding(start = 24.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = null)
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Text("Reading Lists", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Icon(
+                                Icons.AutoMirrored.Filled.FormatListBulleted,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                "All reading lists",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
                             IconButton(onClick = { showAddReadingListDialog = true }) {
                                 Icon(Icons.Default.Add, contentDescription = "Add Reading List")
                             }
@@ -498,6 +541,8 @@ fun SigurvitaNavGraph(
                         }
                     }
 
+                    item { DrawerSectionLabel("More") }
+
                     // Downloads
                     item {
                         NavigationDrawerItem(
@@ -552,6 +597,31 @@ fun SigurvitaNavGraph(
             }
         }
     ) {
+        Scaffold(
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            bottomBar = {
+                if (showBottomBar) {
+                    SigurvitaBottomBar(
+                        currentRoute = currentRoute,
+                        onNavigate = { destination ->
+                            navController.navigate(destination.route) {
+                                popUpTo(Screen.Home.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    )
+                }
+            }
+        ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .padding(innerPadding)
+                .then(
+                    if (showBottomBar) Modifier.consumeWindowInsets(WindowInsets.navigationBars)
+                    else Modifier
+                )
+        ) {
         NavHost(
             navController = navController,
             startDestination = startDestination
@@ -593,7 +663,8 @@ fun SigurvitaNavGraph(
                     onBackClick = { navController.popBackStack() },
                     onSeriesClick = { seriesId ->
                         navController.navigate(Screen.SeriesDetail.createRoute(seriesId))
-                    }
+                    },
+                    onOpenDrawer = { scope.launch { drawerState.open() } }
                 )
             }
 
@@ -618,7 +689,8 @@ fun SigurvitaNavGraph(
                                 readingListId = readingListId
                             )
                         )
-                    }
+                    },
+                    onOpenDrawer = { scope.launch { drawerState.open() } }
                 )
             }
 
@@ -706,6 +778,7 @@ fun SigurvitaNavGraph(
             composable(Screen.Downloads.route) {
                 DownloadQueueScreen(
                     onBackClick = { navController.popBackStack() },
+                    onOpenDrawer = { scope.launch { drawerState.open() } },
                     onChapterClick = { chapterId, totalPages, seriesId, volumeId ->
                         navController.navigate(
                             Screen.Reader.createRoute(
@@ -745,6 +818,8 @@ fun SigurvitaNavGraph(
                     }
                 )
             }
+        }
+        }
         }
     }
 }

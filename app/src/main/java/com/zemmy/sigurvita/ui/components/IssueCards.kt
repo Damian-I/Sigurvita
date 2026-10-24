@@ -1,5 +1,6 @@
 package com.zemmy.sigurvita.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -66,8 +67,13 @@ fun IssueRow(
 ) {
     Card(
         modifier = modifier.fillMaxWidth().clickable(onClick = onOpen),
-        border = colorScapeBorder(issue.isNextUp, accent),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (issue.isNextUp) 4.dp else 2.dp)
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        border = colorScapeBorder(issue.isNextUp, accent)
+            ?: BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(contentPadding),
@@ -138,8 +144,13 @@ fun IssueGridCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth().clickable(onClick = onOpen),
-        border = colorScapeBorder(issue.isNextUp, accent),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (issue.isNextUp) 4.dp else 2.dp)
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        border = colorScapeBorder(issue.isNextUp, accent)
+            ?: BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             CoverImage(url = issue.coverUrl, modifier = Modifier.fillMaxWidth().aspectRatio(0.7f))
@@ -169,7 +180,7 @@ fun IssueGridCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = when {
                         issue.isRead -> MaterialTheme.colorScheme.onSurfaceVariant
-                        issue.isNextUp -> MaterialTheme.colorScheme.tertiary
+                        issue.isNextUp -> com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.nextUp
                         else -> MaterialTheme.colorScheme.primary
                     }
                 )

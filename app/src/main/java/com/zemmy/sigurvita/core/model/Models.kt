@@ -30,6 +30,14 @@ enum class ReaderBackground(@param:StringRes val stringRes: Int) {
     WHITE(R.string.background_white),
     AUTO(R.string.background_auto)
 }
+
+enum class AppThemeMode(@param:StringRes val stringRes: Int) {
+    SYSTEM(R.string.theme_system),
+    LIGHT(R.string.theme_light),
+    DARK(R.string.theme_dark),
+    AMOLED(R.string.theme_amoled)
+}
+
 enum class AutoDeleteOption(@param:StringRes val stringRes: Int) {
     NEVER(R.string.auto_delete_never),
     IMMEDIATELY(R.string.auto_delete_immediately),
@@ -64,6 +72,11 @@ data class ReaderSettings(
     val orientation: ReaderOrientation = ReaderOrientation.FREE,
     val readerBackground: ReaderBackground = ReaderBackground.BLACK,
     val colorScapeEnabled: Boolean = true
+)
+
+data class AppearanceSettings(
+    val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    val dynamicColor: Boolean = true
 )
 
 data class MagnifiedBubble(

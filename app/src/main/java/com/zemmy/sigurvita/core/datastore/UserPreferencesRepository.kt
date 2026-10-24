@@ -10,8 +10,12 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.zemmy.sigurvita.core.model.AppearanceSettings
+import com.zemmy.sigurvita.core.model.AppThemeMode
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
 import com.zemmy.sigurvita.core.model.FitMode
+import com.zemmy.sigurvita.core.model.ReaderBackground
+import com.zemmy.sigurvita.core.model.ReaderOrientation
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
 import com.zemmy.sigurvita.core.model.ServerConfig
@@ -27,8 +31,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import com.zemmy.sigurvita.core.model.ReaderBackground
-import com.zemmy.sigurvita.core.model.ReaderOrientation
 
 @Serializable
 data class SeriesReadContext(
@@ -73,6 +75,8 @@ class UserPreferencesRepository(private val context: Context) {
         val CHOSEN_READING_LISTS = stringPreferencesKey("chosen_reading_lists")
         val SERIES_READ_CONTEXTS = stringPreferencesKey("series_read_contexts")
         val COLOR_SCAPE_ENABLED = booleanPreferencesKey("color_scape_enabled")
+        val APP_THEME_MODE = stringPreferencesKey("app_theme_mode")
+        val APP_DYNAMIC_COLOR = booleanPreferencesKey("app_dynamic_color")
     }
 
     @Volatile
@@ -320,6 +324,34 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun updateColorScapeEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[Keys.COLOR_SCAPE_ENABLED] = enabled
+        }
+    }
+
+    val appearanceSettingsFlow: Flow<AppearanceSettings> = context.dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { preferences ->
+            val themeMode = try {
+                preferences[Keys.APP_THEME_MODE]?.let { AppThemeMode.valueOf(it) } ?: AppThemeMode.SYSTEM
+            } catch (_: Exception) {
+                AppThemeMode.SYSTEM
+            }
+            val dynamicColor = preferences[Keys.APP_DYNAMIC_COLOR] ?: true
+            AppearanceSettings(
+                themeMode = themeMode,
+                dynamicColor = dynamicColor
+            )
+        }
+        .distinctUntilChanged()
+
+    suspend fun updateAppThemeMode(mode: AppThemeMode) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.APP_THEME_MODE] = mode.name
+        }
+    }
+
+    suspend fun updateAppDynamicColor(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.APP_DYNAMIC_COLOR] = enabled
         }
     }
     val completedChapterHistoryFlow: Flow<List<Int>> = context.dataStore.data

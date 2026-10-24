@@ -1,5 +1,6 @@
 package com.zemmy.sigurvita
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
@@ -10,6 +11,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.foundation.isSystemInDarkTheme
 import com.zemmy.sigurvita.ui.components.LoadingState
 import com.zemmy.sigurvita.ui.navigation.Screen
 import com.zemmy.sigurvita.ui.navigation.SigurvitaNavGraph
@@ -20,6 +22,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.res.stringResource
 import com.zemmy.sigurvita.core.data.api.SessionEvents
+import com.zemmy.sigurvita.core.model.AppThemeMode
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : ComponentActivity() {
 
@@ -29,6 +34,7 @@ class MainActivity : ComponentActivity() {
     @Volatile
     private var currentRoute: String? = null
 
+    @SuppressLint("ContextCastToActivity")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -36,8 +42,30 @@ class MainActivity : ComponentActivity() {
         setContent {
             val serverConfigState by SigurvitaApp.instance.userPreferencesRepository.serverConfigFlow
                 .collectAsState(initial = null)
+            val appearanceState by SigurvitaApp.instance.userPreferencesRepository.appearanceSettingsFlow
+                .collectAsState(initial = com.zemmy.sigurvita.core.model.AppearanceSettings())
 
-            SigurvitaTheme {
+            val appearance = appearanceState
+            val useDark = when (appearance.themeMode) {
+                AppThemeMode.SYSTEM -> isSystemInDarkTheme()
+                AppThemeMode.LIGHT -> false
+                AppThemeMode.DARK -> true
+                AppThemeMode.AMOLED -> true
+            }
+
+            val window = (LocalContext.current as? android.app.Activity)?.window
+            androidx.compose.runtime.LaunchedEffect(useDark) {
+                window?.let {
+                    val controller = WindowInsetsControllerCompat(it, it.decorView)
+                    controller.isAppearanceLightStatusBars = !useDark
+                    controller.isAppearanceLightNavigationBars = !useDark
+                }
+            }
+
+            SigurvitaTheme(
+                themeMode = appearance.themeMode,
+                dynamicColor = appearance.dynamicColor
+            ) {
                 val serverConfig = serverConfigState
                 if (serverConfig != null) {
                     val startDestination = if (serverConfig.isLoggedIn) Screen.Home.route else Screen.Auth.route
