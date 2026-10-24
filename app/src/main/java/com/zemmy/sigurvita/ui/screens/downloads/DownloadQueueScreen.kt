@@ -381,7 +381,9 @@ private fun DownloadTaskItem(
                     progress = {
                         if (task.totalPages > 0) task.downloadedPages.toFloat() / task.totalPages else 0f
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    gapSize = 0.dp,
+                    drawStopIndicator = {}
                 )
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {

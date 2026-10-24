@@ -39,6 +39,8 @@ When developing new screens, components, or settings dialogues in Sigurvita, adh
    - Use the M3 type scale from `Type.kt`. Long series titles, reading list names, and context badges must use scrolling marquee (`.basicMarquee()`) when constrained in width to prevent truncation and clipping.
 4. **Layout & Progress Indicators**:
    - Progress metrics are laid out with `SpaceBetween` (issue counts left, page counts right) and use the semantic `completed`/`inProgress` colours rather than raw `primary`/`tertiary`.
+   - Narrow poster cards pass `compact = true` to `SeriesReadIndicator`: the issue/page ratios stay on one reserved 10sp line, paired with small book/page icons so the labels are not lost. Wide contexts keep the full worded labels. The row carries a spoken `contentDescription` for accessibility.
+   - Progress bars never draw the M3 stop indicator: pass `gapSize = 0.dp` and `drawStopIndicator = {}` to `LinearProgressIndicator`.
 5. **Hierarchical Navigation**:
    - Grouped content (such as reading lists) should utilize collapsible multi-level trees (**Era** → **Collapsible Part** → **Subparts**) to reduce visual clutter.
 6. **Theming**:
@@ -273,7 +275,7 @@ Adaptive series grid (`LazyVerticalGrid` + `GridCells.Adaptive(104.dp)`, so phon
 
 ### 6.5 Series detail (`SeriesDetailScreen`)
 
-Pinned hero with the cover, summary, "Read more...", chapter/page progress (accent-tinted bar) and a ColorScape-tinted gradient wash, plus metadata bottom sheet, pill Resume button, mark read/unread, incognito toggle, bulk download dialog, and toggleable comic/manga grid/list layouts with integrated reading list badges. Offline state uses the semantic warning banner.
+Pinned hero with the cover, summary, "Read more...", chapter/page progress (accent-tinted bar) and a ColorScape-tinted gradient wash, plus metadata bottom sheet, pill Resume button, mark read/unread, incognito toggle, bulk download dialog, and toggleable comic/manga grid/list layouts with integrated reading list badges. The app bar (title + back) is rendered inside the gradient header so the wash starts at the top of the screen and runs behind the status bar. Offline state uses the semantic warning banner below the header.
 
 ### 6.6 Reader (`ReaderScreen`)
 

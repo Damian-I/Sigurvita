@@ -651,8 +651,7 @@ fun ReadingListScreen(
                                                                     pagesRead = list.pagesRead,
                                                                     totalPages = list.totalPages,
                                                                     issuesRead = list.issuesRead,
-                                                                    totalIssues = if (list.itemCount > 0) list.itemCount else 0,
-                                                                    compact = true
+                                                                    totalIssues = if (list.itemCount > 0) list.itemCount else 0
                                                                 )
                                                             }
                                                         }

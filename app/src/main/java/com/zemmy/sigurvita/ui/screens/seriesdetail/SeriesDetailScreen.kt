@@ -1,5 +1,6 @@
 package com.zemmy.sigurvita.ui.screens.seriesdetail
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -22,6 +25,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -64,6 +68,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -77,11 +82,12 @@ import com.zemmy.sigurvita.ui.components.LoadingState
 import com.zemmy.sigurvita.ui.components.MassDownloadDialog
 import com.zemmy.sigurvita.ui.components.ReadStatusBadge
 import kotlin.math.abs
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import com.zemmy.sigurvita.R
-import com.zemmy.sigurvita.core.util.aniListUrl
+import com.zemmy.sigurvita.core.util.ExternalLinkProvider
+import com.zemmy.sigurvita.core.util.primaryExternalLink
 import androidx.compose.foundation.background
 import com.zemmy.sigurvita.core.data.repository.ColorScapeKind
 import com.zemmy.sigurvita.ui.theme.ColorScapeColors
@@ -126,7 +132,9 @@ fun SeriesDetailScreen(
     var selectedChapterForDetail by remember { mutableStateOf<Chapter?>(null) }
     val focusRequester = remember { FocusRequester() }
     val uriHandler = LocalUriHandler.current
-    val aniListUrl = remember(state.metadata) { state.metadata?.aniListUrl() }
+    val externalLink = remember(state.metadata, state.isMangaLibrary) {
+        state.metadata?.primaryExternalLink(state.isMangaLibrary)
+    }
     val seriesColors = rememberColorScape(ColorScapeKind.SERIES, seriesId)
     val seriesAccent = seriesColors?.accent()
 
@@ -212,25 +220,29 @@ fun SeriesDetailScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = state.series?.name ?: "Series Detail",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleLarge
+            // The loaded layout hosts the app bar inside the series gradient header.
+            // Only show the plain bar while there is no series to draw behind it.
+            if (state.series == null) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = "Series Detail",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBackClick) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer
                     )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer
                 )
-            )
+            }
         }
     ) { innerPadding ->
         if (state.isLoading && state.series == null) {
@@ -252,45 +264,42 @@ fun SeriesDetailScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
+                    .padding(bottom = innerPadding.calculateBottomPadding())
             ) {
-                if (state.isOffline) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.warningContainer
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.CloudOff,
-                                contentDescription = null,
-                                tint = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onWarningContainer
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "Offline Mode: Showing cached & downloaded content.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onWarningContainer
-                            )
-                        }
-                    }
-                }
-
                 // FIXED PINNED TOP SECTION
+                // The app bar lives inside this gradient container so the ColorScape wash
+                // starts at the very top of the screen instead of behind a flat bar.
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .then(if (seriesColors != null) Modifier.background(seriesColors.headerBrush()) else Modifier)
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .statusBarsPadding()
                 ) {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                text = state.series?.name ?: "Series Detail",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleLarge
+                            )
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = onBackClick) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                        },
+                        colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            scrolledContainerColor = Color.Transparent
+                        ),
+                        windowInsets = WindowInsets(0, 0, 0, 0)
+                    )
+
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.Top
                     ) {
                         CoverImage(
@@ -351,7 +360,9 @@ fun SeriesDetailScreen(
                                             .height(3.dp)
                                             .clip(RoundedCornerShape(2.dp)),
                                         color = seriesAccent ?: MaterialTheme.colorScheme.primary,
-                                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                                        gapSize = 0.dp,
+                                        drawStopIndicator = {}
                                     )
                                 }
                                 if (state.libraryName.isNotBlank()) {
@@ -408,16 +419,39 @@ fun SeriesDetailScreen(
                                     horizontalArrangement = Arrangement.spacedBy(0.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    if (aniListUrl != null) {
+                                    externalLink?.let { link ->
+                                        val linkLabel = stringResource(
+                                            when (link.provider) {
+                                                ExternalLinkProvider.MANGABAKA -> R.string.open_mangabaka
+                                                ExternalLinkProvider.COMIC_VINE -> R.string.open_comic_vine
+                                            }
+                                        )
                                         IconButton(
-                                            onClick = { runCatching { uriHandler.openUri(aniListUrl) } },
+                                            onClick = { runCatching { uriHandler.openUri(link.url) } },
                                             modifier = Modifier.size(36.dp)
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                                contentDescription = stringResource(R.string.open_anilist),
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(20.dp)
+                                            // Official brand artwork (raster); keep its own colours and corners.
+                                            Image(
+                                                painter = painterResource(
+                                                    when (link.provider) {
+                                                        ExternalLinkProvider.MANGABAKA -> R.drawable.mangabaka_logo
+                                                        ExternalLinkProvider.COMIC_VINE -> R.drawable.comic_vine_logo
+                                                    }
+                                                ),
+                                                contentDescription = linkLabel,
+                                                modifier = Modifier
+                                                    .size(
+                                                        when (link.provider) {
+                                                            ExternalLinkProvider.MANGABAKA -> 22.dp
+                                                            ExternalLinkProvider.COMIC_VINE -> 24.dp
+                                                        }
+                                                    )
+                                                    .clip(
+                                                        when (link.provider) {
+                                                            ExternalLinkProvider.MANGABAKA -> CircleShape
+                                                            ExternalLinkProvider.COMIC_VINE -> RoundedCornerShape(4.dp)
+                                                        }
+                                                    )
                                             )
                                         }
                                     }
@@ -458,6 +492,34 @@ fun SeriesDetailScreen(
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+
+                if (state.isOffline) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.warningContainer
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.CloudOff,
+                                contentDescription = null,
+                                tint = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onWarningContainer
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Offline Mode: Showing cached & downloaded content.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.onWarningContainer
+                            )
                         }
                     }
                 }

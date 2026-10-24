@@ -335,7 +335,7 @@ fun HomeScreen(
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(Spacing.sm))
                     }
 
                     if (state.recentlyUpdatedSeries.isNotEmpty()) {
@@ -352,7 +352,7 @@ fun HomeScreen(
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(Spacing.sm))
                     }
 
                     if (state.newlyAddedSeries.isNotEmpty()) {
@@ -369,7 +369,7 @@ fun HomeScreen(
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(Spacing.sm))
                     }
 
                     if (state.downloadedSeries.isNotEmpty()) {
@@ -386,7 +386,7 @@ fun HomeScreen(
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(Spacing.lg))
                     }
                 }
             }
@@ -399,7 +399,7 @@ private fun SectionHeader(title: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = Spacing.lg, end = Spacing.lg, top = Spacing.xl, bottom = Spacing.md),
+            .padding(start = Spacing.lg, end = Spacing.lg, top = Spacing.md, bottom = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
