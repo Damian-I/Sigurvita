@@ -123,8 +123,8 @@ class DownloadWorker(
         // ═══════════════════════════════════════════════════════════════════
         // Uses /api/Download/chapter which returns the original archive file
         // directly from the server. Auth is handled by AuthInterceptor.
-        // The request goes through localhost:80 -> AuthInterceptor rewrites
-        // to the real server URL and injects auth headers.
+        // The request is built against NetworkClient.PLACEHOLDER_BASE_URL; AuthInterceptor rewrites
+        // it to the real server URL and injects auth headers.
 
         val nativeResult = tryNativeDownload(chapterId, targetFolder, safeAppDir, libraryName, seriesName, title, totalPages)
         if (nativeResult != null) {
@@ -151,7 +151,7 @@ class DownloadWorker(
     ): Result? {
         try {
             // Build request against localhost — AuthInterceptor rewrites to real server
-            val downloadUrl = "http://localhost/api/Download/chapter?chapterId=$chapterId"
+            val downloadUrl = "${NetworkClient.PLACEHOLDER_BASE_URL}api/Download/chapter?chapterId=$chapterId"
             val request = Request.Builder().url(downloadUrl).build()
 
             val response = downloadClient.newCall(request).execute()
@@ -257,7 +257,7 @@ class DownloadWorker(
                 var pageFile = File(pageTargetDir, formattedName)
 
                 // Use localhost URL — AuthInterceptor rewrites to real server
-                val imageUrl = "http://localhost/api/Reader/image?chapterId=$chapterId&page=$pageIdx"
+                val imageUrl = "${NetworkClient.PLACEHOLDER_BASE_URL}api/Reader/image?chapterId=$chapterId&page=$pageIdx"
                 val request = Request.Builder().url(imageUrl).build()
 
                 val response = try {

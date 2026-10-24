@@ -16,6 +16,8 @@ import com.zemmy.sigurvita.core.util.PanelMap
 import com.zemmy.sigurvita.core.util.resolvePageImageUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -79,6 +81,7 @@ class MarkedPagesViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow(MarkedPagesUiState())
     val uiState: StateFlow<MarkedPagesUiState> = _uiState.asStateFlow()
+    private var filterJob: Job? = null
 
     init {
         viewModelScope.launch(Dispatchers.Default) {
@@ -111,7 +114,8 @@ class MarkedPagesViewModel : ViewModel() {
     }
 
     private fun filterData() {
-        viewModelScope.launch(Dispatchers.Default) {
+        filterJob?.cancel()
+        filterJob = viewModelScope.launch(Dispatchers.Default) {
             val state = _uiState.value
             val query = searchQueryFlow.value
             val pages = state.markedPages
@@ -161,6 +165,7 @@ class MarkedPagesViewModel : ViewModel() {
                 }
             }
 
+            ensureActive()
             _uiState.update {
                 it.copy(
                     filteredPages = result,

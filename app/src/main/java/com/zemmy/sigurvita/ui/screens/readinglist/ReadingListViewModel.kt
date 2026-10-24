@@ -12,6 +12,8 @@ import com.zemmy.sigurvita.core.util.extractEraInfo
 import com.zemmy.sigurvita.core.util.naturalCompare
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -73,6 +75,7 @@ class ReadingListViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReadingListUiState())
     val uiState: StateFlow<ReadingListUiState> = _uiState.asStateFlow()
+    private var filterJob: Job? = null
 
     init {
         viewModelScope.launch(Dispatchers.Default) {
@@ -110,7 +113,8 @@ class ReadingListViewModel : ViewModel() {
     }
 
     private fun filterData() {
-        viewModelScope.launch(Dispatchers.Default) {
+        filterJob?.cancel()
+        filterJob = viewModelScope.launch(Dispatchers.Default) {
             val state = _uiState.value
             val query = searchQueryFlow.value
             val lists = state.readingLists
@@ -145,6 +149,7 @@ class ReadingListViewModel : ViewModel() {
                         item.seriesName.contains(query, ignoreCase = true)
             }
 
+            ensureActive()
             _uiState.update {
                 it.copy(
                     filteredReadingLists = filteredLists,

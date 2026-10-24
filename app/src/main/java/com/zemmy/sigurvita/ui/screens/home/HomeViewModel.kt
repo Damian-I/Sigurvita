@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
+import com.zemmy.sigurvita.core.util.matchesQuery
 
 data class HomeUiState(
     val libraries: List<Library> = emptyList(),
@@ -47,10 +48,7 @@ private const val ALL_SERIES_MAX_AGE_MS = 6L * 60L * 60L * 1000L
 
 private fun filterSeries(list: List<Series>, query: String): List<Series> {
     if (query.isBlank()) return emptyList()
-    return list.filter {
-        it.name.contains(query, ignoreCase = true) ||
-            (it.localizedName?.contains(query, ignoreCase = true) == true)
-    }
+    return list.filter { it.matchesQuery(query) }
 }
 
 @OptIn(FlowPreview::class)

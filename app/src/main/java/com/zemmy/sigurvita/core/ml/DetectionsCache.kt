@@ -102,8 +102,7 @@ object DetectionsCacheHelper {
         )
     }
 
-    fun toPanelMap(data: PageDetectionData): PanelMap? {
-        if (data.panels.isEmpty()) return null
+    fun toPanelMap(data: PageDetectionData): PanelMap {
 
         val lb = LetterboxParams(
             inputSize = data.letterbox.inputSize,

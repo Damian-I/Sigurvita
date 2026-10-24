@@ -1,9 +1,7 @@
 package com.zemmy.sigurvita.core.ml
 
 import android.content.Context
-import android.util.Base64
 import android.util.Log
-import com.zemmy.sigurvita.core.model.LetterboxParams
 import com.zemmy.sigurvita.core.model.PageBubbles
 import com.zemmy.sigurvita.core.util.PanelMap
 import kotlinx.serialization.json.Json
@@ -101,7 +99,7 @@ object DetectionStore {
         }
         val data = cache.pages.firstOrNull { it.pageIndex == pageIndex } ?: return null
         return try {
-            decodePanelMap(data)?.also { touch(context, chapterId) }
+            DetectionsCacheHelper.toPanelMap(data).also { touch(context, chapterId) }
         } catch (e: Exception) {
             Log.w(STORE_TAG, "Corrupt panel entry ${file.name}", e)
             file.delete()
@@ -118,39 +116,6 @@ object DetectionStore {
         )
         write(context, chapterId, panelFile(context, chapterId, pageIndex), cache)
     }
-
-    /** DetectionsCacheHelper.toPanelMap returns null for pages with zero panels; those are valid results too. */
-    private fun decodePanelMap(data: PageDetectionData): PanelMap? {
-        DetectionsCacheHelper.toPanelMap(data)?.let { return it }
-        if (data.panels.isNotEmpty()) return null
-
-        val lb = LetterboxParams(
-            inputSize = data.letterbox.inputSize,
-            originalWidth = data.letterbox.originalWidth,
-            originalHeight = data.letterbox.originalHeight,
-            gain = data.letterbox.gain,
-            padX = data.letterbox.padX,
-            padY = data.letterbox.padY
-        )
-        val labels = if (data.panelLabelsBase64.isNotBlank()) {
-            val bytes = Base64.decode(data.panelLabelsBase64, Base64.DEFAULT)
-            val shorts = ShortArray(bytes.size / 2)
-            for (i in shorts.indices) {
-                shorts[i] = ((bytes[i * 2].toInt() and 0xFF) or (bytes[i * 2 + 1].toInt() shl 8)).toShort()
-            }
-            shorts
-        } else ShortArray(data.panelGridW * data.panelGridH)
-
-        return PanelMap(
-            gridW = data.panelGridW,
-            gridH = data.panelGridH,
-            labels = labels,
-            letterbox = lb,
-            panels = emptyList()
-        )
-    }
-
-    // --------------------------------------------------------------- plumbing
 
     fun deleteChapter(context: Context, chapterId: Int) {
         chapterDir(context, chapterId).deleteRecursively()

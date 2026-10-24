@@ -11,7 +11,11 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.util.concurrent.TimeUnit
 
 object NetworkClient {
-
+    /**
+     * Placeholder host used when building requests. AuthInterceptor rewrites scheme, host and port
+     * to the configured Kavita server, so nothing is ever sent to this address.
+     */
+    const val PLACEHOLDER_BASE_URL = "http://localhost/"
     private val API_KEY_PARAM = Regex("""apiKey=[^&\s]*""", RegexOption.IGNORE_CASE)
 
     private val json = Json {
@@ -60,7 +64,7 @@ object NetworkClient {
         return cachedApi ?: synchronized(this) {
             cachedApi ?: run {
                 Retrofit.Builder()
-                    .baseUrl("http://localhost/")
+                    .baseUrl(PLACEHOLDER_BASE_URL)
                     .client(getOkHttpClient(userPreferencesRepository))
                     .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
                     .build()

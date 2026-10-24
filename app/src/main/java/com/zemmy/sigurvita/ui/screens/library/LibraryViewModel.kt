@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.model.Library
 import com.zemmy.sigurvita.core.model.Series
+import com.zemmy.sigurvita.core.util.matchesQuery
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -50,13 +51,7 @@ class LibraryViewModel : ViewModel() {
                 .debounce(150.milliseconds)
                 .collect { query ->
                     val allSeries = _uiState.value.series
-                    val filtered = if (query.isBlank()) {
-                        allSeries
-                    } else {
-                        allSeries.filter {
-                            it.name.contains(query, ignoreCase = true) || (it.localizedName?.contains(query, ignoreCase = true) == true)
-                        }
-                    }
+                    val filtered = if (query.isBlank()) allSeries else allSeries.filter { it.matchesQuery(query) }
                     _uiState.update { it.copy(filteredSeries = filtered) }
                 }
         }
@@ -87,13 +82,7 @@ class LibraryViewModel : ViewModel() {
             val libName = if (libraryId == 0) "All Libraries" else libraries.find { it.id == libraryId }?.name ?: "Library"
 
             val query = _uiState.value.searchQuery
-            val filtered = if (query.isBlank()) {
-                series
-            } else {
-                series.filter {
-                    it.name.contains(query, ignoreCase = true) || (it.localizedName?.contains(query, ignoreCase = true) == true)
-                }
-            }
+            val filtered = if (query.isBlank()) series else series.filter { it.matchesQuery(query) }
 
             _uiState.update {
                 it.copy(
