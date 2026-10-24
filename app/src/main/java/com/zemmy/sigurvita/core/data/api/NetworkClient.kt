@@ -1,6 +1,8 @@
 package com.zemmy.sigurvita.core.data.api
 
 import android.util.Log
+import android.content.pm.ApplicationInfo
+import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -42,7 +44,8 @@ object NetworkClient {
                 val logging = HttpLoggingInterceptor { message ->
                     Log.i("okhttp.OkHttpClient", API_KEY_PARAM.replace(message, "apiKey=***"))
                 }.apply {
-                    level = HttpLoggingInterceptor.Level.BASIC
+                    val debuggable = (SigurvitaApp.instance.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                    level = if (debuggable) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
                 }
 
                 OkHttpClient.Builder()

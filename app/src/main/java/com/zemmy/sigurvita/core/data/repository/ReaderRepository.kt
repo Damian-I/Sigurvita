@@ -34,15 +34,18 @@ class ReaderRepository(
 
     private fun extractedRoot(): File = File(context.cacheDir, "cbz_extracted")
 
-    suspend fun trimExtractedCache(keepChapterId: Int = -1) = withContext(Dispatchers.IO) {
+    /**
+     * Deletes extracted-page folders, keeping [keepChapterId] and the [maxKeep] most recently used others.
+     * A folder's modification time is refreshed whenever its chapter is opened (see [getPages]).
+     */
+    suspend fun trimExtractedCache(keepChapterId: Int = -1, maxKeep: Int = 2) = withContext(Dispatchers.IO) {
         val root = extractedRoot()
         if (!root.exists() || !root.isDirectory) return@withContext
-        val children = root.listFiles() ?: return@withContext
-        for (child in children) {
-            if (child.isDirectory && child.name.toIntOrNull() != keepChapterId) {
-                child.deleteRecursively()
-            }
-        }
+        root.listFiles().orEmpty()
+            .filter { it.isDirectory && it.name.toIntOrNull() != keepChapterId }
+            .sortedByDescending { it.lastModified() }
+            .drop(maxKeep)
+            .forEach { it.deleteRecursively() }
     }
 
     suspend fun getPages(chapterId: Int, totalPages: Int): List<ReaderPage> = withContext(Dispatchers.IO) {
@@ -65,6 +68,7 @@ class ReaderRepository(
             if (archiveFile.exists() && archiveFile.isFile && archiveFile.length() > 0L) {
                 try {
                     val cacheDir = File(context.cacheDir, "cbz_extracted/$chapterId").apply { mkdirs() }
+                    cacheDir.setLastModified(System.currentTimeMillis())
                     val extractedFiles = mutableListOf<ReaderPage>()
 
                     ZipFile(archiveFile).use { zip ->
@@ -103,6 +107,7 @@ class ReaderRepository(
                     }
 
                     if (extractedFiles.isNotEmpty()) {
+                        trimExtractedCache(keepChapterId = chapterId)
                         return@withContext extractedFiles
                     }
                 } catch (e: Exception) {
