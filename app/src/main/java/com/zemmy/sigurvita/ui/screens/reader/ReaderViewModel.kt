@@ -560,7 +560,7 @@ class ReaderViewModel : ViewModel() {
             var nextTotalPages: Int = 0
 
             if (effectiveReadingListId > 0) {
-                val listRes = readingListRepository.getReadingListItems(effectiveReadingListId)
+                val listRes = readingListRepository.getReadingListItems(effectiveReadingListId, resolveDetails = false)
                 if (listRes.isSuccess) {
                     val items = listRes.getOrNull() ?: emptyList()
                     val currentIndex = items.indexOfFirst { it.chapterId == currentChapterId }
@@ -1097,7 +1097,7 @@ class ReaderViewModel : ViewModel() {
         } else 0
 
         if (effectiveReadingListId > 0) {
-            val items = readingListRepository.getReadingListItems(effectiveReadingListId).getOrNull()
+            val items = readingListRepository.getReadingListItems(effectiveReadingListId, resolveDetails = false).getOrNull()
                 ?: return Pair(null, null)
             val currentIndex = items.indexOfFirst { it.chapterId == chapterId }
             if (currentIndex < 0) return Pair(null, null)

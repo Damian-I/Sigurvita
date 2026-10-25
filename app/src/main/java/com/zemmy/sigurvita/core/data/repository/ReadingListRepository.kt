@@ -11,6 +11,7 @@ import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
 import com.zemmy.sigurvita.core.util.getChapterCoverUrl
 import com.zemmy.sigurvita.core.util.getSeriesCoverUrl
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 
 class ReadingListRepository(
     private val api: KavitaApi,
@@ -96,7 +98,19 @@ class ReadingListRepository(
         }
     }
 
-    suspend fun getReadingListItems(readingListId: Int): Result<List<ReadingListItem>> = withContext(Dispatchers.IO) {
+    private data class SeriesInfo(val name: String, val libraryId: Int)
+
+    /**
+     * @param resolveDetails false = ids, page counts and read state come straight from the list response
+     * (a single request). Use it when only navigation data is needed (previous/next chapter, preloading,
+     * "which lists contain this chapter"). true also fetches each chapter for its display title and resolves
+     * series and library names, once per distinct series, for the list screens.
+     */
+    suspend fun getReadingListItems(
+        readingListId: Int,
+        resolveDetails: Boolean = true
+    ): Result<List<ReadingListItem>> = withContext(Dispatchers.IO) {
+        val ioScope = this
         try {
             val config = preferencesRepository.serverConfigFlow.first()
             var dtoList: List<ReadingListItemDto>? = null
@@ -112,6 +126,68 @@ class ReadingListRepository(
 
             val validDtos = dtoList.filter { it.id > 0 }
 
+            if (!resolveDetails) {
+                val lightItems = validDtos.map { dto ->
+                    val pages = if (dto.pagesTotal > 0) dto.pagesTotal else dto.pages
+                    ReadingListItem(
+                        id = dto.id,
+                        readingListId = dto.readingListId,
+                        seriesId = dto.seriesId,
+                        seriesName = dto.seriesName ?: "",
+                        libraryName = null,
+                        volumeId = dto.volumeId,
+                        chapterId = dto.chapterId,
+                        title = formatChapterDisplayTitle(dto.title ?: "", ""),
+                        coverUrl = if (dto.chapterId > 0) {
+                            config.getChapterCoverUrl(dto.chapterId)
+                        } else {
+                            config.getSeriesCoverUrl(dto.seriesId)
+                        },
+                        pages = pages,
+                        pagesRead = dto.pagesRead,
+                        isRead = pages in 1..dto.pagesRead
+                    )
+                }
+                return@withContext Result.success(lightItems)
+            }
+
+            // One libraries request per call instead of one per item.
+            val libraryNames = async {
+                val names = HashMap<Int, String>()
+                try {
+                    api.getLibraries().body()?.forEach { lib -> lib.name?.let { names[lib.id] = it } }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                }
+                names
+            }
+
+            suspend fun loadSeriesInfo(seriesId: Int): SeriesInfo {
+                val cached = try {
+                    database.seriesDao().getSeriesById(seriesId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
+                if (cached != null && cached.libraryId > 0) return SeriesInfo(cached.name, cached.libraryId)
+                return try {
+                    val sDto = api.getSeriesById(seriesId).body()
+                    SeriesInfo(
+                        name = cached?.name?.takeIf { it.isNotBlank() } ?: sDto?.name ?: "",
+                        libraryId = sDto?.libraryId ?: 0
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    SeriesInfo(cached?.name ?: "", 0)
+                }
+            }
+
+            // One series lookup per distinct series instead of one (or two) per item.
+            val seriesInfo = ConcurrentHashMap<Int, Deferred<SeriesInfo>>()
+
             val itemsDeferred = validDtos.map { dto ->
                 async {
                     var pages = if (dto.pagesTotal > 0) dto.pagesTotal else dto.pages
@@ -121,7 +197,7 @@ class ReadingListRepository(
                     var resolvedTitle = dto.title ?: ""
                     if (dto.chapterId > 0) {
                         try {
-                            val cRes = api.getChapterById(dto.chapterId)
+                            val cRes = requestLimiter.withPermit { api.getChapterById(dto.chapterId) }
                             if (cRes.isSuccessful && cRes.body() != null) {
                                 val cBody = cRes.body()!!
                                 if (pages <= 0) pages = cBody.pages
@@ -129,6 +205,8 @@ class ReadingListRepository(
                                 isRead = isRead || (cBody.pages > 0 && cBody.pagesRead >= cBody.pages)
                                 resolvedTitle = formatChapterDisplayTitle(cBody.titleName ?: cBody.title ?: "", cBody.number ?: "")
                             }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (_: Exception) {}
                     } else {
                         isRead = pages in 1..pagesRead
@@ -144,42 +222,14 @@ class ReadingListRepository(
                         config.getSeriesCoverUrl(dto.seriesId)
                     }
 
-                    val rawSeriesName = dto.seriesName ?: ""
+                    var resolvedSeriesName = dto.seriesName ?: ""
                     var resolvedLibraryName: String? = null
-                    val resolvedSeriesName = if (rawSeriesName.isNotBlank()) {
-                        rawSeriesName
-                    } else if (dto.seriesId > 0) {
-                        val cachedSeries = database.seriesDao().getSeriesById(dto.seriesId)
-                        if (cachedSeries != null && cachedSeries.name.isNotBlank()) {
-                            cachedSeries.name
-                        } else {
-                            try {
-                                val sRes = api.getSeriesById(dto.seriesId)
-                                val sDto = sRes.body()
-                                if (sDto != null && sDto.libraryId > 0) {
-                                    val libRes = api.getLibraries()
-                                    resolvedLibraryName = libRes.body()?.find { it.id == sDto.libraryId }?.name
-                                }
-                                sDto?.name ?: ""
-                            } catch (_: Exception) { "" }
-                        }
-                    } else ""
-
-                    if (resolvedLibraryName.isNullOrBlank() && dto.seriesId > 0) {
-                        try {
-                            val cachedSeries = database.seriesDao().getSeriesById(dto.seriesId)
-                            if (cachedSeries != null && cachedSeries.libraryId > 0) {
-                                val libRes = api.getLibraries()
-                                resolvedLibraryName = libRes.body()?.find { it.id == cachedSeries.libraryId }?.name
-                            } else {
-                                val sRes = api.getSeriesById(dto.seriesId)
-                                val sDto = sRes.body()
-                                if (sDto != null && sDto.libraryId > 0) {
-                                    val libRes = api.getLibraries()
-                                    resolvedLibraryName = libRes.body()?.find { it.id == sDto.libraryId }?.name
-                                }
-                            }
-                        } catch (_: Exception) {}
+                    if (dto.seriesId > 0) {
+                        val info = seriesInfo.computeIfAbsent(dto.seriesId) {
+                            ioScope.async { loadSeriesInfo(dto.seriesId) }
+                        }.await()
+                        if (resolvedSeriesName.isBlank()) resolvedSeriesName = info.name
+                        if (info.libraryId > 0) resolvedLibraryName = libraryNames.await()[info.libraryId]
                     }
 
                     ReadingListItem(
