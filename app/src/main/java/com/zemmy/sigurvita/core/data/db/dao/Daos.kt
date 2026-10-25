@@ -23,6 +23,9 @@ interface SeriesDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertSeries(series: List<CachedSeriesEntity>)
+
+    @Query("DELETE FROM cached_series")
+    fun clearAll(): Int
 }
 
 @Dao

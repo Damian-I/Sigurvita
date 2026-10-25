@@ -40,6 +40,13 @@ data class SeriesReadContext(
     val timestamp: Long = System.currentTimeMillis(),
 )
 
+/**
+ * Reads an enum stored by name. A missing key, or a name this version of the app does not know
+ * (for example one written by a newer build), gives [default] instead of an error.
+ */
+internal inline fun <reified E : Enum<E>> Preferences.enumOrDefault(key: Preferences.Key<String>, default: E): E =
+    get(key)?.let { name -> enumValues<E>().firstOrNull { it.name == name } } ?: default
+
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "sigurvita_settings")
 
 class UserPreferencesRepository(private val context: Context) {
@@ -100,20 +107,8 @@ class UserPreferencesRepository(private val context: Context) {
     val readerSettingsFlow: Flow<ReaderSettings> = context.dataStore.data
         .catch { emit(emptyPreferences()) }
         .map { preferences ->
-            val fitModeStr = preferences[Keys.FIT_MODE]
-
-            val fitMode = try {
-                if (fitModeStr != null) FitMode.valueOf(fitModeStr) else FitMode.FIT_WIDTH
-            } catch (_: Exception) {
-                FitMode.FIT_WIDTH
-            }
-
-            val autoDeleteStr = preferences[Keys.AUTO_DELETE_OPTION]
-            val autoDeleteOption = try {
-                if (autoDeleteStr != null) AutoDeleteOption.valueOf(autoDeleteStr) else AutoDeleteOption.NEVER
-            } catch (_: Exception) {
-                AutoDeleteOption.NEVER
-            }
+            val fitMode = preferences.enumOrDefault(Keys.FIT_MODE, FitMode.FIT_WIDTH)
+            val autoDeleteOption = preferences.enumOrDefault(Keys.AUTO_DELETE_OPTION, AutoDeleteOption.NEVER)
 
             val incognito = preferences[Keys.INCOGNITO_MODE] ?: false
             val detectionEnabled = preferences[Keys.SPEECH_BUBBLE_DETECTION_ENABLED]
@@ -124,16 +119,8 @@ class UserPreferencesRepository(private val context: Context) {
             val panelAwareOrder = preferences[Keys.PANEL_AWARE_ORDER] ?: true
             val panelDebugOverlay = preferences[Keys.PANEL_DEBUG_OVERLAY] ?: false
             val showPageNumber = preferences[Keys.SHOW_PAGE_NUMBER] ?: false
-            val orientation = try {
-                preferences[Keys.READER_ORIENTATION]?.let { ReaderOrientation.valueOf(it) } ?: ReaderOrientation.FREE
-            } catch (_: Exception) {
-                ReaderOrientation.FREE
-            }
-            val readerBackground = try {
-                preferences[Keys.READER_BACKGROUND]?.let { ReaderBackground.valueOf(it) } ?: ReaderBackground.BLACK
-            } catch (_: Exception) {
-                ReaderBackground.BLACK
-            }
+            val orientation = preferences.enumOrDefault(Keys.READER_ORIENTATION, ReaderOrientation.FREE)
+            val readerBackground = preferences.enumOrDefault(Keys.READER_BACKGROUND, ReaderBackground.BLACK)
 
             ReaderSettings(
                 fitMode = fitMode,
@@ -313,11 +300,7 @@ class UserPreferencesRepository(private val context: Context) {
     val appearanceSettingsFlow: Flow<AppearanceSettings> = context.dataStore.data
         .catch { emit(emptyPreferences()) }
         .map { preferences ->
-            val themeMode = try {
-                preferences[Keys.APP_THEME_MODE]?.let { AppThemeMode.valueOf(it) } ?: AppThemeMode.SYSTEM
-            } catch (_: Exception) {
-                AppThemeMode.SYSTEM
-            }
+            val themeMode = preferences.enumOrDefault(Keys.APP_THEME_MODE, AppThemeMode.SYSTEM)
             val dynamicColor = preferences[Keys.APP_DYNAMIC_COLOR] ?: true
             AppearanceSettings(
                 themeMode = themeMode,

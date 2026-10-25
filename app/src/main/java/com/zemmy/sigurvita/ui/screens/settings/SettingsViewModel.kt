@@ -15,6 +15,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.zemmy.sigurvita.core.util.toUserMessage
 
 class SettingsViewModel : ViewModel() {
 
@@ -140,6 +144,24 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch {
             preferencesRepository.clearServerConfig()
             app.colorScapeRepository.clear()
+            clearCachedAccountData()
+        }
+    }
+
+    /**
+     * Removes what the app cached for the signed-out account: the Home/drawer snapshots and the series cache
+     * (both hold cover URLs that contain the API key) and the extracted pages of downloaded chapters.
+     * Downloads, marked pages and detection results are kept (user data, or expensive to recompute).
+     */
+    private suspend fun clearCachedAccountData() {
+        try {
+            app.snapshotStore.clearAll()
+            withContext(Dispatchers.IO) { app.database.seriesDao().clearAll() }
+            app.readerRepository.trimExtractedCache(maxKeep = 0)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Cache cleanup is best effort: signing out itself has already succeeded
         }
     }
 
@@ -154,7 +176,7 @@ class SettingsViewModel : ViewModel() {
             if (result.isSuccess) {
                 onResult(true, null)
             } else {
-                onResult(false, result.exceptionOrNull()?.message ?: "Failed to refresh login")
+                onResult(false, result.exceptionOrNull()?.toUserMessage() ?: "Failed to refresh login")
             }
         }
     }

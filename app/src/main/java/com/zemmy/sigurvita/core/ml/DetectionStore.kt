@@ -48,20 +48,23 @@ object DetectionStore {
 
     private fun rootDir(context: Context) = File(context.noBackupFilesDir, "detections")
 
-    private fun chapterDir(context: Context, chapterId: Int) = File(rootDir(context), chapterId.toString())
+    private fun chapterDir(root: File, chapterId: Int) = File(root, chapterId.toString())
 
     private fun confKey(confidence: Float) = (confidence * 1000f).roundToInt()
 
-    private fun bubbleFile(context: Context, chapterId: Int, pageIndex: Int, confidence: Float) =
-        File(chapterDir(context, chapterId), "p${pageIndex}_b${confKey(confidence)}.json.gz")
+    private fun bubbleFile(root: File, chapterId: Int, pageIndex: Int, confidence: Float) =
+        File(chapterDir(root, chapterId), "p${pageIndex}_b${confKey(confidence)}.json.gz")
 
-    private fun panelFile(context: Context, chapterId: Int, pageIndex: Int) =
-        File(chapterDir(context, chapterId), "p${pageIndex}_panel.json.gz")
+    private fun panelFile(root: File, chapterId: Int, pageIndex: Int) =
+        File(chapterDir(root, chapterId), "p${pageIndex}_panel.json.gz")
 
     // ---------------------------------------------------------------- bubbles
 
-    fun loadBubbles(context: Context, chapterId: Int, pageIndex: Int, confidence: Float): PageBubbles? {
-        val file = bubbleFile(context, chapterId, pageIndex, confidence)
+    fun loadBubbles(context: Context, chapterId: Int, pageIndex: Int, confidence: Float): PageBubbles? =
+        loadBubbles(rootDir(context), chapterId, pageIndex, confidence)
+
+    internal fun loadBubbles(root: File, chapterId: Int, pageIndex: Int, confidence: Float): PageBubbles? {
+        val file = bubbleFile(root, chapterId, pageIndex, confidence)
         val cache = read(file) ?: return null
         if (cache.modelVersion != CURRENT_DETECTION_VERSION) {
             file.delete()
@@ -69,7 +72,7 @@ object DetectionStore {
         }
         val data = cache.pages.firstOrNull { it.pageIndex == pageIndex } ?: return null
         return try {
-            DetectionsCacheHelper.toPageBubbles(data, pageIndex).also { touch(context, chapterId) }
+            DetectionsCacheHelper.toPageBubbles(data, pageIndex).also { touch(root, chapterId) }
         } catch (e: Exception) {
             Log.w(STORE_TAG, "Corrupt bubble entry ${file.name}", e)
             file.delete()
@@ -77,7 +80,10 @@ object DetectionStore {
         }
     }
 
-    fun saveBubbles(context: Context, chapterId: Int, pageIndex: Int, confidence: Float, bubbles: PageBubbles) {
+    fun saveBubbles(context: Context, chapterId: Int, pageIndex: Int, confidence: Float, bubbles: PageBubbles) =
+        saveBubbles(rootDir(context), chapterId, pageIndex, confidence, bubbles)
+
+    internal fun saveBubbles(root: File, chapterId: Int, pageIndex: Int, confidence: Float, bubbles: PageBubbles) {
         val data = DetectionsCacheHelper.fromPageData(pageIndex, bubbles, null)
         val cache = PageDetectionsCache(
             chapterId = chapterId,
@@ -85,13 +91,16 @@ object DetectionStore {
             confidence = confidence,
             pages = listOf(data)
         )
-        write(context, chapterId, bubbleFile(context, chapterId, pageIndex, confidence), cache)
+        write(root, chapterId, bubbleFile(root, chapterId, pageIndex, confidence), cache)
     }
 
     // ----------------------------------------------------------------- panels
 
-    fun loadPanelMap(context: Context, chapterId: Int, pageIndex: Int): PanelMap? {
-        val file = panelFile(context, chapterId, pageIndex)
+    fun loadPanelMap(context: Context, chapterId: Int, pageIndex: Int): PanelMap? =
+        loadPanelMap(rootDir(context), chapterId, pageIndex)
+
+    internal fun loadPanelMap(root: File, chapterId: Int, pageIndex: Int): PanelMap? {
+        val file = panelFile(root, chapterId, pageIndex)
         val cache = read(file) ?: return null
         if (cache.modelVersion != PANEL_DETECTION_VERSION) {
             file.delete()
@@ -99,7 +108,7 @@ object DetectionStore {
         }
         val data = cache.pages.firstOrNull { it.pageIndex == pageIndex } ?: return null
         return try {
-            DetectionsCacheHelper.toPanelMap(data).also { touch(context, chapterId) }
+            DetectionsCacheHelper.toPanelMap(data).also { touch(root, chapterId) }
         } catch (e: Exception) {
             Log.w(STORE_TAG, "Corrupt panel entry ${file.name}", e)
             file.delete()
@@ -107,18 +116,23 @@ object DetectionStore {
         }
     }
 
-    fun savePanelMap(context: Context, chapterId: Int, pageIndex: Int, panelMap: PanelMap) {
+    fun savePanelMap(context: Context, chapterId: Int, pageIndex: Int, panelMap: PanelMap) =
+        savePanelMap(rootDir(context), chapterId, pageIndex, panelMap)
+
+    internal fun savePanelMap(root: File, chapterId: Int, pageIndex: Int, panelMap: PanelMap) {
         val data = DetectionsCacheHelper.fromPageData(pageIndex, null, panelMap)
         val cache = PageDetectionsCache(
             chapterId = chapterId,
             modelVersion = PANEL_DETECTION_VERSION,
             pages = listOf(data)
         )
-        write(context, chapterId, panelFile(context, chapterId, pageIndex), cache)
+        write(root, chapterId, panelFile(root, chapterId, pageIndex), cache)
     }
 
-    fun deleteChapter(context: Context, chapterId: Int) {
-        chapterDir(context, chapterId).deleteRecursively()
+    fun deleteChapter(context: Context, chapterId: Int) = deleteChapter(rootDir(context), chapterId)
+
+    internal fun deleteChapter(root: File, chapterId: Int) {
+        chapterDir(root, chapterId).deleteRecursively()
         touchedChapters.remove(chapterId)
     }
 
@@ -135,7 +149,7 @@ object DetectionStore {
         }
     }
 
-    private fun write(context: Context, chapterId: Int, file: File, cache: PageDetectionsCache) {
+    private fun write(root: File, chapterId: Int, file: File, cache: PageDetectionsCache) {
         try {
             val dir = file.parentFile ?: return
             dir.mkdirs()
@@ -146,32 +160,37 @@ object DetectionStore {
                 tmp.copyTo(file, overwrite = true)
                 tmp.delete()
             }
-            maybeEvict(context, chapterId)
+            maybeEvict(root, chapterId)
         } catch (e: Exception) {
             Log.w(STORE_TAG, "Failed to save ${file.name}", e)
         }
     }
 
     /** Marks a chapter folder as recently used (once per process) so eviction is least-recently-used. */
-    private fun touch(context: Context, chapterId: Int) {
+    private fun touch(root: File, chapterId: Int) {
         if (touchedChapters.add(chapterId)) {
-            chapterDir(context, chapterId).setLastModified(System.currentTimeMillis())
+            chapterDir(root, chapterId).setLastModified(System.currentTimeMillis())
         }
     }
 
-    private fun maybeEvict(context: Context, keepChapterId: Int) {
+    private fun maybeEvict(root: File, keepChapterId: Int) {
         if (writes.incrementAndGet() % EVICT_CHECK_EVERY_WRITES != 0) return
+        evictOverBudget(root, keepChapterId, MAX_TOTAL_BYTES)
+    }
+
+    /** Deletes least-recently-used chapter folders until the store fits [maxBytes]; never the [keepChapterId] one. */
+    internal fun evictOverBudget(root: File, keepChapterId: Int, maxBytes: Long) {
         synchronized(evictLock) {
-            val dirs = rootDir(context).listFiles { f -> f.isDirectory } ?: return
+            val dirs = root.listFiles { f -> f.isDirectory } ?: return
             var total = 0L
             for (d in dirs) total += dirSize(d)
-            if (total <= MAX_TOTAL_BYTES) return
+            if (total <= maxBytes) return
 
             val candidates = dirs
                 .filter { it.name != keepChapterId.toString() }
                 .sortedBy { it.lastModified() }
             for (dir in candidates) {
-                if (total <= MAX_TOTAL_BYTES) break
+                if (total <= maxBytes) break
                 val size = dirSize(dir)
                 if (dir.deleteRecursively()) total -= size
             }

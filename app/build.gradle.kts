@@ -43,6 +43,10 @@ android {
             useLegacyPackaging = false
         }
     }
+    testOptions {
+        // android.util.Log and friends return defaults instead of throwing in plain JVM unit tests
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {

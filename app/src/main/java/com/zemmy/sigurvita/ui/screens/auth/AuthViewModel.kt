@@ -3,6 +3,7 @@ package com.zemmy.sigurvita.ui.screens.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
+import com.zemmy.sigurvita.core.util.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -67,7 +68,7 @@ class AuthViewModel : ViewModel() {
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        errorMessage = result.exceptionOrNull()?.message ?: "Failed to connect"
+                        errorMessage = result.exceptionOrNull()?.toUserMessage() ?: "Failed to connect"
                     )
                 }
             }
