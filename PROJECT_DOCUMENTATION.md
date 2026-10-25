@@ -53,7 +53,7 @@ When developing new screens, components, or settings dialogues in Sigurvita, adh
 ### 3.1 Application class & singletons (`SigurvitaApp`)
 
 - `onCreate()` sets `SigurvitaApp.instance`, creates the Room database (`SigurvitaDatabase.getDatabase`) and `UserPreferencesRepository`.
-- Lazily created singletons: `kavitaApi`, `authRepository`, `libraryRepository`, `seriesRepository`, `readingListRepository`, `readerRepository`, `downloadRepository`, `markedPageRepository`, `bubbleRepository`, `panelRepository`, `detectionRepository`. ViewModels fetch these from `SigurvitaApp.instance`; they are not constructor-injected.
+- Lazily created singletons: `kavitaApi`, `authRepository`, `libraryRepository`, `seriesRepository`, `colorScapeRepository`, `readingListRepository`, `readerRepository`, `downloadRepository`, `markedPageRepository`, `bubbleRepository`, `panelRepository`, `detectionRepository`, `snapshotStore`. ViewModels fetch these from `SigurvitaApp.instance`; they are not constructor-injected.
 - `SigurvitaApp` implements Coil's `ImageLoaderFactory`: **30% of memory** for the memory cache, a **500 MB disk cache** at `cacheDir/image_cache`, crossfade enabled.
 
 ### 3.2 Networking (`core.data.api`)
@@ -104,15 +104,15 @@ When developing new screens, components, or settings dialogues in Sigurvita, adh
 | :--- | :--- | :--- | :--- |
 | `download_tasks` | DownloadRepository and DownloadWorker | DownloadRepository and ReaderRepository | Active source of truth for download state and local path. |
 | `marked_pages` | MarkedPageRepository | Reader and Page Review screen | Active, stores review tag and local preview path. |
-| `cached_series` | LibraryRepository | LibraryRepository, ReadingListRepository | Small write-through cache for series lookup and issue counts. Only rows that changed are rewritten, and only the needed IDs are read (`getSeriesByIds`). |
-| `cached_reading_lists` | ReadingListRepository | None | Written but never read. |
+| `cached_series` | LibraryRepository, SeriesRepository | LibraryRepository, SeriesRepository, DownloadRepository | Small write-through cache for series lookup and issue counts. Only rows that changed are rewritten, and only the needed IDs are read (`getSeriesByIds`). |
+| `cached_reading_lists` | None | None | Unused table; the reading-list repository no longer has a Room dependency. |
 | `cached_chapters` | None | None | Unused lookup table. |
 
 Consequence: Sigurvita is **network-first**. Browsing screens always call the Kavita API; Room is not an offline-first source of truth. Offline *reading* works only for downloaded chapters, via `download_tasks.localPath`. Room migrations include `MIGRATION_3_4`, `MIGRATION_4_5`, and `MIGRATION_5_6`.
 
 **Detection store** (plain files, not Room; `DetectionStore` in `core.ml`): `noBackupFilesDir/detections/<chapterId>/` holds one gzip JSON file per page and kind: `p<page>_b<confidence*1000>.json.gz` (bubbles, one file per exact confidence value) and `p<page>_panel.json.gz` (panel map). It is keyed only by chapter ID and page index, so it works for streamed, CBZ and image-folder chapters. Total size is capped at 300 MB (checked every 40 writes; least recently used chapter folders are evicted first, never the chapter being written). Writes are atomic (temp file, then rename); unreadable files are deleted and treated as a miss. Entries carry a version string and are deleted on read when it no longer matches `CURRENT_DETECTION_VERSION` (bubbles) or `DetectionStore.PANEL_DETECTION_VERSION` (panels). A chapter's folder is deleted when its download is deleted (`DownloadRepository.deleteLocalChapter`, including auto-delete), when a download row is dropped by `validateExternalDeletions`, and for every completed download by "Clear completed". The store is **not** cleared on logout. It lives in `noBackupFilesDir`, so it is excluded from backups.
 
-**Snapshots** (plain JSON files, `core.data.cache.SnapshotStore`): `noBackupFilesDir/snapshots/` holds `home.json` (libraries, On Deck, Recently Updated, Newly Added), `all_series.json` (every series, used only for Home search) and `drawer.json` (drawer libraries and reading lists). They exist so the next launch can draw the last-seen content immediately while fresh data loads in the background. Each file carries an `accountKey` (first 16 hex characters of SHA-256 of server URL and API key); a snapshot for a different account is ignored. A late snapshot never overwrites live data (`liveHomeDataApplied`). Snapshots are not cleared on logout (`SnapshotStore.clearAll()` exists but nothing calls it).
+**Snapshots** (plain JSON files, `core.data.cache.SnapshotStore`): `noBackupFilesDir/snapshots/` holds `home.json` (libraries, On Deck, Recently Updated, Newly Added), `all_series.json` (every series, used only for Home search) and `drawer.json` (drawer libraries and reading lists). They exist so the next launch can draw the last-seen content immediately while fresh data loads in the background. Each file carries an `accountKey` (first 16 hex characters of SHA-256 of server URL and API key); a snapshot for a different account is ignored. A late snapshot never overwrites live data (`liveHomeDataApplied`). `DrawerViewModel` restores `drawer.json` immediately and rewrites it after a successful library/reading-list fetch. Snapshots are not cleared on logout (`SnapshotStore.clearAll()` exists but nothing calls it).
 
 **Backups**: `data_extraction_rules.xml` (API 31+) and `backup_rules.xml` (API 30 and below) exclude `datastore/` and the whole `databases/` domain from both cloud backup and device transfer, so the API key, JWT and download records are not backed up. `allowBackup` is still `true`.
 
@@ -128,11 +128,10 @@ Repositories wrap `KavitaApi` calls in `withContext(Dispatchers.IO)` and return 
   - `getNewlyAddedSeries()`: `POST /api/Series/recently-added-v2` with `SortOptionsDto(sortField = 2, isAscending = false)`; falls back to `series/v2` with the same filter.
   - `getSeriesForLibrary(libraryId)`: `series/v2` with page size **5000**. For `libraryId > 0` it sends a `FilterStatementDto(field = 19, comparison = 0, value = libraryId)`; if that fails/returns empty it fetches everything and filters client-side by `libraryId`. `libraryId == 0` means all libraries. Issue counts that are not cached are resolved with `getSeriesDetail` calls limited to **4 concurrent requests** (`detailLimiter`).
 - **`SeriesRepository`**: `getSeriesDetail` (combines `series/metadata` summary with `GET /api/Series/{id}`, falling back to `series-detail`, then to a placeholder `Series` so the screen still opens), `getSeriesVolumes` (maps volumes and chapters), and `markChapterRead/Unread` (`mark-multiple-read/unread` with `chapterIds`) and `markSeriesRead/Unread` (`mark-read/unread`). Chapter read state is computed as `pagesRead >= pages`. Chapter numbers go through `extractChapterNumber`, and the display title prefers `titleName`, then `title`, avoiding a title that merely repeats the number. All mark-read methods are no-ops in Incognito mode.
-- **`ReadingListRepository`**
-  - `getReadingLists()`: `POST /api/ReadingList/lists` (no request body; `includePromoted=true`, `sortByLastModified=true`, `PageNumber=1`, `PageSize=100`). Resolves item progress for each list in parallel (`async`/`awaitAll`, at most **4 requests at a time** through `requestLimiter`) to compute `totalPages`, `pagesRead`, and `issuesRead`. `NavGraph` uses `pagesRead > 0` from this result to mark in-progress lists, so no extra request per list is made.
-  - `getReadingListItems(id)`: loads items, then resolves each item in parallel (`async`/`awaitAll`): chapter metadata via `GET /api/Series/chapter`, formatted title, cover URL, series name, pages/pagesRead/isRead.
-  - `hasReadingListProgress(id)`: fetches the list's items and returns `true` if any `pagesRead > 0`. Currently has no callers.
-  - `getChapterReadingLists(seriesId)`: maps `chapterId` to the reading lists containing it.
+- **`ReadingListRepository`** (constructed with `KavitaApi` and `UserPreferencesRepository`; no Room dependency)
+  - `getReadingLists()`: `POST /api/ReadingList/lists` (no request body; `includePromoted=true`, `sortByLastModified=true`, `PageNumber=1`, `PageSize=100`). Resolves item progress for each list in parallel (`async`/`awaitAll`, at most **4 requests at a time** through `requestLimiter`) to compute `totalPages`, `pagesRead`, and `issuesRead`. `DrawerViewModel` uses `pagesRead > 0` from this result to mark in-progress lists, so no extra request per list is made.
+  - `getReadingListItems(readingListId, resolveDetails = true)`: loads the list with one request, then maps items in parallel (`async`/`awaitAll`). With `resolveDetails = false` — used by reader navigation, preloading and `getChapterReadingLists` — ids, page counts, read state, titles, covers and the server-provided series/library names come straight from the list response, with no per-chapter calls. With `resolveDetails = true` (list screens), each chapter with `chapterId > 0` is fetched through `requestLimiter` (4 at a time) for its display title and page counts.
+  - `getChapterReadingLists(seriesId)`: maps `chapterId` to the reading lists containing it; the per-list item fetches use `resolveDetails = false`.
 - **`ReaderRepository`**: see 3.6.
 - **`DownloadRepository`**: see 3.7.
 - **`BubbleRepository` & `PanelRepository`**: on-device AI inference, contour extraction and panel map decoding, each with an in-memory `LruCache` (100 entries). **`DetectionRepository`** sits in front of both and adds the disk layer (see 3.9); the reader calls it, not the two repositories directly. The old `detections.json` sidecar lookup has been removed from both repositories.
@@ -176,6 +175,8 @@ Additionally, supports **previous chapter navigation** and **open-at-last-page p
 - **Inference pipeline**: `PageBitmapLoader` inference decode (default `targetSize` 640; bubble detection decodes at 1024), preprocessing (letterbox to 1024x1024 for bubbles), TFLite dynamic tensor input shape detection, `YoloSegDecoder` + `DeepPanelDetector` decoding (with dynamic mask proximity gate `2f / sz`), Marching Squares contour extraction, wide panel splitting, intra-panel bubble row-banding, `ReadingOrderEngine` topological sorting, and **dual parallel TFLite workers** (`detector1` and `detector2` pool in `BubbleRepository` and `PanelRepository`, each detector on its own single-thread executor, for 2x page throughput).
 - **Cache layers (`DetectionRepository`)**: every page is looked up in this order: in-memory `LruCache` (100 entries each for bubbles and panels), then the disk `DetectionStore` (3.4), then the models; the result is then stored in both layers. `peekBubbles` / `peekPanelMap` check the first two layers **without decoding a bitmap or running a model**, and `ReaderViewModel.loadDetections` calls them before decoding the page, so a cached page costs no decode. Bubbles are cached per exact confidence value, because `YoloSegDecoder.mergeConnectedBubbles` merges overlapping bubbles and a low-threshold result is therefore not the same as a high-threshold result filtered afterwards. Panel maps do not depend on confidence.
 - **Cancellation-safe results (`DetectionRepository`)**: bubble inference for a `(chapter, page, confidence)` key runs in the repository's own `workScope` (`SupervisorJob + Dispatchers.IO`) and is shared through the `bubblesInFlight` map, so a caller that is cancelled cannot discard a finished result — later callers for the same key await the same `Deferred`, and the result is written to the memory cache and `DetectionStore` when it completes. Panel inference is short and uses the caller's bitmap, so it runs under `NonCancellable`. `DetectionsCacheHelper.toPanelMap` always returns a `PanelMap` (a page with zero panels yields an empty map), so the disk layer has a single decode path.
+- **Cache serialization (`DetectionsCacheHelper`)**: `PageDetectionData` stores the page index and size, the letterbox, the bubbles (box, score, class ID, mask size, mask probabilities) and the panels (label, box, centroid, area), plus the panel label grid. Mask bytes and the `ShortArray` label grid are Base64-encoded without line wrapping by the writer and decoded strictly on read (`java.util.Base64`), so an empty mask and the full 16-bit label range (negative values, values above 255) round-trip exactly, and the writer never emits `\n`/`\r`. A page with no panels decodes to a `PanelMap` with an empty `panels` list and a zero-filled `gridW × gridH` label array, never `null`; when both inputs are missing the defaults are page size 1000×1000, `LetterboxParams(640, 1000, 1000, 1f, 0f, 0f)`, empty bubbles/panels and a 224×224 panel grid. When both a bubble result and a panel map are present, the bubble letterbox wins. Cache files written before the strict decoder (the writer already used no wrapping) decode unchanged; a file that fails to decode or fails its version check is deleted and the page is detected again once. Covered by `DetectionsCacheTest` (7).
+- **Cache check**: open a chapter, let some pages detect, force-stop the app and reopen the chapter — Logcat tag `DetectionRepository` still logs `bubbles disk hit` and `panels disk hit` for those pages.
 - **Reader scheduling (`ReaderViewModel`)**:
   - `ensureBubbles(page)` runs panel and bubble detection concurrently when both are missing, one job per page (deduplicated by `bubbleDetectionJobs`).
   - `startChapterPreload(fromIndex)` restarts on **every page turn** from the current page, so fast skimming (including speech-bubble navigation) always prioritises the page being read. If the current page has no result it is detected **alone first**; then a two-worker queue processes the remaining pages in order, skipping pages already done or in flight.
@@ -184,7 +185,7 @@ Additionally, supports **previous chapter navigation** and **open-at-last-page p
   - **Image prefetch** (Phase 1) runs only for streamed pages, once per page per chapter, 3 at a time, with no memory-cache writes and a tiny decode; its only purpose is to warm Coil's disk cache.
   - When within 10 pages of the chapter end, the first 6 pages of the next chapter are preloaded through the same cache layers, so they are persisted to disk as well.
   - `panelMapsByPage` and `bubblesByPage` are both cleared when a chapter loads.
-  - Leaving the reader calls `ReaderViewModel.onReaderClosed()`, which cancels the preload debounce, chapter and next-chapter preload, and per-page detection jobs, and resets the next-chapter preload marker. The `loadChapter` coroutine itself is not tracked, so a chapter load already in flight can still start detection afterwards (10.34).
+  - Leaving the reader calls `ReaderViewModel.onReaderClosed()`, which cancels the tracked `loadChapterJob`, the preload debounce, chapter and next-chapter preload, and per-page detection jobs, and resets the next-chapter preload marker. `loadChapter` cancels any previous load, and re-checks `ensureActive()` after its blocking fetches (which swallow cancellation), so a superseded or closed load cannot continue into page loading or detection.
 - **Inference memory**: `BubbleDetector` allocates its large output tensors once per instance and reuses them (it has its own single-thread executor, so reuse is safe). `close()` closes the dispatcher, which shuts the executor down.
 - **Timing logs**: tag `DetectTiming` (`decode` with bitmap size and `local=true/false`, and `total` per page, from `ReaderViewModel.loadDetections`) and tag `DetectionRepository` (`TIMING bubbles` / `TIMING panels` model time per cache miss, plus `bubbles disk hit` / `panels disk hit` debug lines).
 - **Overlay, Magnifier & Interaction**: `ImageReader` canvas overlays (`speechBubbleBoxesEnabled`, `panelDebugOverlayEnabled`), **S-Pen hover magnification** (magnifies on speech bubble hover; persists when unhovering; automatically switches to magnify a new bubble if hovered while another is active; and returns to normal only when pressing down on the screen with the stylus), long-press hit testing (`hitBubble`), `cropBubble` high-res cropping, and `BubbleMagnifierOverlay`.
@@ -237,7 +238,7 @@ Pattern: **MVVM** with Compose screens, one `ViewModel` per screen, and a reposi
 | Background work  | WorkManager 2.10.0                                  | core download    |
 | Image loading    | Coil 2.7.0 coil-compose                             | SigurvitaApp     |
 | On-device ML     | TensorFlow Lite 2.17.0, YOLOv8m-seg, DeepPanel      | core ml          |
-| Tests            | JUnit 4, AndroidX test, Espresso                    | test sources     |
+| Tests            | JUnit 4 (model, util and ML cache unit tests), AndroidX test, Espresso | test sources     |
 
 ---
 
@@ -263,6 +264,8 @@ Pattern: **MVVM** with Compose screens, one `ViewModel` per screen, and a reposi
 Hybrid navigation: a `ModalNavigationDrawer` wraps a `Scaffold` whose bottom bar shows four primary destinations — Home, Browse (`library/0`), Lists (`reading_lists`) and Downloads. The bar is hidden on Auth, Series Detail, Reading List Detail, Reader, Page Review and Settings so those screens stay immersive.
 
 The drawer is the deep-navigation surface: branded header with server host, sectioned labels, Home/Libraries (reorderable drag handles), the reading-list **hierarchical tree** (**Era** → **Collapsible Major Part** → **Subparts**), Downloads, Page Review and Settings. Top-level screens expose it through a menu icon (Home, Library, Reading Lists at root, Downloads); elsewhere it is available by edge swipe.
+
+Drawer state is owned by `DrawerViewModel` (activity-scoped, obtained once in `SigurvitaNavGraph`). It restores the last `drawer.json` snapshot immediately, refreshes libraries and reading lists in parallel when the logged-in account changes, writes a new snapshot after a successful fetch, persists library order and chosen lists, and derives the Era → Part → Subpart hierarchy on `Dispatchers.Default`. Rendering is split into `AppDrawer` (shell and sections), `DrawerLibraries` (reorderable libraries) and `DrawerListTree` (collapsible tree); `NavGraph` only wires routes, the bottom bar and inset policy.
 
 When the bottom bar is visible, root `Scaffold` uses `contentWindowInsets = WindowInsets(0)` and consumes the navigation-bar insets so inner screen Scaffolds do not double-pad. When it is hidden, insets propagate normally to the screen.
 
@@ -361,11 +364,21 @@ app/src/main/java/com/zemmy/sigurvita/
 │       └── ReadingOrderEngine.kt    # Topological reading order and panel sorting engine
 └── ui/
     ├── components/                  # Shared UI cards, badges, bottom sheets, dialogs
-    ├── navigation/                  # NavGraph, Screen routes
+    ├── navigation/                  # NavGraph, Screen routes, bottom bar
+    │   ├── AppDrawer.kt             # Drawer shell (header + sections)
+    │   ├── DrawerLibraries.kt       # Reorderable library section
+    │   ├── DrawerListTree.kt        # Era → Part → Subpart reading-list tree
+    │   ├── DrawerViewModel.kt       # Activity-scoped drawer state (snapshot + refresh)
+    │   └── NavigationChrome.kt      # Bottom bar
     ├── screens/                     # Feature screens (Auth, Downloads, Home, Library, MarkedPages, Reader, ReadingList, SeriesDetail, Settings)
     │   └── reader/                  # BubbleHitTest, BubbleMagnifierOverlay, ImageReader, ReaderBackgroundColor (Auto background sampling, fixedColor), ReaderScreen, ReaderViewModel
     ├── theme/                       # Color, Theme, Type
     └── util/                        # OnResumeEffect
+
+app/src/test/java/com/zemmy/sigurvita/
+├── core/ml/DetectionsCacheTest.kt   # Bubble/panel cache encode-decode round trips
+├── core/model/ModelsTest.kt         # Library/Series classification and LetterboxParams coordinate mapping
+└── core/util/                       # NaturalSort, KavitaUrlBuilder, WebLinks and ReadingOrder unit tests
 ```
 
 ---
@@ -392,7 +405,7 @@ Sigurvita connects to a user's Kavita server (server URL + API key) and lets the
 2. **Server URLs with a sub-path are not supported by API calls.** `AuthInterceptor` rewrites scheme, host, and port, dropping path prefixes.
 3. **Network-first, mostly.** Series/chapter browsing needs the server. Offline reading works via `download_tasks.localPath`.
 4. **Reading lists are capped at 100** (`PageSize = 100`). Series lists capped at 5000.
-5. **Reading-list item loading issues one chapter request per item** (parallelized).
+5. **Reading-list detail loading issues one chapter request per item** (parallelized, 4 at a time). The reader navigation/preload paths and `getChapterReadingLists` pass `resolveDetails = false` and use a single list request instead.
 6. **Mass Download entry points.** Opened from reading-list detail and series detail.
 7. **Download-state UI differs by layout.** Comic list layout shows progress/cancel/retry/delete; others show simple download/check icon.
 8. **"Clear completed" is destructive.** It deletes the downloaded files and related on-device data (3.7). There is no confirmation dialog and it cannot be undone.
@@ -421,6 +434,6 @@ Sigurvita connects to a user's Kavita server (server URL + API key) and lets the
 31. **A downloaded chapter silently streams when its local copy is unusable** (see 3.6 for the conditions and the `ReaderRepository` log lines).
 32. **Detection store is not cleared on logout.** It is cleared per chapter when a download is deleted; otherwise it is evicted only by the 300 MB cap or by a version change. Snapshots are likewise kept after logout (they are ignored for a different account).
 33. **Cancelled bubble inference no longer discards its result:** `DetectionRepository` runs it in its own `workScope`, shares it through `bubblesInFlight`, and panel inference runs under `NonCancellable`.
-34. **Leaving the reader calls `ReaderViewModel.onReaderClosed()`.** The `loadChapter` job itself is not yet cancelled (see plan §2.1).
+34. **Leaving the reader stops background work.** `ReaderScreen` calls `ReaderViewModel.onReaderClosed()`, which cancels the tracked `loadChapterJob`, preload debounce, chapter/next-chapter preload and per-page detection jobs; `loadChapter` also cancels a superseded load and checks `ensureActive()` after its blocking fetches.
 35. **Release builds do not log HTTP request lines;** debuggable builds log at `BASIC` with `apiKey` masked.
 36. **The 401 renewal path is untested here.** `TokenAuthenticator` follows the design in its comments, but the server's JWT lifetime was not checked.

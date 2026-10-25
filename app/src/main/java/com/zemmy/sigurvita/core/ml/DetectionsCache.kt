@@ -1,6 +1,5 @@
 package com.zemmy.sigurvita.core.ml
 
-import android.util.Base64
 import com.zemmy.sigurvita.core.model.BubbleMask
 import com.zemmy.sigurvita.core.model.DetectedBubble
 import com.zemmy.sigurvita.core.model.LetterboxParams
@@ -81,7 +80,7 @@ object DetectionsCacheHelper {
 
         val bubbles = data.bubbles.map { bData ->
             val probsBytes = if (bData.maskProbsBase64.isNotBlank()) {
-                Base64.decode(bData.maskProbsBase64, Base64.DEFAULT)
+                decodeBase64(bData.maskProbsBase64)
             } else ByteArray(0)
 
             DetectedBubble(
@@ -124,7 +123,7 @@ object DetectionsCacheHelper {
         }
 
         val labelsShort = if (data.panelLabelsBase64.isNotBlank()) {
-            val bytes = Base64.decode(data.panelLabelsBase64, Base64.DEFAULT)
+            val bytes = decodeBase64(data.panelLabelsBase64)
             val shorts = ShortArray(bytes.size / 2)
             for (i in shorts.indices) {
                 shorts[i] = ((bytes[i * 2].toInt() and 0xFF) or (bytes[i * 2 + 1].toInt() shl 8)).toShort()
@@ -158,7 +157,7 @@ object DetectionsCacheHelper {
 
         val bubbleDataList = pageBubbles?.bubbles?.map { b ->
             val b64Mask = if (b.mask.probs.isNotEmpty()) {
-                Base64.encodeToString(b.mask.probs, Base64.NO_WRAP)
+                encodeBase64(b.mask.probs)
             } else ""
 
             DetectedBubbleData(
@@ -194,7 +193,7 @@ object DetectionsCacheHelper {
                 bytes[i * 2] = (s and 0xFF).toByte()
                 bytes[i * 2 + 1] = (s shr 8 and 0xFF).toByte()
             }
-            Base64.encodeToString(bytes, Base64.NO_WRAP)
+            encodeBase64(bytes)
         } else ""
 
         return PageDetectionData(
@@ -210,3 +209,7 @@ object DetectionsCacheHelper {
         )
     }
 }
+
+private fun encodeBase64(bytes: ByteArray): String = java.util.Base64.getEncoder().encodeToString(bytes)
+
+private fun decodeBase64(text: String): ByteArray = java.util.Base64.getDecoder().decode(text)
