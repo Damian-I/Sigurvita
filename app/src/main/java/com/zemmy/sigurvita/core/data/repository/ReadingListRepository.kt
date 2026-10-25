@@ -85,19 +85,6 @@ class ReadingListRepository(
             Result.failure(e)
         }
     }
-
-    suspend fun hasReadingListProgress(readingListId: Int): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val res = requestLimiter.withPermit { api.getReadingListItems(readingListId) }
-            val dtoList = if (res.isSuccessful) res.body() else null
-            return@withContext dtoList?.any { it.pagesRead > 0 } == true
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            false
-        }
-    }
-
     private data class SeriesInfo(val name: String, val libraryId: Int)
 
     /**

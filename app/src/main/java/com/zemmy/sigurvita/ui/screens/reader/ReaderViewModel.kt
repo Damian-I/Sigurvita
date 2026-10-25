@@ -20,6 +20,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -153,6 +154,7 @@ class ReaderViewModel : ViewModel() {
     private var chapterPreloadJob: Job? = null
     private var nextChapterPreloadJob: Job? = null
     private var preloadDebounceJob: Job? = null
+    private var loadChapterJob: Job? = null
     private var preloadedNextChapterId: Int = 0
     private var prefetchedChapterId: Int = 0
     private val prefetchedPages: MutableSet<Int> = java.util.concurrent.ConcurrentHashMap.newKeySet()
@@ -173,6 +175,8 @@ class ReaderViewModel : ViewModel() {
     ) {
         // Flush progress for the previous chapter before loading a new one
         flushProgress()
+        // A newer load supersedes any load still in flight
+        loadChapterJob?.cancel()
         // Reset cached library ID for new chapter context
         cachedLibraryId = 0
 
@@ -196,9 +200,8 @@ class ReaderViewModel : ViewModel() {
             }
         }
 
-        viewModelScope.launch {
+        loadChapterJob = viewModelScope.launch {
             val userSettings = preferencesRepository.readerSettingsFlow.first()
-
             val targetSeriesId = seriesId
             var targetVolumeId = volumeId
             var fetchedSeriesName = ""
@@ -271,7 +274,8 @@ class ReaderViewModel : ViewModel() {
                 app.database.downloadDao().getDownloadByChapterId(chapterId)
             } catch (_: Exception) { null }
             val isDownloadedLocal = downloadTask?.status == DownloadStatus.COMPLETED
-
+            // The fetch blocks above swallow cancellation, so stop here if this load was superseded or the reader closed
+            ensureActive()
             val finalChapter = fetchedChapter ?: Chapter(
                 id = chapterId,
                 volumeId = targetVolumeId,
@@ -1413,6 +1417,7 @@ class ReaderViewModel : ViewModel() {
 
     /** Stops background detection when the reader screen is left. Results already computed stay cached. */
     fun onReaderClosed() {
+        loadChapterJob?.cancel()
         preloadDebounceJob?.cancel()
         chapterPreloadJob?.cancel()
         nextChapterPreloadJob?.cancel()
