@@ -71,7 +71,9 @@ data class ReaderSettingsActions(
     val onSpeechBubbleConfidence: (Float) -> Unit,
     val onPanelAwareOrder: (Boolean) -> Unit,
     val onPanelDebugOverlay: (Boolean) -> Unit,
-    val onReadingMode: (ReadingMode) -> Unit = {}
+    val onReadingMode: (ReadingMode) -> Unit = {},
+    // Only the in-reader sheet supplies this; see [ReaderSettingsContent.bubbleNavActive].
+    val onBubbleNavActive: (Boolean) -> Unit = {}
 )
 
 /**
@@ -84,7 +86,12 @@ fun ReaderSettingsContent(
     actions: ReaderSettingsActions,
     modifier: Modifier = Modifier,
     showReadingMode: Boolean = false,
-    libraryDefaultMode: ReadingMode? = null
+    libraryDefaultMode: ReadingMode? = null,
+    /**
+     * Live state of speech-bubble navigation mode, or null to hide its switch. Only the in-reader sheet passes it:
+     * the mode is a reader-session state (never persisted), so it has no place on the global Settings screen.
+     */
+    bubbleNavActive: Boolean? = null
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         ReaderReadingSection(
@@ -98,7 +105,7 @@ fun ReaderSettingsContent(
         SettingsDivider()
         ReaderDisplaySection(settings, actions)
         SettingsDivider()
-        ReaderSpeechBubbleSection(settings, actions)
+        ReaderSpeechBubbleSection(settings, actions, bubbleNavActive = bubbleNavActive)
         if (settings.speechBubbleDetectionEnabled) {
             SettingsDivider()
             ReaderDebugSection(settings, actions)
@@ -248,7 +255,8 @@ fun ReaderDisplaySection(
 fun ReaderSpeechBubbleSection(
     settings: ReaderSettings,
     actions: ReaderSettingsActions,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    bubbleNavActive: Boolean? = null
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         SettingsSectionTitle(stringResource(R.string.reader_section_speech_bubbles))
@@ -260,6 +268,22 @@ fun ReaderSpeechBubbleSection(
         )
 
         if (settings.speechBubbleDetectionEnabled) {
+            if (bubbleNavActive != null) {
+                // Not a stored setting: it mirrors the reader's live bubble navigation mode, so it also flips when the
+                // mode is entered or left by long-pressing a bubble, tapping the centre or holding both volume keys.
+                val pagedMode = settings.readingMode != ReadingMode.WEBTOON
+                SettingSwitchRow(
+                    title = stringResource(R.string.bubble_nav_mode),
+                    subtitle = stringResource(
+                        if (pagedMode) R.string.bubble_nav_mode_subtitle else R.string.bubble_nav_mode_webtoon_subtitle
+                    ),
+                    checked = bubbleNavActive && pagedMode,
+                    onCheckedChange = actions.onBubbleNavActive,
+                    indent = true,
+                    enabled = pagedMode
+                )
+            }
+
             SettingSwitchRow(
                 title = stringResource(R.string.speech_bubble_boxes),
                 subtitle = stringResource(R.string.speech_bubble_boxes_subtitle),
@@ -340,7 +364,8 @@ fun SettingSwitchRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    indent: Boolean = false
+    indent: Boolean = false,
+    enabled: Boolean = true
 ) {
     Row(
         modifier = modifier
@@ -357,7 +382,7 @@ fun SettingSwitchRow(
                 color = LocalContentColor.current.copy(alpha = 0.7f)
             )
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
 }
 

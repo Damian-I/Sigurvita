@@ -345,26 +345,12 @@ private fun ZoomableImage(
                     onTap = { offset ->
                         val width = size.width.toFloat()
                         if (readingMode != ReadingMode.WEBTOON && touchEdgeNavigationEnabled && scale <= 1.05f && width > 0f) {
-                            val leftThreshold = width * 0.3f
-                            val rightThreshold = width * 0.7f
-                            when {
-                                offset.x < leftThreshold -> {
-                                    if (readingMode == ReadingMode.RTL) {
-                                        latestOnNextPage()
-                                    } else {
-                                        latestOnPreviousPage()
-                                    }
-                                }
-                                offset.x > rightThreshold -> {
-                                    if (readingMode == ReadingMode.RTL) {
-                                        latestOnPreviousPage()
-                                    } else {
-                                        latestOnNextPage()
-                                    }
-                                }
-                                else -> {
-                                    latestOnTap()
-                                }
+                            // The edge zones navigate (pages, or bubbles while bubble navigation mode is on);
+                            // the centre is the "other" zone: it toggles the controls and leaves bubble navigation mode.
+                            when (classifyTapZone(offset.x, width, isRtl = readingMode == ReadingMode.RTL)) {
+                                TapZone.NEXT -> latestOnNextPage()
+                                TapZone.PREVIOUS -> latestOnPreviousPage()
+                                TapZone.CENTER -> latestOnTap()
                             }
                         } else {
                             latestOnTap()

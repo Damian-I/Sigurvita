@@ -2,6 +2,9 @@ package com.zemmy.sigurvita
 
 import android.annotation.SuppressLint
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,6 +19,7 @@ import com.zemmy.sigurvita.ui.components.LoadingState
 import com.zemmy.sigurvita.ui.navigation.Screen
 import com.zemmy.sigurvita.ui.navigation.SigurvitaNavGraph
 import com.zemmy.sigurvita.ui.screens.reader.ReaderViewModel
+import com.zemmy.sigurvita.ui.screens.reader.VolumeChordDetector
 import com.zemmy.sigurvita.ui.theme.SigurvitaTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -33,6 +37,34 @@ class MainActivity : ComponentActivity() {
     // Tracks the current navigation route so volume keys are only forwarded on the Reader screen
     @Volatile
     private var currentRoute: String? = null
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /**
+     * Single volume keys page (or step bubbles) as before; holding both for about two seconds toggles
+     * speech-bubble navigation mode, the same mode a long-press on a bubble turns on.
+     */
+    private val volumeChord = VolumeChordDetector(
+        scheduler = VolumeChordDetector.Scheduler { delayMillis, action ->
+            val runnable = Runnable { action() }
+            mainHandler.postDelayed(runnable, delayMillis)
+            VolumeChordDetector.Cancellable { mainHandler.removeCallbacks(runnable) }
+        },
+        onStep = { isVolumeUp ->
+            // The step is deferred a few milliseconds, so re-check that the reader is still showing.
+            if (isReaderRoute()) readerViewModel.handleVolumeKey(isVolumeUp = isVolumeUp)
+        },
+        onChord = {
+            if (isReaderRoute() && readerViewModel.toggleBubbleNavMode()) {
+                window.decorView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            }
+        }
+    )
+
+    private fun isReaderRoute(): Boolean = currentRoute?.startsWith("reader/") == true
+
+    private fun isVolumeKey(keyCode: Int): Boolean =
+        keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
 
     @SuppressLint("ContextCastToActivity")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -107,17 +139,34 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        // Only intercept volume keys when the Reader screen is active
-        val route = currentRoute
-        if (route != null && route.startsWith("reader/")) {
-            if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
-                val handled = readerViewModel.handleVolumeKey(isVolumeUp = true)
-                if (handled) return true
-            } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-                val handled = readerViewModel.handleVolumeKey(isVolumeUp = false)
-                if (handled) return true
-            }
+        // Only intercept volume keys when the Reader screen is active and volume-key navigation is on
+        if (isVolumeKey(keyCode) && isReaderRoute() && readerViewModel.isVolumeKeyNavigationEnabled) {
+            volumeChord.onKeyDown(
+                isVolumeUp = keyCode == KeyEvent.KEYCODE_VOLUME_UP,
+                isRepeat = (event?.repeatCount ?: 0) > 0
+            )
+            return true
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        if (isVolumeKey(keyCode)) {
+            // Always tell the detector, even off the reader, so a held-key flag can never go stale.
+            volumeChord.onKeyUp(isVolumeUp = keyCode == KeyEvent.KEYCODE_VOLUME_UP)
+            if (isReaderRoute() && readerViewModel.isVolumeKeyNavigationEnabled) return true
+        }
+        return super.onKeyUp(keyCode, event)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // Key-up events can be lost when focus goes away (shade, dialog, app switch): forget held keys.
+        if (!hasFocus) volumeChord.reset()
+    }
+
+    override fun onPause() {
+        volumeChord.reset()
+        super.onPause()
     }
 }

@@ -221,8 +221,9 @@ fun ReaderScreen(
                 currentPageIndex = state.currentPageIndex,
                 readingMode = state.settings.readingMode,
                 onPageChanged = { viewModel.onPageChanged(it) },
-                onNextPage = { viewModel.nextPage() },
-                onPreviousPage = { viewModel.previousPage() },
+                // Edge taps: step bubbles while bubble navigation mode is on, otherwise turn the page.
+                onNextPage = { viewModel.onEdgeTapNavigate(isNext = true) },
+                onPreviousPage = { viewModel.onEdgeTapNavigate(isNext = false) },
                 onTap = {
                     viewModel.resetBubbleNavMode()
                     viewModel.toggleControls()
@@ -253,7 +254,11 @@ fun ReaderScreen(
                         state.settings.fitMode == FitMode.FIT_HEIGHT -> ContentScale.FillHeight
                         else -> ContentScale.Fit
                     },
-                    onBubbleHover = { pageIdx, bubbleId, centerPx, bubbleSizePx -> viewModel.onBubbleHover(pageIdx, bubbleId, centerPx, bubbleSizePx) }
+                    onBubbleHover = { pageIdx, bubbleId, centerPx, bubbleSizePx -> viewModel.onBubbleHover(pageIdx, bubbleId, centerPx, bubbleSizePx) },
+                    edgeTapNavigationEnabled = state.settings.touchEdgeNavigationEnabled &&
+                        state.settings.readingMode != ReadingMode.WEBTOON,
+                    isRtl = state.settings.readingMode == ReadingMode.RTL,
+                    onEdgeTap = { isNext -> viewModel.onEdgeTapNavigate(isNext) }
                 )
             }
 
@@ -674,11 +679,13 @@ fun ReaderScreen(
                                     onSpeechBubbleConfidence = viewModel::updateSpeechBubbleConfidence,
                                     onPanelAwareOrder = viewModel::updatePanelAwareOrder,
                                     onPanelDebugOverlay = viewModel::updatePanelDebugOverlay,
-                                    onReadingMode = viewModel::updateReadingMode
+                                    onReadingMode = viewModel::updateReadingMode,
+                                    onBubbleNavActive = viewModel::updateBubbleNavActive
                                 )
                             },
                             showReadingMode = true,
-                            libraryDefaultMode = state.libraryDefaultMode
+                            libraryDefaultMode = state.libraryDefaultMode,
+                            bubbleNavActive = state.bubbleNavActive
                         )
 
                         Spacer(modifier = Modifier.height(24.dp))

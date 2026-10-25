@@ -4,7 +4,7 @@ Welcome to **Sigurvita**, an Android client for **Kavita** (the self-hosted digi
 
 This document is the reference for developers and future AI assistants. Everything below describes what the code does today. Where behaviour is surprising or incomplete, it is called out in [section 11](#11-known-limitations--quirks) rather than described as if it worked ideally.
 
-Last verified against the working tree on **2026-10-25** (`master` at `62fdcc2`).
+Last verified against the working tree on **2026-10-25** (`master` at `a30658d`).
 
 ## Contents
 
@@ -38,6 +38,7 @@ The app is **network-first**: browsing calls Kavita first, while a small Room ca
 | **On Deck** | Kavita's resume shelf. "Smart On Deck" remembers whether the user last opened a series from a reading list or from library order (`series_read_contexts`). |
 | **Page Review** | The in-app `marked_pages` workspace: flagged pages, review tags (`DEBUG` / `REMOVE`), live detection testing and preview inspection. |
 | **Incognito** | A global switch that suppresses writes of read state and progress to Kavita. |
+| **Bubble navigation mode** | A session-only reader mode (`ReaderUiState.bubbleNavActive`) in which edge taps and volume keys step through speech bubbles instead of turning pages ([4.10](#410-speech-bubble-navigation-mode)). Not the same as panel-aware reading order. |
 | **Detection store** | The on-disk ML result cache (`noBackupFilesDir/detections/<chapterId>/`). |
 | **Snapshot** | A last-seen JSON copy of Home, drawer or all-series data (`noBackupFilesDir/snapshots/`) used for instant cold-start rendering. |
 
@@ -126,7 +127,7 @@ When developing new screens, components or settings dialogues, adhere to these s
 | `speech_bubble_detection_enabled` | Speech-bubble detection on/off (default `true`; legacy key `speech_bubbles_enabled` is read as a fallback). |
 | `speech_bubble_boxes_enabled` | Speech-bubble highlight overlays (default `true`). |
 | `speech_bubble_confidence` | Detection confidence threshold (default `0.10`). |
-| `panel_aware_order` | Panel-aware reading order (default `true`). |
+| `panel_aware_order` | Panel-aware reading order (default `true`). It only changes the order bubbles are visited in. It is unrelated to [bubble navigation mode](#410-speech-bubble-navigation-mode), which is session-only and has no DataStore key. |
 | `panel_debug_overlay` | Panel map debug overlay (default `false`). |
 | `show_page_number` | Page counter (`current / total`) while controls are hidden (default `false`). |
 | `reader_orientation` | `ReaderOrientation` enum name (default `FREE`; unreadable values fall back to `FREE`). |
@@ -233,7 +234,29 @@ It also supports **previous-chapter navigation** and **open-at-last-page persist
 - **Reader scheduling (`ReaderDetectionScheduler`)**: owns per-page jobs, the 200 ms debounced preload, image prefetch and next-chapter look-ahead; `ReaderViewModel` delegates. Results are written into the ViewModel-owned `bubblesByPage` / `panelMapsByPage`, and `onReaderClosed()` cancels all scheduler work and resets the next-chapter marker.
 - **Inference memory**: `BubbleDetector` allocates its large output tensors once per instance and reuses them (it has its own single-thread executor, so reuse is safe). `close()` closes the dispatcher, which shuts the executor down.
 - **Timing logs**: tag `DetectTiming` (`decode` with bitmap size and `local=true/false`, and `total` per page, from `ReaderViewModel.loadDetections`) and tag `DetectionRepository` (`TIMING bubbles` / `TIMING panels` model time per cache miss, plus `bubbles disk hit` / `panels disk hit` debug lines).
-- **Overlay, Magnifier & Interaction**: `ImageReader` canvas overlays (`speechBubbleBoxesEnabled`, `panelDebugOverlayEnabled`), **S-Pen hover magnification** (magnifies on speech-bubble hover; persists when unhovering; automatically switches to magnify a new bubble if hovered while another is active; returns to normal only when pressing down on the screen with the stylus), long-press hit testing (`hitBubble`), `cropBubble` high-res cropping, and `BubbleMagnifierOverlay`.
+- **Overlay, Magnifier & Interaction**: `ImageReader` canvas overlays (`speechBubbleBoxesEnabled`, `panelDebugOverlayEnabled`), **S-Pen hover magnification** (magnifies on speech-bubble hover; persists when unhovering; automatically switches to magnify a new bubble if hovered while another is active; returns to normal only when pressing down on the screen with the stylus), long-press hit testing (`hitBubble`), `cropBubble` high-res cropping, and `BubbleMagnifierOverlay`. The overlay covers the whole screen and shares the page's tap zones ([4.10](#410-speech-bubble-navigation-mode)).
+
+### 4.10 Speech-bubble navigation mode
+
+Bubble navigation mode is a **session-only** reader state: `ReaderUiState.bubbleNavActive`, exposed through the private `ReaderViewModel.isBubbleNavActive` property. It is never written to DataStore and is reset when the reader closes. While it is on, "next" and "previous" step through the detected bubbles of the current page (magnifying each in turn) and carry on across page and chapter boundaries; while it is off they turn pages. It needs speech-bubble detection on and a paged reading mode (not Webtoon).
+
+It is **not** the panel-aware reading order. `panel_aware_order` is a persisted setting that only decides the *order* bubbles are visited in; bubble navigation mode decides *whether* "next" means "next bubble" or "next page". The mode used to be a plain, unobservable `var`; it now lives in the UI state so everything (the reader options switch included) reads the same value.
+
+| Entered by | Result |
+| :--- | :--- |
+| Long-press a detected bubble | Arms the mode and magnifies that bubble. |
+| S-Pen hover over a bubble | Same as a long-press. |
+| Hold **volume up + down** for about 2 s | Arms the mode and magnifies the first bubble of the current page (a long-press has no bubble to pick, so reading order decides). The device gives a short haptic buzz. If detection is off or the mode is Webtoon nothing happens. |
+| Reader options → **Speech Bubble Navigation** switch | Arms the mode only; the next step magnifies the first bubble. |
+
+**Stepping.** Edge taps and volume keys both call the same `ReaderViewModel.navigateStep`. The page-transition zones are the outer 30% on each side (`classifyTapZone` in `TapZones.kt`); the left edge is *previous* in LTR and *next* in RTL. The page (`ImageReader`) and the magnifier overlay (`BubbleMagnifierOverlay`, which sits on top while a bubble is magnified) use the same classifier, so the zones are identical with or without a magnified bubble.
+
+**Leaving the mode** (all of these reset it, and the reader options switch follows):
+- Tap the **centre** of the screen, the non-transition zone: on the page this also toggles the controls, as before; on the magnifier overlay it only dismisses.
+- Any tap when there are no zones: Edge Touch Page Navigation is off, or the page is zoomed past 1.05×.
+- Back while a bubble is magnified, an S-Pen press on the screen, the switch, holding both volume keys again, tapping a timeline thumbnail or dragging the thumbnail strip, changing the detection toggle or confidence, switching to Webtoon mode, or leaving the reader.
+
+**Volume chord (`VolumeChordDetector`, used by `MainActivity`).** A single key behaves as before, including auto-repeat while it is held. Two keys held together for 2 s (`DEFAULT_HOLD_MILLIS`) call `ReaderViewModel.toggleBubbleNavMode`. Because the two key-downs arrive a few milliseconds apart, a single key's first step is deferred by 80 ms (`DEFAULT_GRACE_MILLIS`); a second key inside that window cancels it, so starting a chord does not also turn a page. While both keys are held, auto-repeat is swallowed. The detector is reset on pause and on window-focus loss because key-up events can be lost then.
 
 ---
 
@@ -326,7 +349,7 @@ Pinned hero with the cover, summary, "Read more...", chapter/page progress (acce
 ### 6.6 Reader (`ReaderScreen`)
 
 - **Paging & zoom**: horizontal pager (RTL/LTR) or vertical webtoon scrolling. Pinch zoom and pan state are read in the draw phase through a lambda `graphicsLayer`, so zooming does not recompose the page. In webtoon mode a one-finger drag scrolls the list at 1×, a two-finger pinch zooms, and once zoomed one finger pans.
-- **Navigation**: edge taps and volume keys perform standard page-by-page navigation by default. Magnifying a speech bubble activates speech-bubble navigation mode, which carries bubble step-through continuously across page and chapter/issue transitions until touch input is detected or the reader session is exited.
+- **Navigation**: edge taps (the outer 30% of each side) and volume keys perform standard page-by-page navigation by default. Entering [bubble navigation mode](#410-speech-bubble-navigation-mode) (long-press a bubble, S-Pen hover, hold both volume keys for about 2 s, or the reader options switch) makes the same edge taps and volume keys step through speech bubbles instead, continuously across page and chapter/issue transitions. Tapping the centre of the screen, the non-transition zone, leaves the mode, as do the other exits listed in 4.10. Holding both volume keys again toggles it off.
 - **Background work**: `ReaderDetectionScheduler` preloads detection for the current page first, then the rest of the chapter (restarting from the current page on every page turn), prefetches images for streamed pages, and pre-detects the upcoming chapter.
 - **Chrome**: control overlay auto-dismiss, issue detail bottom sheet, swipeable multi-thumbnail timeline preview strip, timeline slider, bottom speech-bubble indicator, previous-chapter navigation, open-at-last-page support and **S-Pen hover magnification**.
 
@@ -335,7 +358,7 @@ Pinned hero with the cover, summary, "Read more...", chapter/page progress (acce
 - **Background colour** (`ReaderBackground`: Black, Gray, White, Auto). Black, Gray and White are fixed colours (`ReaderBackground.fixedColor()`). **Auto** is decided per page: once a page has loaded, `estimatePageEdgeColor` (`ReaderBackgroundColor.kt`) decodes a 256 px copy through Coil (memory cache disabled) and takes the per-channel median of a thin ring of pixels just inside the edges, so artwork touching the edge does not skew the result. The colour is computed once per page, stored in `ReaderScreen.pageBackgrounds` (cleared when the chapter changes), and the root background follows the current page's colour. Until it is computed, or if the image cannot be read, the background is black.
 - **Screen orientation** (`ReaderOrientation`: Free, Portrait, Locked portrait, Reverse portrait, Landscape, Locked landscape). Applied through `Activity.requestedOrientation` in a `DisposableEffect`; leaving the reader resets it to `SCREEN_ORIENTATION_UNSPECIFIED`. Portrait/Landscape follow the sensor within that axis; the Locked variants do not.
 - **Page number** toggle: shows `current / total` at the bottom centre only while the controls overlay is hidden.
-- Touch edge navigation, keep screen on, speech-bubble detection, highlight boxes, confidence slider, panel-aware order and panel debug overlay (feature options first, debug last, per [section 3](#3-app-design--ux-principles)).
+- Touch edge navigation, keep screen on, speech-bubble detection, a live **Speech Bubble Navigation** switch, highlight boxes, confidence slider, panel-aware order and panel debug overlay (feature options first, debug last, per [section 3](#3-app-design--ux-principles)). The Speech Bubble Navigation switch is not a stored setting: it mirrors [bubble navigation mode](#410-speech-bubble-navigation-mode), so it follows the mode however it was entered or left. It only appears while detection is on, is disabled in Webtoon mode, and exists only in this sheet (`ReaderSettingsContent(bubbleNavActive = …)`), not on the global Settings screen.
 
 ### 6.7 Reading lists (`ReadingListScreen`)
 
@@ -354,6 +377,8 @@ Testing and cleanup workspace for flagged pages (`marked_pages`). Supports **rev
 **Appearance**: theme mode chips (System / Light / Dark / AMOLED — AMOLED forces a true-black background and a brighter primary) and a Material You dynamic-colour toggle (Android 12+, disabled with an explanatory hint below). Also the global ColorScape switch, reader configuration (fit mode, volume keys, edge tap, keep screen on, speech-bubble detection, highlight boxes, confidence threshold, panel-aware order, panel map debug overlay), offline download auto-delete options, account session refresh, and logout.
 
 Appearance is persisted in DataStore (`APP_THEME_MODE`, `APP_DYNAMIC_COLOR`) and applied in `MainActivity`, which also sets light/dark status- and navigation-bar icon appearance to match the resolved background.
+
+The reader options shown here are the same `ReaderSettingsContent` as in the reader sheet, minus reading mode and the Speech Bubble Navigation switch, which are reader-session state ([4.10](#410-speech-bubble-navigation-mode)).
 
 ### 6.11 Shared components (`ui.components`)
 
@@ -426,6 +451,8 @@ Requirements: JDK 17, Android SDK 35, and the Gradle wrapper. `model.tflite` is 
 | `core/util/NaturalSortTest.kt` | `naturalCompare`, chapter-number extraction, display titles, reading-list title cleaning and hierarchy parsing. |
 | `core/util/ReadingOrderTest.kt`, `ReadingOrderUnitTest.kt` | Reading-order engine and panel sorting. |
 | `core/util/WebLinksTest.kt` | External-link recognition, de-duplication and primary-link preference. |
+| `ui/screens/reader/TapZonesTest.kt` | `classifyTapZone`: LTR/RTL edge mapping, centre, strict 30%/70% boundaries, zero width. |
+| `ui/screens/reader/VolumeChordDetectorTest.kt` | Volume chord with a fake clock: grace-window stepping, quick taps, auto-repeat, 2 s hold, early release, re-arming, reset. |
 
 `app/src/androidTest/` contains only the generated `ExampleInstrumentedTest`; there is no real instrumentation coverage.
 
@@ -447,6 +474,7 @@ Requirements: JDK 17, Android SDK 35, and the Gradle wrapper. `model.tflite` is 
 - **Detection cache**: open a chapter, let pages detect, force-stop, reopen — expect `bubbles disk hit` / `panels disk hit` for those pages ([4.9](#49-on-device-speech-bubble--panel-detection)).
 - **Downloaded chapter**: open a downloaded chapter offline; `ReaderRepository` should log the archive path and extraction, not `has no usable local copy, streaming`.
 - **Incognito**: enable it, read a chapter and toggle read state; the server must not receive progress/mark requests.
+- **Bubble navigation** ([4.10](#410-speech-bubble-navigation-mode)): long-press a bubble, step with the left/right edge zones and with the volume keys, tap the centre to leave; hold both volume keys for about 2 s to toggle it on and off; check that the **Speech Bubble Navigation** switch in the reader options follows every one of those. Also check plain page turning (mode off) with edge taps and volume keys, in both RTL and LTR.
 - **Token renewal**: not verified against a live expiring JWT (see [11.5](#115-build-licensing--testing-gaps)).
 
 ---
@@ -459,7 +487,7 @@ app/src/main/assets/
 └── deeppanel.tflite                 # DeepPanel model (~12 MB)
 
 app/src/main/java/com/zemmy/sigurvita/
-├── MainActivity.kt                  # Single activity: routing, theme, volume-key interception
+├── MainActivity.kt                  # Single activity: routing, theme, volume-key interception (incl. the hold-both-keys chord)
 ├── SigurvitaApp.kt                  # Application: DB + DataStore init, lazy singletons, Coil
 ├── core/
 │   ├── data/
@@ -488,14 +516,15 @@ app/src/main/java/com/zemmy/sigurvita/
     │   ├── DrawerViewModel.kt       # Activity-scoped drawer state (snapshot + refresh)
     │   └── NavigationChrome.kt      # Bottom bar (TopDestination)
     ├── screens/                     # Auth, Downloads, Home, Library, MarkedPages, Reader, ReadingList, SeriesDetail, Settings
-    │   └── reader/                  # BubbleHitTest, BubbleMagnifierOverlay, ImageReader, ReaderBackgroundColor, ReaderDetectionScheduler, ReaderScreen, ReaderViewModel
+    │   └── reader/                  # BubbleHitTest, BubbleMagnifierOverlay, ImageReader, ReaderBackgroundColor, ReaderDetectionScheduler, ReaderScreen, ReaderViewModel, TapZones, VolumeChordDetector
     ├── theme/                       # Color, ColorScape, Dimens, Shape, Theme, Type
     └── util/                        # OnResumeEffect
 
 app/src/test/java/com/zemmy/sigurvita/
 ├── core/ml/DetectionsCacheTest.kt   # Bubble/panel cache encode-decode round trips
 ├── core/model/ModelsTest.kt         # Library/Series classification and LetterboxParams coordinate mapping
-└── core/util/                       # NaturalSort, KavitaUrlBuilder, WebLinks, ReadingOrder unit tests
+├── core/util/                       # NaturalSort, KavitaUrlBuilder, WebLinks, ReadingOrder unit tests
+└── ui/screens/reader/               # TapZones and VolumeChordDetector unit tests
 
 app/src/androidTest/java/com/zemmy/sigurvita/
 └── ExampleInstrumentedTest.kt       # Generated template test only
@@ -524,6 +553,12 @@ A single global flag (`incognito_mode`, DataStore). While on:
 - **Magnifier is a single-pass crop.** S-Pen hover magnification persists after unhovering and only returns to normal on pen-down; hovering a different bubble switches the magnified target.
 - **Leaving the reader cancels background work.** `ReaderScreen` calls `ReaderViewModel.onReaderClosed()`, which cancels the tracked `loadChapterJob`, preload debounce, chapter/next-chapter preload and per-page detection jobs; `loadChapter` also cancels a superseded load and checks `ensureActive()` after its blocking fetches.
 - **Confidence slider re-runs detection.** Cached results exist only for confidence values already used on a page (bubbles are cached per exact confidence).
+- **Bubble navigation by tap needs Edge Touch Page Navigation.** With it off there are no transition zones, so any tap leaves the mode, exactly as before.
+- **A single volume press waits 80 ms.** `VolumeChordDetector` defers a lone key's first step by `DEFAULT_GRACE_MILLIS` so a chord does not also turn a page. Auto-repeat of a held single key is unchanged. If the second key of a chord lands after that window, the first key has already stepped once.
+- **The volume chord arms the mode without a magnifier if the page's bubbles are not detected yet.** The next step then waits for detection, as it does for volume keys.
+- **The mode is not persisted and is not on the global Settings screen.** It resets when the reader closes; it also resets when switching to Webtoon mode. The reader options switch simply mirrors it.
+- **The magnifier overlay ignores page zoom.** Its edge zones apply even if the page underneath was zoomed (its geometry already assumes 1×). On the page itself, taps while zoomed past 1.05× have no zones and leave the mode.
+- **Moving the timeline slider does not leave bubble navigation mode**, unlike tapping a thumbnail or dragging the thumbnail strip.
 
 ### 11.2 Detection & ML
 

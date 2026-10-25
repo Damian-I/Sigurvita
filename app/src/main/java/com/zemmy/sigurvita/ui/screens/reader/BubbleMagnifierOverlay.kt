@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -39,11 +40,19 @@ fun BubbleMagnifierOverlay(
     onDismiss: () -> Unit,
     bubbles: PageBubbles? = null,
     contentScale: ContentScale = ContentScale.Fit,
-    onBubbleHover: ((Int, Int?, Offset?, Size?) -> Unit)? = null
+    onBubbleHover: ((Int, Int?, Offset?, Size?) -> Unit)? = null,
+    // When true (and the page is paged, not webtoon) the page-transition zones step bubbles instead of dismissing.
+    edgeTapNavigationEnabled: Boolean = false,
+    isRtl: Boolean = false,
+    // Called with `isNext` for a tap in a page-transition zone; [isRtl] is already applied.
+    onEdgeTap: (isNext: Boolean) -> Unit = {}
 ) {
     BackHandler(enabled = true) {
         onDismiss()
     }
+
+    val latestOnDismiss by rememberUpdatedState(onDismiss)
+    val latestOnEdgeTap by rememberUpdatedState(onEdgeTap)
 
     val density = LocalDensity.current
 
@@ -109,8 +118,20 @@ fun BubbleMagnifierOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { onDismiss() })
+            .pointerInput(edgeTapNavigationEnabled, isRtl) {
+                detectTapGestures(onTap = { tap ->
+                    // Same zones as the page underneath: the edges step bubbles, the centre (or any tap when
+                    // edge navigation is off) dismisses the magnifier and leaves bubble navigation mode.
+                    if (edgeTapNavigationEnabled) {
+                        when (classifyTapZone(tap.x, size.width.toFloat(), isRtl)) {
+                            TapZone.NEXT -> latestOnEdgeTap(true)
+                            TapZone.PREVIOUS -> latestOnEdgeTap(false)
+                            TapZone.CENTER -> latestOnDismiss()
+                        }
+                    } else {
+                        latestOnDismiss()
+                    }
+                })
             }
             .then(hoverModifier)
             .onSizeChanged { screenSize = it }

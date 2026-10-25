@@ -114,6 +114,9 @@
     <string name="keep_screen_on_subtitle">Prevent display timeout while reading</string>
     <string name="speech_bubble_detection">Speech Bubble Detection</string>
     <string name="speech_bubble_detection_subtitle">Detect speech bubbles on pages for magnification</string>
+    <string name="bubble_nav_mode">Speech Bubble Navigation</string>
+    <string name="bubble_nav_mode_subtitle">Edge taps and volume keys step through bubbles. Tap the centre to leave, or hold both volume keys for 2 s to toggle</string>
+    <string name="bubble_nav_mode_webtoon_subtitle">Not available in Webtoon mode</string>
     <string name="speech_bubble_boxes">Speech Bubble Boxes</string>
     <string name="speech_bubble_boxes_subtitle">Outline detected speech bubbles on page</string>
     <string name="detection_confidence">Detection Confidence: %1$d%%</string>

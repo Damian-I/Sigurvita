@@ -53,6 +53,8 @@ data class ReaderUiState(
     val bubblesByPage: Map<Int, com.zemmy.sigurvita.core.model.PageBubbles> = emptyMap(),
     val panelMapsByPage: Map<Int, com.zemmy.sigurvita.core.util.PanelMap> = emptyMap(),
     val magnifiedBubble: com.zemmy.sigurvita.core.model.MagnifiedBubble? = null,
+    /** Speech-bubble navigation mode: edge taps and volume keys step through bubbles. Session-only, never persisted. */
+    val bubbleNavActive: Boolean = false,
     val prevChapter: ChapterRef? = null,
     val nextChapter: ChapterRef? = null
 )
@@ -144,7 +146,17 @@ class ReaderViewModel : ViewModel() {
         state = _uiState,
         nextChapterOf = { s -> findNeighbors(s.chapterId, s.seriesId, s.readingListId).second }
     )
-    private var isBubbleNavActive: Boolean = false
+
+    /**
+     * Speech-bubble navigation mode. It lives in [ReaderUiState.bubbleNavActive] so the UI (the reader options
+     * switch) always shows the real state; the rest of this class keeps reading and writing it as a plain property.
+     * This is independent of the persisted panel-aware reading order, which only decides the order bubbles are visited in.
+     */
+    private var isBubbleNavActive: Boolean
+        get() = _uiState.value.bubbleNavActive
+        set(value) {
+            _uiState.update { if (it.bubbleNavActive == value) it else it.copy(bubbleNavActive = value) }
+        }
     private var completedForwardBubblePageIndex: Int = -1
     private var completedBackwardBubblePageIndex: Int = -1
 
@@ -551,12 +563,56 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun resetBubbleNavMode() {
-        isBubbleNavActive = false
         completedForwardBubblePageIndex = -1
         completedBackwardBubblePageIndex = -1
-        if (_uiState.value.magnifiedBubble != null) {
-            _uiState.update { it.copy(magnifiedBubble = null) }
+        // One atomic update, so the magnifier never lingers for a frame after the mode reads as off.
+        _uiState.update {
+            if (it.bubbleNavActive || it.magnifiedBubble != null) {
+                it.copy(bubbleNavActive = false, magnifiedBubble = null)
+            } else {
+                it
+            }
         }
+    }
+
+    /** Bubble navigation needs detection on and a paged (non-webtoon) reading mode. */
+    private fun canUseBubbleNav(state: ReaderUiState): Boolean =
+        state.settings.speechBubbleDetectionEnabled &&
+            state.settings.readingMode != ReadingMode.WEBTOON &&
+            state.pages.isNotEmpty()
+
+    /**
+     * Reader options switch. Turning it on only arms the mode (the next edge tap or volume key magnifies the first
+     * bubble); turning it off is the same full reset as tapping the centre of the screen.
+     */
+    fun updateBubbleNavActive(enabled: Boolean) {
+        if (!enabled) {
+            resetBubbleNavMode()
+            return
+        }
+        if (canUseBubbleNav(_uiState.value)) isBubbleNavActive = true
+    }
+
+    /**
+     * Hold-both-volume-keys toggle. Off -> on behaves like a long-press on a bubble: it arms the mode and magnifies a
+     * bubble (the first one in reading order, since no bubble was pressed). On -> off is a full reset.
+     * Returns whether the mode changed, so the caller only gives feedback for a real toggle.
+     */
+    fun toggleBubbleNavMode(): Boolean {
+        if (isBubbleNavActive) {
+            resetBubbleNavMode()
+            return true
+        }
+        val state = _uiState.value
+        if (!canUseBubbleNav(state)) return false
+        isBubbleNavActive = true
+        val pageIdx = state.currentPageIndex
+        val pageBubbles = state.bubblesByPage[pageIdx]
+        val first = pageBubbles?.bubbles?.firstOrNull()
+        if (pageBubbles != null && first != null) {
+            magnifyBubbleObject(pageIdx, first, pageBubbles)
+        }
+        return true
     }
 
     fun dismissBubble() {
@@ -925,6 +981,8 @@ class ReaderViewModel : ViewModel() {
     }
 
     fun updateReadingMode(mode: ReadingMode) {
+        // Bubble navigation does not exist in webtoon mode; do not leave the mode (and its switch) on.
+        if (mode == ReadingMode.WEBTOON) resetBubbleNavMode()
         sessionReadingModeOverride = mode
         val currentSettings = _uiState.value.settings
         val isRtl = (mode == ReadingMode.RTL)
@@ -1018,13 +1076,28 @@ class ReaderViewModel : ViewModel() {
         viewModelScope.launch { preferencesRepository.updateVolumeKeyInvert(invert) }
     }
 
+    /** Whether the volume keys are ours to handle; `MainActivity` checks this before consuming a key event. */
+    val isVolumeKeyNavigationEnabled: Boolean
+        get() = _uiState.value.settings.volumeKeyNavigationEnabled
+
     fun handleVolumeKey(isVolumeUp: Boolean): Boolean {
-        if (!_uiState.value.settings.volumeKeyNavigationEnabled) return false
+        val settings = _uiState.value.settings
+        if (!settings.volumeKeyNavigationEnabled) return false
+        val isNext = if (settings.volumeKeyInvert) isVolumeUp else !isVolumeUp
+        return navigateStep(isNext)
+    }
 
+    /**
+     * A tap in one of the page-transition zones. [isNext] already accounts for the reading direction.
+     * Steps through bubbles while bubble navigation mode is active, otherwise turns the page, exactly like a volume key.
+     */
+    fun onEdgeTapNavigate(isNext: Boolean) {
+        navigateStep(isNext)
+    }
+
+    /** The one step-forward / step-back routine shared by the volume keys and the edge taps. Always returns true. */
+    private fun navigateStep(isNext: Boolean): Boolean {
         val state = _uiState.value
-        val invert = state.settings.volumeKeyInvert
-        val isNext = if (invert) isVolumeUp else !isVolumeUp
-
         val currentMag = state.magnifiedBubble
         if (currentMag != null) {
             val pageIdx = state.currentPageIndex
