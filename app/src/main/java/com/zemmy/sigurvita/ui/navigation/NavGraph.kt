@@ -1,79 +1,26 @@
 package com.zemmy.sigurvita.ui.navigation
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
-import com.zemmy.sigurvita.SigurvitaApp
-import com.zemmy.sigurvita.core.model.Library
-import com.zemmy.sigurvita.core.model.ReadingList
-import com.zemmy.sigurvita.core.util.cleanReadingListTitle
-import com.zemmy.sigurvita.core.util.parseReadingListHierarchy
-import com.zemmy.sigurvita.ui.components.SidebarReadingListIndicator
 import com.zemmy.sigurvita.ui.screens.auth.AuthScreen
 import com.zemmy.sigurvita.ui.screens.downloads.DownloadQueueScreen
 import com.zemmy.sigurvita.ui.screens.home.HomeScreen
@@ -83,119 +30,18 @@ import com.zemmy.sigurvita.ui.screens.reader.ReaderScreen
 import com.zemmy.sigurvita.ui.screens.readinglist.ReadingListScreen
 import com.zemmy.sigurvita.ui.screens.seriesdetail.SeriesDetailScreen
 import com.zemmy.sigurvita.ui.screens.settings.SettingsScreen
-import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import com.zemmy.sigurvita.core.data.cache.DrawerSnapshot
-import com.zemmy.sigurvita.core.data.cache.SnapshotNames
-import com.zemmy.sigurvita.core.data.cache.toModel
-import com.zemmy.sigurvita.core.data.cache.toSnap
 
 @Composable
 fun SigurvitaNavGraph(
     navController: NavHostController,
     startDestination: String = Screen.Auth.route
 ) {
-    val app = SigurvitaApp.instance
-    val prefsRepo = app.userPreferencesRepository
-    val libraryRepo = app.libraryRepository
-    val readingListRepo = app.readingListRepository
+    val drawerViewModel: DrawerViewModel = viewModel()
+    val drawerUiState by drawerViewModel.uiState.collectAsState()
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-
-    var libraries by remember { mutableStateOf<List<Library>>(emptyList()) }
-    var readingLists by remember { mutableStateOf<List<ReadingList>>(emptyList()) }
-    var chosenReadingListIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
-    var inProgressReadingListIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
-    var libraryOrder by remember { mutableStateOf<List<Int>>(emptyList()) }
-    var showAddReadingListDialog by remember { mutableStateOf(false) }
-
-    // Live dragging state for libraries
-    var draggingItemId by remember { mutableStateOf<Int?>(null) }
-    var libraryDragOffsetY by remember { mutableFloatStateOf(0f) }
-    val itemHeightPx = with(LocalDensity.current) { 48.dp.toPx() }
-
-    var drawerLibraries by remember { mutableStateOf<List<Library>>(emptyList()) }
-
-    LaunchedEffect(libraries, libraryOrder) {
-        if (draggingItemId == null) {
-            drawerLibraries = if (libraryOrder.isEmpty()) libraries
-            else {
-                val map = libraries.associateBy { it.id }
-                val sorted = libraryOrder.mapNotNull { map[it] }
-                val remaining = libraries.filter { !libraryOrder.contains(it.id) }
-                sorted + remaining
-            }
-        }
-    }
-
-    val serverConfig by prefsRepo.serverConfigFlow.collectAsState(initial = com.zemmy.sigurvita.core.model.ServerConfig())
-
-    LaunchedEffect(serverConfig.isLoggedIn, serverConfig.serverUrl, serverConfig.apiKey) {
-        if (serverConfig.isLoggedIn) {
-            val snapshots = app.snapshotStore
-            val accountKey = snapshots.accountKey(serverConfig)
-
-            // Show what was saved last time straight away
-            val saved = snapshots.read(SnapshotNames.DRAWER, DrawerSnapshot.serializer())
-            if (saved != null && saved.accountKey == accountKey) {
-                if (libraries.isEmpty()) libraries = saved.libraries.map { it.toModel() }
-                if (readingLists.isEmpty()) {
-                    readingLists = saved.readingLists.map { it.toModel() }
-                    inProgressReadingListIds = saved.readingLists
-                        .filter { it.pagesRead > 0 }
-                        .map { it.id }
-                        .toSet()
-                }
-            }
-
-            // Refresh in the background, both requests in parallel
-            val librariesDeferred = async { libraryRepo.getLibraries() }
-            val readingListsDeferred = async { readingListRepo.getReadingLists() }
-
-            val libRes = librariesDeferred.await()
-            if (libRes.isSuccess) libraries = libRes.getOrDefault(emptyList())
-
-            val rlRes = readingListsDeferred.await()
-            if (rlRes.isSuccess) {
-                val fetchedLists = rlRes.getOrDefault(emptyList())
-                readingLists = fetchedLists
-                // getReadingLists() already totals pagesRead per list: no extra request per list is needed
-                inProgressReadingListIds = fetchedLists.filter { it.pagesRead > 0 }.map { it.id }.toSet()
-            }
-
-            if (libRes.isSuccess || rlRes.isSuccess) {
-                snapshots.write(
-                    SnapshotNames.DRAWER,
-                    DrawerSnapshot.serializer(),
-                    DrawerSnapshot(
-                        accountKey = accountKey,
-                        savedAt = System.currentTimeMillis(),
-                        libraries = libraries.map { it.toSnap() },
-                        readingLists = readingLists.map { it.toSnap() }
-                    )
-                )
-            }
-        } else {
-            libraries = emptyList()
-            readingLists = emptyList()
-            inProgressReadingListIds = emptySet()
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        scope.launch {
-            prefsRepo.libraryOrderFlow.collect { newOrder ->
-                libraryOrder = newOrder
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        scope.launch {
-            prefsRepo.chosenReadingListsFlow.collect { chosenReadingListIds = it.toSet() }
-        }
-    }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -205,396 +51,36 @@ fun SigurvitaNavGraph(
         navBackStackEntry?.arguments?.getInt("libraryId")
     } else null
 
-    if (showAddReadingListDialog) {
-        AlertDialog(
-            onDismissRequest = { showAddReadingListDialog = false },
-            title = { Text("Add Reading Lists to Panel") },
-            text = {
-                LazyColumn(modifier = Modifier.height(300.dp)) {
-                    items(readingLists) { rl ->
-                        val isChosen = chosenReadingListIds.contains(rl.id)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    scope.launch {
-                                        if (isChosen) prefsRepo.removeChosenReadingList(rl.id)
-                                        else prefsRepo.addChosenReadingList(rl.id)
-                                    }
-                                }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = isChosen,
-                                onCheckedChange = { checked ->
-                                    scope.launch {
-                                        if (checked) prefsRepo.addChosenReadingList(rl.id)
-                                        else prefsRepo.removeChosenReadingList(rl.id)
-                                    }
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = cleanReadingListTitle(rl.title), style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showAddReadingListDialog = false }) {
-                    Text("Done")
-                }
-            }
-        )
+    fun navigateFromDrawer(route: String) {
+        scope.launch { drawerState.close() }
+        navController.navigate(route) {
+            launchSingleTop = true
+            restoreState = true
+        }
     }
 
-    // Reading lists hierarchy: Era -> Collapsible Part -> Subparts
-    val readingListsHierarchy = remember(readingLists, chosenReadingListIds, inProgressReadingListIds) {
-        val activeLists = readingLists.filter { chosenReadingListIds.contains(it.id) || inProgressReadingListIds.contains(it.id) }
-        parseReadingListHierarchy(activeLists)
-    }
-
-    var expandedEras by remember(readingListsHierarchy) {
-        mutableStateOf(readingListsHierarchy.map { it.eraName }.toSet())
-    }
-    var expandedParts by remember(readingListsHierarchy) {
-        mutableStateOf(readingListsHierarchy.flatMap { era -> era.parts.map { "${era.eraName}_${it.partName}" } }.toSet())
+    fun navigateHomeFromDrawer() {
+        scope.launch { drawerState.close() }
+        navController.navigate(Screen.Home.route) {
+            popUpTo(Screen.Home.route) { inclusive = false }
+            launchSingleTop = true
+            restoreState = true
+        }
     }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
         gesturesEnabled = !isAuthScreen && currentRoute?.startsWith("reader/") != true,
         drawerContent = {
-            ModalDrawerSheet(
-                drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                drawerContentColor = MaterialTheme.colorScheme.onSurface
-            ) {
-                Spacer(modifier = Modifier.height(8.dp))
-                DrawerHeader(serverUrl = serverConfig.serverUrl)
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
-                )
-
-                LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                    item { DrawerSectionLabel("Browse") }
-
-                    // Home
-                    item {
-                        NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.Home, contentDescription = null) },
-                            label = { Text("Home") },
-                            selected = currentRoute == Screen.Home.route,
-                            onClick = {
-                                scope.launch { drawerState.close() }
-                                navController.navigate(Screen.Home.route) {
-                                    popUpTo(Screen.Home.route) { inclusive = false }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                        )
-                    }
-
-                    // Libraries Header
-                    item {
-                        NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.Folder, contentDescription = null) },
-                            label = { Text("Libraries (All)") },
-                            selected = currentRoute?.startsWith("library") == true,
-                            onClick = {
-                                scope.launch { drawerState.close() }
-                                navController.navigate(Screen.Library.createRoute(0)) {
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                        )
-                    }
-
-                    // Individual Libraries (clean live drag to reorder)
-                    items(drawerLibraries, key = { it.id }) { library ->
-                        val isDragging = (draggingItemId == library.id)
-                        val isSelected = currentLibraryId == library.id
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .zIndex(if (isDragging) 10f else 0f)
-                                .graphicsLayer {
-                                    translationY = if (isDragging) libraryDragOffsetY else 0f
-                                    shadowElevation = if (isDragging) 8.dp.toPx() else 0f
-                                }
-                                .padding(horizontal = 12.dp, vertical = 2.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(
-                                    if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                                    else MaterialTheme.colorScheme.surfaceContainerLow
-                                )
-                                .clickable {
-                                    if (draggingItemId == null) {
-                                        scope.launch { drawerState.close() }
-                                        navController.navigate(Screen.Library.createRoute(library.id)) {
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    }
-                                }
-                                .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Folder,
-                                contentDescription = null,
-                                tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = library.name,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                                else MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .pointerInput(library.id) {
-                                        detectDragGestures(
-                                            onDragStart = {
-                                                draggingItemId = library.id
-                                                libraryDragOffsetY = 0f
-                                            },
-                                            onDrag = { change, dragAmount ->
-                                                change.consume()
-                                                libraryDragOffsetY += dragAmount.y
-                                                val currentIdx = drawerLibraries.indexOfFirst { it.id == library.id }
-                                                if (currentIdx != -1 && itemHeightPx > 0f) {
-                                                    val steps = (libraryDragOffsetY / itemHeightPx).toInt()
-                                                    if (steps != 0) {
-                                                        val targetIdx = (currentIdx + steps).coerceIn(0, drawerLibraries.size - 1)
-                                                        if (targetIdx != currentIdx) {
-                                                            val list = drawerLibraries.toMutableList()
-                                                            val item = list.removeAt(currentIdx)
-                                                            list.add(targetIdx, item)
-                                                            drawerLibraries = list
-                                                            libraryDragOffsetY -= (targetIdx - currentIdx) * itemHeightPx
-                                                        }
-                                                    }
-                                                }
-                                            },
-                                            onDragEnd = {
-                                                scope.launch {
-                                                    prefsRepo.updateLibraryOrder(drawerLibraries.map { it.id })
-                                                }
-                                                draggingItemId = null
-                                                libraryDragOffsetY = 0f
-                                            },
-                                            onDragCancel = {
-                                                draggingItemId = null
-                                                libraryDragOffsetY = 0f
-                                            }
-                                        )
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Default.Menu,
-                                    contentDescription = "Drag to Rearrange",
-                                    tint = if (isDragging) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-
-                    item { DrawerSectionLabel("Reading lists") }
-
-                    // Reading Lists Header
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    scope.launch { drawerState.close() }
-                                    navController.navigate(Screen.ReadingLists.createRoute()) {
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                }
-                                .padding(start = 24.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.FormatListBulleted,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                "All reading lists",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.weight(1f)
-                            )
-                            IconButton(onClick = { showAddReadingListDialog = true }) {
-                                Icon(Icons.Default.Add, contentDescription = "Add Reading List")
-                            }
-                        }
-                    }
-
-                    // Era -> Collapsible Part -> Subparts Tree View
-                    readingListsHierarchy.forEach { eraGroup ->
-                        val isEraExpanded = expandedEras.contains(eraGroup.eraName)
-                        item(key = "era_${eraGroup.eraName}") {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        expandedEras = if (isEraExpanded) expandedEras - eraGroup.eraName else expandedEras + eraGroup.eraName
-                                    }
-                                    .padding(horizontal = 24.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = if (isEraExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "${eraGroup.eraName} (${eraGroup.parts.sumOf { it.subparts.size }})",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-
-                        if (isEraExpanded) {
-                            eraGroup.parts.forEach { partGroup ->
-                                val partKey = "${eraGroup.eraName}_${partGroup.partName}"
-                                val isPartExpanded = expandedParts.contains(partKey)
-                                item(key = "part_$partKey") {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                expandedParts = if (isPartExpanded) expandedParts - partKey else expandedParts + partKey
-                                            }
-                                            .padding(start = 32.dp, end = 24.dp, top = 6.dp, bottom = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isPartExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.secondary
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = "${partGroup.partDisplayName} (${partGroup.subparts.size})",
-                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.secondary,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    }
-                                }
-
-                                if (isPartExpanded) {
-                                    items(partGroup.subparts, key = { sub -> sub.list.id }) { sub ->
-                                        val rl = sub.list
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable {
-                                                    scope.launch { drawerState.close() }
-                                                    navController.navigate(Screen.ReadingListDetail.createRoute(rl.id)) {
-                                                        launchSingleTop = true
-                                                        restoreState = true
-                                                    }
-                                                }
-                                                .padding(start = 56.dp, end = 24.dp, top = 6.dp, bottom = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = "• ${sub.subpartDisplayTitle}",
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                                SidebarReadingListIndicator(
-                                                    pagesRead = rl.pagesRead,
-                                                    totalPages = rl.totalPages,
-                                                    issuesRead = rl.issuesRead,
-                                                    totalIssues = if (rl.itemCount > 0) rl.itemCount else 0
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    item { DrawerSectionLabel("More") }
-
-                    // Downloads
-                    item {
-                        NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.Download, contentDescription = null) },
-                            label = { Text("Downloads") },
-                            selected = currentRoute == Screen.Downloads.route,
-                            onClick = {
-                                scope.launch { drawerState.close() }
-                                navController.navigate(Screen.Downloads.route) {
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                        )
-                    }
-
-                    // Page Review
-                    item {
-                        NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.BookmarkBorder, contentDescription = null) },
-                            label = { Text("Page Review") },
-                            selected = currentRoute == Screen.MarkedPages.route,
-                            onClick = {
-                                scope.launch { drawerState.close() }
-                                navController.navigate(Screen.MarkedPages.route) {
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                        )
-                    }
-
-                    // Settings
-                    item {
-                        NavigationDrawerItem(
-                            icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                            label = { Text("Settings") },
-                            selected = currentRoute == Screen.Settings.route,
-                            onClick = {
-                                scope.launch { drawerState.close() }
-                                navController.navigate(Screen.Settings.route) {
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                        )
-                    }
-                }
-            }
+            AppDrawer(
+                state = drawerUiState,
+                currentRoute = currentRoute,
+                currentLibraryId = currentLibraryId,
+                onNavigateHome = { navigateHomeFromDrawer() },
+                onNavigate = { route -> navigateFromDrawer(route) },
+                onSaveLibraryOrder = { ids -> drawerViewModel.saveLibraryOrder(ids) },
+                onSetReadingListChosen = { id, chosen -> drawerViewModel.setReadingListChosen(id, chosen) }
+            )
         }
     ) {
         Scaffold(

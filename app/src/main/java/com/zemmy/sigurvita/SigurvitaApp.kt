@@ -51,7 +51,7 @@ class SigurvitaApp : Application(), ImageLoaderFactory {
         com.zemmy.sigurvita.core.data.repository.ColorScapeRepository(kavitaApi, userPreferencesRepository)
     }
     val readingListRepository: ReadingListRepository by lazy {
-        ReadingListRepository(kavitaApi, database, userPreferencesRepository)
+        ReadingListRepository(kavitaApi, userPreferencesRepository)
     }
 
     val readerRepository: ReaderRepository by lazy {

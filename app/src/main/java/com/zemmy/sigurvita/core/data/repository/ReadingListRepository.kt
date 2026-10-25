@@ -3,7 +3,6 @@ package com.zemmy.sigurvita.core.data.repository
 import com.zemmy.sigurvita.core.data.api.KavitaApi
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListDto
 import com.zemmy.sigurvita.core.data.api.dto.ReadingListItemDto
-import com.zemmy.sigurvita.core.data.db.SigurvitaDatabase
 import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.model.ReadingListItem
@@ -11,7 +10,6 @@ import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
 import com.zemmy.sigurvita.core.util.getChapterCoverUrl
 import com.zemmy.sigurvita.core.util.getSeriesCoverUrl
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -19,11 +17,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import java.util.concurrent.ConcurrentHashMap
 
 class ReadingListRepository(
     private val api: KavitaApi,
-    private val database: SigurvitaDatabase,
     private val preferencesRepository: UserPreferencesRepository
 ) {
     private val requestLimiter = Semaphore(4)
@@ -85,19 +81,16 @@ class ReadingListRepository(
             Result.failure(e)
         }
     }
-    private data class SeriesInfo(val name: String, val libraryId: Int)
-
     /**
-     * @param resolveDetails false = ids, page counts and read state come straight from the list response
-     * (a single request). Use it when only navigation data is needed (previous/next chapter, preloading,
-     * "which lists contain this chapter"). true also fetches each chapter for its display title and resolves
-     * series and library names, once per distinct series, for the list screens.
+     * @param resolveDetails false = everything comes straight from the list response (a single request).
+     * Use it when only navigation data is needed (previous/next chapter, preloading, "which lists contain
+     * this chapter"). true also fetches each chapter (4 at a time) for its display title and page counts,
+     * for the list screens. Series and library names are provided by the server in the list response.
      */
     suspend fun getReadingListItems(
         readingListId: Int,
         resolveDetails: Boolean = true
     ): Result<List<ReadingListItem>> = withContext(Dispatchers.IO) {
-        val ioScope = this
         try {
             val config = preferencesRepository.serverConfigFlow.first()
             var dtoList: List<ReadingListItemDto>? = null
@@ -113,68 +106,6 @@ class ReadingListRepository(
 
             val validDtos = dtoList.filter { it.id > 0 }
 
-            if (!resolveDetails) {
-                val lightItems = validDtos.map { dto ->
-                    val pages = if (dto.pagesTotal > 0) dto.pagesTotal else dto.pages
-                    ReadingListItem(
-                        id = dto.id,
-                        readingListId = dto.readingListId,
-                        seriesId = dto.seriesId,
-                        seriesName = dto.seriesName ?: "",
-                        libraryName = null,
-                        volumeId = dto.volumeId,
-                        chapterId = dto.chapterId,
-                        title = formatChapterDisplayTitle(dto.title ?: "", ""),
-                        coverUrl = if (dto.chapterId > 0) {
-                            config.getChapterCoverUrl(dto.chapterId)
-                        } else {
-                            config.getSeriesCoverUrl(dto.seriesId)
-                        },
-                        pages = pages,
-                        pagesRead = dto.pagesRead,
-                        isRead = pages in 1..dto.pagesRead
-                    )
-                }
-                return@withContext Result.success(lightItems)
-            }
-
-            // One libraries request per call instead of one per item.
-            val libraryNames = async {
-                val names = HashMap<Int, String>()
-                try {
-                    api.getLibraries().body()?.forEach { lib -> lib.name?.let { names[lib.id] = it } }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                }
-                names
-            }
-
-            suspend fun loadSeriesInfo(seriesId: Int): SeriesInfo {
-                val cached = try {
-                    database.seriesDao().getSeriesById(seriesId)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    null
-                }
-                if (cached != null && cached.libraryId > 0) return SeriesInfo(cached.name, cached.libraryId)
-                return try {
-                    val sDto = api.getSeriesById(seriesId).body()
-                    SeriesInfo(
-                        name = cached?.name?.takeIf { it.isNotBlank() } ?: sDto?.name ?: "",
-                        libraryId = sDto?.libraryId ?: 0
-                    )
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    SeriesInfo(cached?.name ?: "", 0)
-                }
-            }
-
-            // One series lookup per distinct series instead of one (or two) per item.
-            val seriesInfo = ConcurrentHashMap<Int, Deferred<SeriesInfo>>()
-
             val itemsDeferred = validDtos.map { dto ->
                 async {
                     var pages = if (dto.pagesTotal > 0) dto.pagesTotal else dto.pages
@@ -182,7 +113,7 @@ class ReadingListRepository(
                     var isRead = pages in 1..pagesRead
 
                     var resolvedTitle = dto.title ?: ""
-                    if (dto.chapterId > 0) {
+                    if (resolveDetails && dto.chapterId > 0) {
                         try {
                             val cRes = requestLimiter.withPermit { api.getChapterById(dto.chapterId) }
                             if (cRes.isSuccessful && cRes.body() != null) {
@@ -195,11 +126,9 @@ class ReadingListRepository(
                         } catch (e: CancellationException) {
                             throw e
                         } catch (_: Exception) {}
-                    } else {
-                        isRead = pages in 1..pagesRead
                     }
 
-                    if (resolvedTitle.isBlank() || resolvedTitle.startsWith("Issue", ignoreCase = true)) {
+                    if (!resolveDetails || resolvedTitle.isBlank() || resolvedTitle.startsWith("Issue", ignoreCase = true)) {
                         resolvedTitle = formatChapterDisplayTitle(dto.title ?: "", "")
                     }
 
@@ -209,22 +138,12 @@ class ReadingListRepository(
                         config.getSeriesCoverUrl(dto.seriesId)
                     }
 
-                    var resolvedSeriesName = dto.seriesName ?: ""
-                    var resolvedLibraryName: String? = null
-                    if (dto.seriesId > 0) {
-                        val info = seriesInfo.computeIfAbsent(dto.seriesId) {
-                            ioScope.async { loadSeriesInfo(dto.seriesId) }
-                        }.await()
-                        if (resolvedSeriesName.isBlank()) resolvedSeriesName = info.name
-                        if (info.libraryId > 0) resolvedLibraryName = libraryNames.await()[info.libraryId]
-                    }
-
                     ReadingListItem(
                         id = dto.id,
                         readingListId = dto.readingListId,
                         seriesId = dto.seriesId,
-                        seriesName = resolvedSeriesName,
-                        libraryName = resolvedLibraryName,
+                        seriesName = dto.seriesName ?: "",
+                        libraryName = dto.libraryName?.takeIf { it.isNotBlank() },
                         volumeId = dto.volumeId,
                         chapterId = dto.chapterId,
                         title = resolvedTitle,
@@ -266,7 +185,7 @@ class ReadingListRepository(
                 // Concurrently fetch items for the relevant lists in parallel
                 val deferreds = listsToFetch.map { (listId, listTitle) ->
                     async {
-                        val itemsRes = getReadingListItems(listId)
+                        val itemsRes = getReadingListItems(listId, resolveDetails = false)
                         Pair(Pair(listId, listTitle), itemsRes.getOrDefault(emptyList()))
                     }
                 }
