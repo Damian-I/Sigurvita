@@ -10,7 +10,6 @@ import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderBackground
 import com.zemmy.sigurvita.core.model.ReaderOrientation
 import com.zemmy.sigurvita.core.model.ReaderSettings
-import com.zemmy.sigurvita.core.model.ReadingMode
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -33,12 +32,6 @@ class SettingsViewModel : ViewModel() {
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = AppearanceSettings()
     )
-
-    fun updateReadingMode(mode: ReadingMode) {
-        viewModelScope.launch {
-            preferencesRepository.updateReadingMode(mode)
-        }
-    }
 
     fun updateFitMode(mode: FitMode) {
         viewModelScope.launch {

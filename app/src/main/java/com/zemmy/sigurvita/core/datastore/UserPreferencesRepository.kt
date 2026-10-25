@@ -17,7 +17,6 @@ import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderBackground
 import com.zemmy.sigurvita.core.model.ReaderOrientation
 import com.zemmy.sigurvita.core.model.ReaderSettings
-import com.zemmy.sigurvita.core.model.ReadingMode
 import com.zemmy.sigurvita.core.model.ServerConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -52,8 +51,6 @@ class UserPreferencesRepository(private val context: Context) {
         val API_KEY = stringPreferencesKey("api_key")
         val JWT_TOKEN = stringPreferencesKey("jwt_token")
         val USER_ID = intPreferencesKey("user_id")
-
-        val READING_MODE = stringPreferencesKey("reading_mode")
         val FIT_MODE = stringPreferencesKey("fit_mode")
         val VOLUME_KEY_NAV = booleanPreferencesKey("volume_key_nav")
         val VOLUME_KEY_INVERT = booleanPreferencesKey("volume_key_invert")
@@ -103,14 +100,7 @@ class UserPreferencesRepository(private val context: Context) {
     val readerSettingsFlow: Flow<ReaderSettings> = context.dataStore.data
         .catch { emit(emptyPreferences()) }
         .map { preferences ->
-            val readingModeStr = preferences[Keys.READING_MODE]
             val fitModeStr = preferences[Keys.FIT_MODE]
-
-            val readingMode = try {
-                if (readingModeStr != null) ReadingMode.valueOf(readingModeStr) else ReadingMode.RTL
-            } catch (_: Exception) {
-                ReadingMode.RTL
-            }
 
             val fitMode = try {
                 if (fitModeStr != null) FitMode.valueOf(fitModeStr) else FitMode.FIT_WIDTH
@@ -146,7 +136,6 @@ class UserPreferencesRepository(private val context: Context) {
             }
 
             ReaderSettings(
-                readingMode = readingMode,
                 fitMode = fitMode,
                 volumeKeyNavigationEnabled = preferences[Keys.VOLUME_KEY_NAV] ?: true,
                 volumeKeyInvert = preferences[Keys.VOLUME_KEY_INVERT] ?: false,
@@ -220,12 +209,6 @@ class UserPreferencesRepository(private val context: Context) {
             preferences.remove(Keys.API_KEY)
             preferences.remove(Keys.JWT_TOKEN)
             preferences.remove(Keys.USER_ID)
-        }
-    }
-
-    suspend fun updateReadingMode(mode: ReadingMode) {
-        context.dataStore.edit { preferences ->
-            preferences[Keys.READING_MODE] = mode.name
         }
     }
 

@@ -119,7 +119,7 @@ When developing new screens, components or settings dialogues, adhere to these s
 | Key | Purpose |
 | :--- | :--- |
 | `server_url`, `api_key`, `jwt_token`, `user_id` | Server session (stored unencrypted). |
-| `reading_mode`, `fit_mode` | Stored reader preferences. The reader itself derives its starting mode from the library type; see [11.1](#111-reader). |
+| `fit_mode` | Stored reader fit mode. Reading mode is not stored; see [11.1](#111-reader). |
 | `volume_key_nav`, `volume_key_invert`, `touch_edge_nav`, `keep_screen_on` | Reader behaviour toggles. |
 | `auto_delete_option` | Auto-delete policy for downloads. |
 | `incognito_mode` | Global Incognito toggle. |
@@ -230,15 +230,7 @@ It also supports **previous-chapter navigation** and **open-at-last-page persist
 - **Cancellation-safe results (`DetectionRepository`)**: bubble inference for a `(chapter, page, confidence)` key runs in the repository's own `workScope` (`SupervisorJob + Dispatchers.IO`) and is shared through the `bubblesInFlight` map, so a caller that is cancelled cannot discard a finished result — later callers for the same key await the same `Deferred`, and the result is written to the memory cache and `DetectionStore` when it completes. Panel inference is short and uses the caller's bitmap, so it runs under `NonCancellable`. `DetectionsCacheHelper.toPanelMap` always returns a `PanelMap` (a page with zero panels yields an empty map), so the disk layer has a single decode path.
 - **Cache serialization (`DetectionsCacheHelper`)**: `PageDetectionData` stores the page index and size, the letterbox, the bubbles (box, score, class ID, mask size, mask probabilities) and the panels (label, box, centroid, area), plus the panel label grid. Mask bytes and the `ShortArray` label grid are Base64-encoded without line wrapping by the writer and decoded strictly on read (`java.util.Base64`), so an empty mask and the full 16-bit label range (negative values, values above 255) round-trip exactly, and the writer never emits `\n`/`\r`. A page with no panels decodes to a `PanelMap` with an empty `panels` list and a zero-filled `gridW × gridH` label array, never `null`; when both inputs are missing the defaults are page size 1000×1000, `LetterboxParams(640, 1000, 1000, 1f, 0f, 0f)`, empty bubbles/panels and a 224×224 panel grid. When both a bubble result and a panel map are present, the bubble letterbox wins. Cache files written before the strict decoder (the writer already used no wrapping) decode unchanged; a file that fails to decode or fails its version check is deleted and the page is detected again once.
 - **Cache check**: open a chapter, let some pages detect, force-stop the app and reopen the chapter — Logcat tag `DetectionRepository` still logs `bubbles disk hit` and `panels disk hit` for those pages.
-- **Reader scheduling (`ReaderViewModel`)**:
-  - `ensureBubbles(page)` runs panel and bubble detection concurrently when both are missing, one job per page (deduplicated by `bubbleDetectionJobs`).
-  - `startChapterPreload(fromIndex)` restarts on **every page turn** from the current page, so fast skimming (including speech-bubble navigation) always prioritises the page being read. If the current page has no result it is detected **alone first**; then a two-worker queue processes the remaining pages in order, skipping pages already done or in flight.
-  - `startChapterPreload` is **debounced by 200 ms** (`PRELOAD_DEBOUNCE_MS`) inside `onPageChanged`, so scrubbing the slider or flicking through pages starts detection only for the page where the reader stops. The delayed job re-checks that the chapter and page index are still current. Progress saving, page state and auto-delete are not delayed.
-  - On a page change, detection jobs behind the current page or more than 3 pages ahead are cancelled. A TFLite call already running cannot be interrupted, but its finished result is retained by `DetectionRepository` (see above) instead of being discarded.
-  - **Image prefetch** (Phase 1) runs only for streamed pages, once per page per chapter, 3 at a time, with no memory-cache writes and a tiny decode; its only purpose is to warm Coil's disk cache.
-  - When within 10 pages of the chapter end, the first 6 pages of the next chapter are preloaded through the same cache layers, so they are persisted to disk as well.
-  - `panelMapsByPage` and `bubblesByPage` are both cleared when a chapter loads.
-  - Leaving the reader calls `ReaderViewModel.onReaderClosed()`, which cancels the tracked `loadChapterJob`, the preload debounce, chapter and next-chapter preload, and per-page detection jobs, and resets the next-chapter preload marker. `loadChapter` cancels any previous load, and re-checks `ensureActive()` after its blocking fetches (which swallow cancellation), so a superseded or closed load cannot continue into page loading or detection.
+- **Reader scheduling (`ReaderDetectionScheduler`)**: owns per-page jobs, the 200 ms debounced preload, image prefetch and next-chapter look-ahead; `ReaderViewModel` delegates. Results are written into the ViewModel-owned `bubblesByPage` / `panelMapsByPage`, and `onReaderClosed()` cancels all scheduler work and resets the next-chapter marker.
 - **Inference memory**: `BubbleDetector` allocates its large output tensors once per instance and reuses them (it has its own single-thread executor, so reuse is safe). `close()` closes the dispatcher, which shuts the executor down.
 - **Timing logs**: tag `DetectTiming` (`decode` with bitmap size and `local=true/false`, and `total` per page, from `ReaderViewModel.loadDetections`) and tag `DetectionRepository` (`TIMING bubbles` / `TIMING panels` model time per cache miss, plus `bubbles disk hit` / `panels disk hit` debug lines).
 - **Overlay, Magnifier & Interaction**: `ImageReader` canvas overlays (`speechBubbleBoxesEnabled`, `panelDebugOverlayEnabled`), **S-Pen hover magnification** (magnifies on speech-bubble hover; persists when unhovering; automatically switches to magnify a new bubble if hovered while another is active; returns to normal only when pressing down on the screen with the stylus), long-press hit testing (`hitBubble`), `cropBubble` high-res cropping, and `BubbleMagnifierOverlay`.
@@ -335,7 +327,7 @@ Pinned hero with the cover, summary, "Read more...", chapter/page progress (acce
 
 - **Paging & zoom**: horizontal pager (RTL/LTR) or vertical webtoon scrolling. Pinch zoom and pan state are read in the draw phase through a lambda `graphicsLayer`, so zooming does not recompose the page. In webtoon mode a one-finger drag scrolls the list at 1×, a two-finger pinch zooms, and once zoomed one finger pans.
 - **Navigation**: edge taps and volume keys perform standard page-by-page navigation by default. Magnifying a speech bubble activates speech-bubble navigation mode, which carries bubble step-through continuously across page and chapter/issue transitions until touch input is detected or the reader session is exited.
-- **Background work**: `startChapterPreload` (current page first, then the rest of the chapter, restarted from the current page on every page turn), image prefetch for streamed pages, and upcoming-chapter pre-detection.
+- **Background work**: `ReaderDetectionScheduler` preloads detection for the current page first, then the rest of the chapter (restarting from the current page on every page turn), prefetches images for streamed pages, and pre-detects the upcoming chapter.
 - **Chrome**: control overlay auto-dismiss, issue detail bottom sheet, swipeable multi-thumbnail timeline preview strip, timeline slider, bottom speech-bubble indicator, previous-chapter navigation, open-at-last-page support and **S-Pen hover magnification**.
 
 **Reader options sheet** (scrollable; settings persist through `UserPreferencesRepository` and are applied immediately via `ReaderViewModel`, except reading mode — see [11.1](#111-reader)):
@@ -496,7 +488,7 @@ app/src/main/java/com/zemmy/sigurvita/
     │   ├── DrawerViewModel.kt       # Activity-scoped drawer state (snapshot + refresh)
     │   └── NavigationChrome.kt      # Bottom bar (TopDestination)
     ├── screens/                     # Auth, Downloads, Home, Library, MarkedPages, Reader, ReadingList, SeriesDetail, Settings
-    │   └── reader/                  # BubbleHitTest, BubbleMagnifierOverlay, ImageReader, ReaderBackgroundColor, ReaderScreen, ReaderViewModel
+    │   └── reader/                  # BubbleHitTest, BubbleMagnifierOverlay, ImageReader, ReaderBackgroundColor, ReaderDetectionScheduler, ReaderScreen, ReaderViewModel
     ├── theme/                       # Color, ColorScape, Dimens, Shape, Theme, Type
     └── util/                        # OnResumeEffect
 
@@ -528,7 +520,7 @@ A single global flag (`incognito_mode`, DataStore). While on:
 
 - **Volume keys are restricted to the Reader screen.** `MainActivity` checks the current route before forwarding.
 - **No speech-bubble detection in Webtoon mode.** `ensureBubbles` returns early when the reading mode is `WEBTOON`.
-- **Reading mode is session-only in the reader.** The reader ignores the stored `reading_mode` preference and starts from the library type (manga → `RTL`, comic → `LTR`). Changing it inside the reader sets `sessionReadingModeOverride` and does not write DataStore; the Settings toggle writes the key, but the reader does not read it back.
+- **Reading mode is session-only in the reader.** The reader starts from the library type (manga → `RTL`, comic → `LTR`). In-reader changes are session-only: they live in `sessionReadingModeOverride` for the process lifetime and apply globally across series, pending a decision on where the mode should live. There is no Settings control and no stored key.
 - **Magnifier is a single-pass crop.** S-Pen hover magnification persists after unhovering and only returns to normal on pen-down; hovering a different bubble switches the magnified target.
 - **Leaving the reader cancels background work.** `ReaderScreen` calls `ReaderViewModel.onReaderClosed()`, which cancels the tracked `loadChapterJob`, preload debounce, chapter/next-chapter preload and per-page detection jobs; `loadChapter` also cancels a superseded load and checks `ensureActive()` after its blocking fetches.
 - **Confidence slider re-runs detection.** Cached results exist only for confidence values already used on a page (bubbles are cached per exact confidence).
@@ -560,7 +552,7 @@ A single global flag (`incognito_mode`, DataStore). While on:
 - **Network-first, mostly.** Series/chapter browsing calls the server; Home and Library can fall back to cached or downloaded series when a request fails. Offline reading works only via `download_tasks.localPath`.
 - **Reading lists are capped at 100** (`PageSize = 100`); series lists at 5000.
 - **Reading-list detail loading issues one chapter request per item** (parallelized, 4 at a time). The reader navigation/preload paths and `getChapterReadingLists` pass `resolveDetails = false`; the list screens and Home's Smart On Deck lookup use the full-resolution path.
-- **The `cached_series` "only changed rows" filter is ineffective.** It compares whole entities, including `lastUpdated`, which is regenerated on every construction, so fetched series are rewritten each time.
+- **`cached_series` writes are incremental.** Fetched series are compared with the cached row on every field except `lastUpdated` (which is regenerated on construction), so only changed rows are rewritten.
 - **Incognito is optimistic in the UI.** Toggling read state updates the screen immediately but skips the server write.
 
 ### 11.5 Build, licensing & testing gaps

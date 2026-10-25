@@ -167,7 +167,8 @@ class LibraryRepository(
                 )
             }.filter { entity ->
                 val cached = cachedMap[entity.id]
-                cached == null || cached != entity
+                // lastUpdated is regenerated for every new entity, so it must not take part in the comparison
+                cached == null || cached.copy(lastUpdated = entity.lastUpdated) != entity
             }
 
             if (toInsert.isNotEmpty()) {
