@@ -4,7 +4,7 @@ Welcome to **Sigurvita**, an Android client for **Kavita** (the self-hosted digi
 
 This document is the reference for developers and future AI assistants. Everything below describes what the code does today. Where behaviour is surprising or incomplete, it is called out in [section 11](#11-known-limitations--quirks) rather than described as if it worked ideally.
 
-Last verified against the working tree on **2026-10-25** (`master` at `a30658d`).
+Last verified against the working tree on **26-10-2026** (`master` at `54d1b1e`).
 
 ## Contents
 
@@ -107,11 +107,11 @@ When developing new screens, components or settings dialogues, adhere to these s
 ### 4.3 Authentication flow
 
 1. `AuthScreen` collects **server URL** and **API key** (masked field). There are no username/password fields.
-2. `AuthRepository.testConnectionAndSave` trims/saves the config, then calls `POST /api/Plugin/authenticate` (`pluginName = "Sigurvita"`). If a token is returned it is stored as `jwtToken`. Otherwise it falls back to `GET /api/Account` and stores `userId`.
+2. `AuthRepository.testConnectionAndSave` trims/saves the config, then calls `POST /api/Plugin/authenticate` (`pluginName = "Sigurvita"`). If a token is returned it is stored as `jwtToken`. Otherwise it falls back to `GET /api/Account` and stores `userId`. **Sign-in rollback**: because the request interceptor resolves host/scheme from stored config, `testConnectionAndSave` saves the new credentials before testing them. If connection testing fails or is cancelled, it restores the previous server configuration (or calls `clearServerConfig()` if none existed) under `NonCancellable`, ensuring broken or untested credentials are not left stored.
 3. `ServerConfig.isLoggedIn` is `serverUrl` non-blank **and** (`apiKey` or `jwtToken` non-blank).
 4. `MainActivity` collects `serverConfigFlow`; while it is still `null` it shows `LoadingState`, then starts at `Screen.Home` if logged in, else `Screen.Auth`.
 5. **Session trust and expiry**: the app trusts the stored session at startup and does not block on a login call. If the server later rejects it and `TokenAuthenticator` cannot renew it, `SessionEvents.sessionExpired` becomes true and `MainActivity` shows a "Session expired" dialog (not on the Auth screen) with **Sign in** (navigates to `Auth`, clearing the back stack) and **Not now** (dismisses; cached content stays visible). `AuthRepository` clears the flag after a successful sign-in.
-6. Logout (Settings) calls `clearServerConfig()` (removes URL, API key, JWT and user ID only) and navigates to `Auth` with `popUpTo(0)`. It does not clear the Room database, downloaded files, the detection store, snapshots or other preferences.
+6. Logout (Settings) calls `clearServerConfig()` (removes `server_url`, `api_key`, `jwt_token`, and `user_id` from DataStore) and navigates to `Auth` with `popUpTo(0)`. Logout clears only these server credentials; it does not clear the Room database, downloaded files, the detection store, snapshots, or other user settings/preferences.
 
 ### 4.4 Persistence
 
@@ -152,7 +152,7 @@ Migrations: `MIGRATION_3_4` **drops** the old `cached_chapters` and `cached_read
 
 Consequence: Sigurvita is **network-first**. Browsing screens call the Kavita API first; Room is not an offline-first source of truth, though Home and Library fall back to cached or downloaded series when a request fails. Offline *reading* works only for downloaded chapters, via `download_tasks.localPath`.
 
-**Detection store** (plain files, not Room; `DetectionStore` in `core.ml`): `noBackupFilesDir/detections/<chapterId>/` holds one gzip JSON file per page and kind: `p<page>_b<confidence*1000>.json.gz` (bubbles, one file per exact confidence value) and `p<page>_panel.json.gz` (panel map). It is keyed only by chapter ID and page index, so it works for streamed, CBZ and image-folder chapters. Total size is capped at 300 MB (checked every 40 writes; least recently used chapter folders are evicted first, never the chapter being written). Writes are atomic (temp file, then rename); unreadable files are deleted and treated as a miss. Entries carry a version string and are deleted on read when it no longer matches `CURRENT_DETECTION_VERSION` (bubbles) or `DetectionStore.PANEL_DETECTION_VERSION` (panels). A chapter's folder is deleted when its download is deleted (`DownloadRepository.deleteLocalChapter`, including auto-delete), when a download row is dropped by `validateExternalDeletions`, and for every completed download by "Clear completed". The store is **not** cleared on logout. It lives in `noBackupFilesDir`, so it is excluded from backups.
+**Detection store** (plain files, not Room; `DetectionStore` in `core.ml`): `noBackupFilesDir/detections/<chapterId>/` holds one gzip JSON file per page and kind: `p<page>_b<confidence*1000>.json.gz` (bubbles, one file per exact confidence value) and `p<page>_panel.json.gz` (panel map). It is keyed only by chapter ID and page index, so it works for streamed, CBZ and image-folder chapters. Total size is capped at 300 MB (checked every 40 writes; `evictOverBudget(root, keepChapterId, maxBytes)` performs LRU eviction of chapter directories until total size is within budget, never deleting the active chapter). File-based overloads (`loadBubbles`, `saveBubbles`, `loadPanelMap`, `savePanelMap`, `deleteChapter` taking a `root: File`) allow direct disk operations without an Android `Context` for unit testing. Writes are atomic (temp file, then rename); unreadable files are deleted and treated as a miss. Entries carry a version string and are deleted on read when it no longer matches `CURRENT_DETECTION_VERSION` (bubbles) or `DetectionStore.PANEL_DETECTION_VERSION` (panels). A chapter's folder is deleted when its download is deleted (`DownloadRepository.deleteLocalChapter`, including auto-delete), when a download row is dropped by `validateExternalDeletions`, and for every completed download by "Clear completed". The store is **not** cleared on logout. It lives in `noBackupFilesDir`, so it is excluded from backups.
 
 **Snapshots** (plain JSON files, `core.data.cache.SnapshotStore`): `noBackupFilesDir/snapshots/` holds `home.json` (libraries, On Deck, Recently Updated, Newly Added), `all_series.json` (every series, used only for Home search) and `drawer.json` (drawer libraries and reading lists). They let the next launch draw the last-seen content immediately while fresh data loads. Each file carries an `accountKey` (first 16 hex characters of SHA-256 of server URL and API key); a snapshot for a different account is ignored. A late snapshot never overwrites live data (`liveHomeDataApplied`). `DrawerViewModel` restores `drawer.json` immediately and rewrites it after a successful library/reading-list fetch. Snapshots are not cleared on logout (`SnapshotStore.clearAll()` exists but nothing calls it).
 
@@ -231,7 +231,7 @@ It also supports **previous-chapter navigation** and **open-at-last-page persist
 - **Cancellation-safe results (`DetectionRepository`)**: bubble inference for a `(chapter, page, confidence)` key runs in the repository's own `workScope` (`SupervisorJob + Dispatchers.IO`) and is shared through the `bubblesInFlight` map, so a caller that is cancelled cannot discard a finished result — later callers for the same key await the same `Deferred`, and the result is written to the memory cache and `DetectionStore` when it completes. Panel inference is short and uses the caller's bitmap, so it runs under `NonCancellable`. `DetectionsCacheHelper.toPanelMap` always returns a `PanelMap` (a page with zero panels yields an empty map), so the disk layer has a single decode path.
 - **Cache serialization (`DetectionsCacheHelper`)**: `PageDetectionData` stores the page index and size, the letterbox, the bubbles (box, score, class ID, mask size, mask probabilities) and the panels (label, box, centroid, area), plus the panel label grid. Mask bytes and the `ShortArray` label grid are Base64-encoded without line wrapping by the writer and decoded strictly on read (`java.util.Base64`), so an empty mask and the full 16-bit label range (negative values, values above 255) round-trip exactly, and the writer never emits `\n`/`\r`. A page with no panels decodes to a `PanelMap` with an empty `panels` list and a zero-filled `gridW × gridH` label array, never `null`; when both inputs are missing the defaults are page size 1000×1000, `LetterboxParams(640, 1000, 1000, 1f, 0f, 0f)`, empty bubbles/panels and a 224×224 panel grid. When both a bubble result and a panel map are present, the bubble letterbox wins. Cache files written before the strict decoder (the writer already used no wrapping) decode unchanged; a file that fails to decode or fails its version check is deleted and the page is detected again once.
 - **Cache check**: open a chapter, let some pages detect, force-stop the app and reopen the chapter — Logcat tag `DetectionRepository` still logs `bubbles disk hit` and `panels disk hit` for those pages.
-- **Reader scheduling (`ReaderDetectionScheduler`)**: owns per-page jobs, the 200 ms debounced preload, image prefetch and next-chapter look-ahead; `ReaderViewModel` delegates. Results are written into the ViewModel-owned `bubblesByPage` / `panelMapsByPage`, and `onReaderClosed()` cancels all scheduler work and resets the next-chapter marker.
+- **Reader scheduling (`ReaderDetectionScheduler`)**: owns per-page jobs, the 200 ms debounced preload, image prefetch and next-chapter look-ahead; `ReaderViewModel` delegates. ReaderProgressTracker owns progress saving and auto-delete; ReaderBubbleNavigator owns the magnifier and bubble stepping. Results are written into the ViewModel-owned `bubblesByPage` / `panelMapsByPage`, and `onReaderClosed()` cancels all scheduler work and resets the next-chapter marker.
 - **Inference memory**: `BubbleDetector` allocates its large output tensors once per instance and reuses them (it has its own single-thread executor, so reuse is safe). `close()` closes the dispatcher, which shuts the executor down.
 - **Timing logs**: tag `DetectTiming` (`decode` with bitmap size and `local=true/false`, and `total` per page, from `ReaderViewModel.loadDetections`) and tag `DetectionRepository` (`TIMING bubbles` / `TIMING panels` model time per cache miss, plus `bubbles disk hit` / `panels disk hit` debug lines).
 - **Overlay, Magnifier & Interaction**: `ImageReader` canvas overlays (`speechBubbleBoxesEnabled`, `panelDebugOverlayEnabled`), **S-Pen hover magnification** (magnifies on speech-bubble hover; persists when unhovering; automatically switches to magnify a new bubble if hovered while another is active; returns to normal only when pressing down on the screen with the stylus), long-press hit testing (`hitBubble`), `cropBubble` high-res cropping, and `BubbleMagnifierOverlay`. The overlay covers the whole screen and shares the page's tap zones ([4.10](#410-speech-bubble-navigation-mode)).
@@ -344,7 +344,7 @@ Adaptive series grid (`LazyVerticalGrid` + `GridCells.Adaptive(minSize = 104.dp)
 
 ### 6.5 Series detail (`SeriesDetailScreen`)
 
-Pinned hero with the cover, summary, "Read more...", chapter/page progress (accent-tinted bar) and a ColorScape-tinted gradient wash, plus metadata bottom sheet, pill Resume button, mark read/unread, incognito toggle, bulk download dialog, and toggleable comic/manga grid/list layouts with integrated reading-list badges. A provider chip next to the resume area opens the **primary external link** (MangaBaka for manga, Comic Vine for comics, see [4.5](#45-repositories)). The app bar (title + back) is rendered inside the gradient header so the wash starts at the top of the screen and runs behind the status bar. Offline state uses the semantic warning banner below the header.
+Pinned hero with the cover, summary, "Read more...", chapter/page progress (accent-tinted bar) and a ColorScape-tinted gradient wash, plus metadata bottom sheet, pill Resume button, mark read/unread, incognito toggle, bulk download dialog, and toggleable comic/manga grid/list layouts with integrated reading-list badges. The screen component layout is modularized across `SeriesHeader` (hero and cover header), `SeriesToolbar` (actions and layout toggles), `SeriesLayouts` (manga/comic grids and lists), and `ExternalLinkButton` (provider chip next to resume area opening the primary external link, MangaBaka for manga, Comic Vine for comics, see [4.5](#45-repositories)). The app bar (title + back) is rendered inside the gradient header so the wash starts at the top of the screen and runs behind the status bar. Offline state uses the semantic warning banner below the header.
 
 ### 6.6 Reader (`ReaderScreen`)
 
@@ -382,7 +382,7 @@ The reader options shown here are the same `ReaderSettingsContent` as in the rea
 
 ### 6.11 Shared components (`ui.components`)
 
-`CoverImage`, `SeriesCard`, `SeriesReadIndicator`, `SidebarReadingListIndicator`, `LoadingState`, `ErrorState`, `ReadStatusBadge`, `DownloadStatusButton`, `ReadingListBadgeRow`, `IssueCards`, `MassDownloadDialog`, `SeriesInfoBottomSheet`, `IssueDetailBottomSheet`, `SigurvitaTopBar`, `FilterChipGroup`, and `ReaderSettingsContent` (shared by the reader sheet and Settings). Cards are flat (zero elevation) with a hairline `outlineVariant` border, and status colours come from the semantic palette.
+`CoverImage`, `SeriesCard`, `ReadIndicators` (`SeriesReadIndicator`, `SidebarReadingListIndicator`), `ScreenStates` (`LoadingState`, `ErrorState`), `ReadStatusBadge`, `DownloadStatusButton`, `ReadingListBadges` (`ReadingListBadgeRow`), `IssueCards`, `IssueDetailBottomSheet`, `MassDownloadDialog`, `SeriesInfoBottomSheet`, `SigurvitaTopBar`, `FilterChipGroup`, and `ReaderSettingsContent` (shared by the reader sheet and Settings). Cards are flat (zero elevation) with a hairline `outlineVariant` border, and status colours come from the semantic palette.
 
 ### 6.12 Theming & design system (`ui.theme`)
 
@@ -493,13 +493,14 @@ app/src/main/java/com/zemmy/sigurvita/
 │   ├── data/
 │   │   ├── api/                     # ApiHelpers, AuthInterceptor, TokenAuthenticator, SessionEvents, KavitaApi, NetworkClient, dto/Dtos
 │   │   ├── cache/                   # SnapshotStore (last-seen Home/drawer/all-series JSON snapshots)
-│   │   ├── db/                      # Room database (version 6), dao/Daos, entity/Entities
+│   │   ├── db/                      # Room database (version 6), dao/ (DownloadDao, MarkedPageDao, SeriesDao), entity/Entities
 │   │   └── repository/              # Auth, Library, Series, ColorScape, ReadingList, Reader, Download, MarkedPage, Bubble, Panel, Detection
 │   ├── datastore/                   # UserPreferencesRepository
 │   ├── download/                    # DownloadWorker (WorkManager)
 │   ├── ml/                          # BubbleDetector(+Config), DeepPanelDetector, DetectionsCache, DetectionStore, PageBitmapLoader, YoloSegDecoder
-│   ├── model/Models.kt              # Domain models and enums
+│   ├── model/                       # Domain models: DetectionModels, DownloadModels, LibraryModels, ReaderModels, ServerConfig, SettingsModels
 │   └── util/
+│       ├── ErrorMessages.kt         # Error messaging helpers
 │       ├── KavitaUrlBuilder.kt      # Centralized cover and reader image URL construction
 │       ├── NaturalSort.kt           # naturalCompare, title parsers, reading-list hierarchy builders
 │       ├── SeriesSearch.kt          # Series.matchesQuery (case-insensitive name/localizedName search)
@@ -508,6 +509,9 @@ app/src/main/java/com/zemmy/sigurvita/
 │       └── ReadingOrderEngine.kt    # Topological reading order and panel sorting engine
 └── ui/
     ├── components/                  # Shared cards, badges, sheets, dialogs, top bar, filter chips
+    │   │                            # CoverImage, DownloadStatusButton, FilterChipGroup, IssueCards, IssueDetailBottomSheet,
+    │   │                            # MassDownloadDialog, ReadIndicators, ReadStatusBadge, ReadingListBadges, ScreenStates,
+    │   │                            # SeriesCard, SeriesInfoBottomSheet, SigurvitaTopBar
     │   └── settings/                # ReaderSettingsContent (shared reader sheet + Settings)
     ├── navigation/                  # Screen, NavGraph, bottom bar, drawer
     │   ├── AppDrawer.kt             # Drawer shell (header + sections)
@@ -516,7 +520,9 @@ app/src/main/java/com/zemmy/sigurvita/
     │   ├── DrawerViewModel.kt       # Activity-scoped drawer state (snapshot + refresh)
     │   └── NavigationChrome.kt      # Bottom bar (TopDestination)
     ├── screens/                     # Auth, Downloads, Home, Library, MarkedPages, Reader, ReadingList, SeriesDetail, Settings
-    │   └── reader/                  # BubbleHitTest, BubbleMagnifierOverlay, ImageReader, ReaderBackgroundColor, ReaderDetectionScheduler, ReaderScreen, ReaderViewModel, TapZones, VolumeChordDetector
+    │   ├── seriesdetail/            # ExternalLinkButton, SeriesDetailScreen, SeriesDetailViewModel, SeriesHeader, SeriesLayouts, SeriesToolbar
+    │   └── reader/                  # BubbleHitTest, BubbleMagnifierOverlay, ImageReader, ReaderBackgroundColor, ReaderBubbleNavigator,
+    │                                # ReaderDetectionScheduler, ReaderProgressTracker, ReaderScreen, ReaderViewModel, TapZones, VolumeChordDetector
     ├── theme/                       # Color, ColorScape, Dimens, Shape, Theme, Type
     └── util/                        # OnResumeEffect
 
