@@ -98,7 +98,7 @@ class ReaderViewModel : ViewModel() {
         app = app,
         scope = viewModelScope,
         state = _uiState,
-        nextChapterOf = { s -> findNeighbors(s.chapterId, s.seriesId, s.readingListId).second }
+        nextChapterOf = { s -> s.nextChapter ?: findNeighbors(s.chapterId, s.seriesId, s.readingListId).second }
     )
 
     private val bubbleNav = ReaderBubbleNavigator(
@@ -240,8 +240,16 @@ class ReaderViewModel : ViewModel() {
 
             if (targetSeriesId > 0 && !effectiveSettings.isIncognitoMode) {
                 if (readingListId > 0) {
-                    val listTitle = try {
-                        val listRes = app.readingListRepository.getReadingLists()
+                    // Reuse the title already saved for this series + list; otherwise do one lookup for
+                    // this list only (not progress for every list on the server).
+                    val savedTitle = try {
+                        preferencesRepository.seriesReadContextsFlow.first()[targetSeriesId]
+                            ?.takeIf { it.originType == "READING_LIST" && it.readingListId == readingListId }
+                            ?.readingListTitle
+                            ?.takeIf { it.isNotBlank() }
+                    } catch (_: Exception) { null }
+                    val listTitle = savedTitle ?: try {
+                        val listRes = app.readingListRepository.getReadingLists(setOf(readingListId))
                         listRes.getOrNull()?.find { it.id == readingListId }?.title ?: ""
                     } catch (_: Exception) { "" }
                     preferencesRepository.saveSeriesReadContext(
@@ -652,7 +660,8 @@ class ReaderViewModel : ViewModel() {
     fun loadNextChapter() {
         val state = _uiState.value
         viewModelScope.launch {
-            val next = findNeighbors(state.chapterId, state.seriesId, state.readingListId).second
+            val next = state.nextChapter
+                ?: findNeighbors(state.chapterId, state.seriesId, state.readingListId).second
                 ?: return@launch
             bubbleNav.pageArrivalDirection = 1
             openChapter(next)
@@ -663,7 +672,8 @@ class ReaderViewModel : ViewModel() {
     fun loadPreviousChapter() {
         val state = _uiState.value
         viewModelScope.launch {
-            val prev = findNeighbors(state.chapterId, state.seriesId, state.readingListId).first
+            val prev = state.prevChapter
+                ?: findNeighbors(state.chapterId, state.seriesId, state.readingListId).first
                 ?: return@launch
             bubbleNav.pageArrivalDirection = -1
             openChapter(prev, openAtLastPage = true)

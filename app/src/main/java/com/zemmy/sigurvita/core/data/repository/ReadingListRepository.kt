@@ -23,7 +23,7 @@ class ReadingListRepository(
     private val preferencesRepository: UserPreferencesRepository
 ) {
     private val requestLimiter = Semaphore(4)
-    suspend fun getReadingLists(): Result<List<ReadingList>> = withContext(Dispatchers.IO) {
+    suspend fun getReadingLists(onlyIds: Set<Int>? = null): Result<List<ReadingList>> = withContext(Dispatchers.IO) {
         try {
             val config = preferencesRepository.serverConfigFlow.first()
             var dtoList: List<ReadingListDto>? = null
@@ -33,7 +33,9 @@ class ReadingListRepository(
                 dtoList = resPost.body()
             }
 
-            val validDtos = dtoList?.filter { it.id > 0 && !it.title.isNullOrBlank() } ?: emptyList()
+            val validDtos = dtoList
+                ?.filter { it.id > 0 && !it.title.isNullOrBlank() && (onlyIds == null || it.id in onlyIds) }
+                ?: emptyList()
 
             val listsDeferred = validDtos.map { dto ->
                 async {

@@ -334,7 +334,7 @@ class HomeViewModel : ViewModel() {
 
                 if (matchingListsInfo.isNotEmpty()) {
                     val matchingIds = matchingListsInfo.map { it.first }.toSet()
-                    val allListsRes = app.readingListRepository.getReadingLists()
+                    val allListsRes = app.readingListRepository.getReadingLists(matchingIds)
                     val allLists = allListsRes.getOrDefault(emptyList())
                     val filteredLists = allLists.filter { matchingIds.contains(it.id) }
                     onResult(filteredLists)

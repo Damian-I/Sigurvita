@@ -26,13 +26,34 @@ class SeriesRepository(
     private val database: SigurvitaDatabase,
     private val preferencesRepository: UserPreferencesRepository
 ) {
+
+    // Short-lived memo so getSeriesDetail() and getSeriesMetadataDetails() share one /api/Series/metadata
+    // request (the reader calls them back to back).
+    private class MetadataMemo(val seriesId: Int, val savedAtMs: Long, val dto: SeriesMetadataDto)
+
+    @Volatile
+    private var metadataMemo: MetadataMemo? = null
+
+    private suspend fun fetchSeriesMetadata(seriesId: Int): SeriesMetadataDto? {
+        val now = android.os.SystemClock.elapsedRealtime()
+        metadataMemo?.let { memo ->
+            if (memo.seriesId == seriesId && now - memo.savedAtMs < METADATA_MEMO_MS) return memo.dto
+        }
+        val res = api.getSeriesMetadata(seriesId) // exceptions propagate exactly as before
+        val body = if (res.isSuccessful) res.body() else null
+        if (body != null) metadataMemo = MetadataMemo(seriesId, now, body)
+        return body
+    }
+
+    private companion object {
+        const val METADATA_MEMO_MS = 15_000L
+    }
     suspend fun getSeriesDetail(seriesId: Int): Result<Series> = withContext(Dispatchers.IO) {
         try {
             val config = preferencesRepository.serverConfigFlow.first()
             var series: Series? = null
 
-            val metadataRes = api.getSeriesMetadata(seriesId)
-            val summary = if (metadataRes.isSuccessful) metadataRes.body()?.summary else null
+            val summary = fetchSeriesMetadata(seriesId)?.summary
 
             val resById = api.getSeriesById(seriesId)
             if (resById.isSuccessful && resById.body() != null) {
@@ -271,12 +292,9 @@ class SeriesRepository(
 
     suspend fun getSeriesMetadataDetails(seriesId: Int): Result<SeriesMetadataDto> = withContext(Dispatchers.IO) {
         try {
-            val res = api.getSeriesMetadata(seriesId)
-            if (res.isSuccessful && res.body() != null) {
-                Result.success(res.body()!!)
-            } else {
-                Result.failure(Exception("Failed to fetch series metadata"))
-            }
+            fetchSeriesMetadata(seriesId)
+                ?.let { Result.success(it) }
+                ?: Result.failure<SeriesMetadataDto>(Exception("Failed to fetch series metadata"))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
