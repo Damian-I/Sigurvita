@@ -8,12 +8,20 @@ import androidx.work.WorkerParameters
 import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.data.api.NetworkClient
 import com.zemmy.sigurvita.core.data.db.SigurvitaDatabase
-
 import com.zemmy.sigurvita.core.model.DownloadStatus
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
+import kotlinx.coroutines.withContext
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -45,6 +53,23 @@ private fun extractFilenameFromContentDisposition(header: String?): String? {
     return null
 }
 
+private fun InputStream.copyToWithCancellation(
+    out: OutputStream,
+    job: Job,
+    bufferSize: Int = 8192
+): Long {
+    var bytesCopied: Long = 0
+    val buffer = ByteArray(bufferSize)
+    var bytes = read(buffer)
+    while (bytes >= 0) {
+        job.ensureActive()
+        out.write(buffer, 0, bytes)
+        bytesCopied += bytes
+        bytes = read(buffer)
+    }
+    return bytesCopied
+}
+
 class DownloadWorker(
     private val context: Context,
     params: WorkerParameters
@@ -62,7 +87,7 @@ class DownloadWorker(
             .build()
     }
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val chapterId = inputData.getInt("chapterId", -1)
         var totalPages = inputData.getInt("totalPages", 0)
         val rawLibraryName = inputData.getString("libraryName") ?: "Downloads"
@@ -70,77 +95,93 @@ class DownloadWorker(
         val rawTitle = inputData.getString("title") ?: "Chapter $chapterId"
 
         if (chapterId == -1) {
-            return Result.failure()
+            return@withContext Result.failure()
         }
 
-        val config = userPreferencesRepository.serverConfigFlow.first()
+        try {
+            val config = userPreferencesRepository.serverConfigFlow.first()
 
-        if (config.serverUrl.isBlank() || (config.apiKey.isBlank() && config.jwtToken.isBlank())) {
-            val task = database.downloadDao().getDownloadByChapterId(chapterId)
-            if (task != null) {
-                database.downloadDao().updateDownloadTask(
-                    task.copy(status = DownloadStatus.FAILED, errorMessage = "Server URL or API Key missing")
-                )
-            }
-            return Result.failure()
-        }
-
-        // Fetch page count from Kavita if missing
-        if (totalPages <= 0) {
-            try {
-                val api = NetworkClient.getKavitaApi(userPreferencesRepository)
-                val chapterRes = api.getChapterById(chapterId)
-                if (chapterRes.isSuccessful && chapterRes.body() != null) {
-                    totalPages = chapterRes.body()!!.pages
+            if (config.serverUrl.isBlank() || (config.apiKey.isBlank() && config.jwtToken.isBlank())) {
+                val task = database.downloadDao().getDownloadByChapterId(chapterId)
+                if (task != null) {
+                    database.downloadDao().updateDownloadTask(
+                        task.copy(status = DownloadStatus.FAILED, errorMessage = "Server URL or API Key missing")
+                    )
                 }
-            } catch (_: Exception) {}
-        }
-        if (totalPages <= 0) totalPages = 1
-
-        database.downloadDao().updateProgress(chapterId, 0, DownloadStatus.DOWNLOADING)
-
-        val libraryName = sanitizeFileName(rawLibraryName.ifBlank { "Comics" })
-        val seriesName = sanitizeFileName(rawSeriesName.ifBlank { "Series" })
-        val title = sanitizeFileName(rawTitle)
-
-        @Suppress("DEPRECATION")
-        val safeAppDir = run {
-            val mediaDirs = context.externalMediaDirs
-            if (!mediaDirs.isNullOrEmpty() && mediaDirs[0] != null) {
-                File(mediaDirs[0], "Downloads").apply { mkdirs() }
-            } else {
-                context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-                    ?: File(context.filesDir, "downloads")
+                return@withContext Result.failure()
             }
+
+            // Fetch page count from Kavita if missing
+            if (totalPages <= 0) {
+                try {
+                    val api = NetworkClient.getKavitaApi(userPreferencesRepository)
+                    val chapterRes = api.getChapterById(chapterId)
+                    if (chapterRes.isSuccessful && chapterRes.body() != null) {
+                        totalPages = chapterRes.body()!!.pages
+                    }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                }
+            }
+            if (totalPages <= 0) totalPages = 1
+
+            database.downloadDao().updateProgress(chapterId, 0, DownloadStatus.DOWNLOADING)
+
+            val libraryName = sanitizeFileName(rawLibraryName.ifBlank { "Comics" })
+            val seriesName = sanitizeFileName(rawSeriesName.ifBlank { "Series" })
+            val title = sanitizeFileName(rawTitle)
+
+            @Suppress("DEPRECATION")
+            val safeAppDir = run {
+                val mediaDirs = context.externalMediaDirs
+                if (!mediaDirs.isNullOrEmpty() && mediaDirs[0] != null) {
+                    File(mediaDirs[0], "Downloads").apply { mkdirs() }
+                } else {
+                    context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                        ?: File(context.filesDir, "downloads")
+                }
+            }
+
+            val targetFolder = File(safeAppDir, "$libraryName/$seriesName").apply {
+                mkdirs()
+            }
+
+            // ═══════════════════════════════════════════════════════════════════
+            // Attempt 1: Native Kavita chapter download (returns original file)
+            // ═══════════════════════════════════════════════════════════════════
+            val nativeResult = tryNativeDownload(chapterId, targetFolder, safeAppDir, libraryName, seriesName, title, totalPages)
+            if (nativeResult != null) {
+                return@withContext nativeResult
+            }
+
+            // ═══════════════════════════════════════════════════════════════════
+            // Attempt 2: Page-by-page fallback (last resort)
+            // ═══════════════════════════════════════════════════════════════════
+            Log.w(TAG, "Native download failed for chapter $chapterId, falling back to page-by-page download")
+
+            downloadPageByPage(chapterId, totalPages, targetFolder, safeAppDir, libraryName, seriesName, title)
+        } catch (e: CancellationException) {
+            Log.i(TAG, "Download worker cancelled for chapter $chapterId")
+            if (isStopped) {
+                database.downloadDao().updateProgress(chapterId, 0, DownloadStatus.PAUSED)
+            }
+            throw e
         }
-
-        val targetFolder = File(safeAppDir, "$libraryName/$seriesName").apply {
-            mkdirs()
-        }
-
-        // ═══════════════════════════════════════════════════════════════════
-        // Attempt 1: Native Kavita chapter download (returns original file)
-        // ═══════════════════════════════════════════════════════════════════
-        // Uses /api/Download/chapter which returns the original archive file
-        // directly from the server. Auth is handled by AuthInterceptor.
-        // The request is built against NetworkClient.PLACEHOLDER_BASE_URL; AuthInterceptor rewrites
-        // it to the real server URL and injects auth headers.
-
-        val nativeResult = tryNativeDownload(chapterId, targetFolder, safeAppDir, libraryName, seriesName, title, totalPages)
-        if (nativeResult != null) {
-            return nativeResult
-        }
-        // If native download failed, fall through to page-by-page
-
-        // ═══════════════════════════════════════════════════════════════════
-        // Attempt 2: Page-by-page fallback (last resort)
-        // ═══════════════════════════════════════════════════════════════════
-        Log.w(TAG, "Native download failed for chapter $chapterId, falling back to page-by-page download")
-
-        return downloadPageByPage(chapterId, totalPages, targetFolder, safeAppDir, libraryName, seriesName, title)
     }
 
-    private fun tryNativeDownload(
+    private suspend fun executeCallWithCancellation(request: Request): okhttp3.Response {
+        val call = downloadClient.newCall(request)
+        val handle = currentCoroutineContext().job.invokeOnCompletion {
+            call.cancel()
+        }
+        return try {
+            call.execute()
+        } finally {
+            handle.dispose()
+        }
+    }
+
+    private suspend fun tryNativeDownload(
         chapterId: Int,
         targetFolder: File,
         safeAppDir: File,
@@ -150,27 +191,23 @@ class DownloadWorker(
         totalPages: Int
     ): Result? {
         try {
-            // Build request against localhost — AuthInterceptor rewrites to real server
             val downloadUrl = "${NetworkClient.PLACEHOLDER_BASE_URL}api/Download/chapter?chapterId=$chapterId"
             val request = Request.Builder().url(downloadUrl).build()
 
-            val response = downloadClient.newCall(request).execute()
-            response.use { response ->
-                if (!response.isSuccessful) {
-                    Log.w(TAG, "Native download returned HTTP ${response.code} for chapter $chapterId")
+            val response = executeCallWithCancellation(request)
+            response.use { resp ->
+                if (!resp.isSuccessful) {
+                    Log.w(TAG, "Native download returned HTTP ${resp.code} for chapter $chapterId")
                     return null
                 }
 
-                val responseBody = response.body ?: run {
+                val responseBody = resp.body ?: run {
                     Log.w(TAG, "Native download returned empty body for chapter $chapterId")
                     return null
                 }
 
-                // Extract original filename from Content-Disposition header
-                val contentDisposition = response.header("Content-Disposition")
+                val contentDisposition = resp.header("Content-Disposition")
                 val serverFilename = extractFilenameFromContentDisposition(contentDisposition)
-
-                // Use server filename if available, otherwise fall back to constructed name
                 val outputFilename = if (serverFilename != null) {
                     sanitizeFileName(serverFilename)
                 } else {
@@ -179,53 +216,61 @@ class DownloadWorker(
 
                 Log.d(TAG, "Native download for chapter $chapterId: server filename='$serverFilename', using='$outputFilename'")
 
-                // Buffer to temp file first, then move to target
-                val tempFile = File.createTempFile("cbz_dl_", ".tmp", context.cacheDir)
+                var activeTargetDir = targetFolder
+                if (!activeTargetDir.exists() || !activeTargetDir.canWrite()) {
+                    activeTargetDir = File(safeAppDir, "$libraryName/$seriesName").apply { mkdirs() }
+                } else {
+                    activeTargetDir.mkdirs()
+                }
+
+                val partFile = File(activeTargetDir, "$outputFilename.part")
+                val finalFile = File(activeTargetDir, outputFilename)
+
                 try {
                     responseBody.byteStream().use { input ->
-                        FileOutputStream(tempFile).use { output ->
-                            input.copyTo(output, bufferSize = 8192)
+                        FileOutputStream(partFile).use { output ->
+                            input.copyToWithCancellation(output, currentCoroutineContext().job)
                         }
                     }
 
-                    // Try primary target folder, then safe fallback
-                    var cbzFile = File(targetFolder, outputFilename)
-                    try {
-                        tempFile.copyTo(cbzFile, overwrite = true)
-                    } catch (_: Exception) {
-                        val safeTargetFolder = File(safeAppDir, "$libraryName/$seriesName").apply { mkdirs() }
-                        cbzFile = File(safeTargetFolder, outputFilename)
-                        tempFile.copyTo(cbzFile, overwrite = true)
-                    }
+                    if (partFile.exists() && partFile.length() > 0L) {
+                        if (!partFile.renameTo(finalFile)) {
+                            partFile.copyTo(finalFile, overwrite = true)
+                            partFile.delete()
+                        }
 
-                    if (cbzFile.exists() && cbzFile.length() > 0L) {
-                        database.downloadDao().updateDownloadResult(
-                            chapterId = chapterId,
-                            localPath = cbzFile.absolutePath,
-                            downloadedPages = totalPages,
-                            status = DownloadStatus.COMPLETED
-                        )
-                        Log.i(TAG, "Native download succeeded: ${cbzFile.absolutePath} (${cbzFile.length()} bytes)")
-                        return Result.success()
+                        if (finalFile.exists() && finalFile.length() > 0L) {
+                            database.downloadDao().updateDownloadResult(
+                                chapterId = chapterId,
+                                localPath = finalFile.absolutePath,
+                                downloadedPages = totalPages,
+                                status = DownloadStatus.COMPLETED
+                            )
+                            Log.i(TAG, "Native download succeeded: ${finalFile.absolutePath} (${finalFile.length()} bytes)")
+                            return Result.success()
+                        } else {
+                            Log.w(TAG, "Native download produced empty/missing file for chapter $chapterId")
+                            return null
+                        }
                     } else {
-                        Log.w(TAG, "Native download produced empty/missing file for chapter $chapterId")
+                        Log.w(TAG, "Native download part file empty for chapter $chapterId")
                         return null
                     }
                 } finally {
-                    tempFile.delete()
+                    if (partFile.exists()) {
+                        partFile.delete()
+                    }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Native download exception for chapter $chapterId", e)
             return null
         }
     }
 
-    /**
-     * Downloads chapter page-by-page via /api/Reader/image.
-     * This is the fallback path when native download fails.
-     */
-    private fun downloadPageByPage(
+    private suspend fun downloadPageByPage(
         chapterId: Int,
         totalPages: Int,
         initialTargetFolder: File,
@@ -248,6 +293,7 @@ class DownloadWorker(
 
         return try {
             for (pageIdx in 0 until totalPages) {
+                currentCoroutineContext().ensureActive()
                 if (isStopped) {
                     database.downloadDao().updateProgress(chapterId, pageIdx, DownloadStatus.PAUSED)
                     return Result.retry()
@@ -255,15 +301,16 @@ class DownloadWorker(
 
                 val formattedName = "$title p${String.format(Locale.ROOT, "%03d", pageIdx)}.webp"
                 var pageFile = File(pageTargetDir, formattedName)
+                var partFile = File(pageTargetDir, "$formattedName.part")
 
-                // Use localhost URL — AuthInterceptor rewrites to real server
                 val imageUrl = "${NetworkClient.PLACEHOLDER_BASE_URL}api/Reader/image?chapterId=$chapterId&page=$pageIdx"
                 val request = Request.Builder().url(imageUrl).build()
 
                 val response = try {
-                    downloadClient.newCall(request).execute()
+                    executeCallWithCancellation(request)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: java.io.IOException) {
-                    // Transient network error — retry via WorkManager backoff
                     Log.w(TAG, "Transient network error downloading chapter $chapterId page $pageIdx", e)
                     val task = database.downloadDao().getDownloadByChapterId(chapterId)
                     if (task != null) {
@@ -274,28 +321,58 @@ class DownloadWorker(
                     return Result.retry()
                 }
 
-                response.use { response ->
-                    val responseBody = response.body
-                    if (response.isSuccessful && responseBody != null) {
-                        val tempFile = File.createTempFile("page_dl_", ".tmp", context.cacheDir)
+                response.use { resp ->
+                    val responseBody = resp.body
+                    if (resp.isSuccessful && responseBody != null) {
                         try {
                             responseBody.byteStream().use { input ->
-                                FileOutputStream(tempFile).use { output ->
-                                    input.copyTo(output, bufferSize = 8192)
+                                FileOutputStream(partFile).use { output ->
+                                    input.copyToWithCancellation(output, currentCoroutineContext().job)
                                 }
                             }
+                            if (partFile.exists() && partFile.length() > 0L) {
+                                if (!partFile.renameTo(pageFile)) {
+                                    partFile.copyTo(pageFile, overwrite = true)
+                                    partFile.delete()
+                                }
+                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
                             try {
-                                tempFile.copyTo(pageFile, overwrite = true)
-                            } catch (_: Exception) {
                                 pageTargetDir = File(File(safeAppDir, "$libraryName/$seriesName"), title).apply { mkdirs() }
                                 pageFile = File(pageTargetDir, formattedName)
-                                tempFile.copyTo(pageFile, overwrite = true)
+                                partFile = File(pageTargetDir, "$formattedName.part")
+                                responseBody.byteStream().use { input ->
+                                    FileOutputStream(partFile).use { output ->
+                                        input.copyToWithCancellation(output, currentCoroutineContext().job)
+                                    }
+                                }
+                                if (partFile.exists() && partFile.length() > 0L) {
+                                    if (!partFile.renameTo(pageFile)) {
+                                        partFile.copyTo(pageFile, overwrite = true)
+                                        partFile.delete()
+                                    }
+                                }
+                            } catch (ex: CancellationException) {
+                                throw ex
+                            } catch (ex: Exception) {
+                                Log.e(TAG, "Page download write failed for chapter $chapterId page $pageIdx", ex)
+                                val task = database.downloadDao().getDownloadByChapterId(chapterId)
+                                if (task != null) {
+                                    database.downloadDao().updateDownloadTask(
+                                        task.copy(status = DownloadStatus.FAILED, errorMessage = ex.message ?: "Write failed")
+                                    )
+                                }
+                                return Result.failure()
                             }
                         } finally {
-                            tempFile.delete()
+                            if (partFile.exists()) {
+                                partFile.delete()
+                            }
                         }
                     } else {
-                        val errorMsg = "HTTP ${response.code}: ${response.message}"
+                        val errorMsg = "HTTP ${resp.code}: ${resp.message}"
                         Log.e(TAG, "Page download failed for chapter $chapterId page $pageIdx: $errorMsg")
                         val task = database.downloadDao().getDownloadByChapterId(chapterId)
                         if (task != null) {
@@ -320,8 +397,9 @@ class DownloadWorker(
             )
 
             Result.success()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: java.io.IOException) {
-            // Transient I/O error (network drop, timeout, etc.) — retry
             Log.w(TAG, "Transient I/O error during page-by-page download for chapter $chapterId, will retry", e)
             val task = database.downloadDao().getDownloadByChapterId(chapterId)
             if (task != null) {
