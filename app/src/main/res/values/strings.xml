@@ -2,14 +2,9 @@
     <string name="app_name">Sigurvita</string>
     <string name="retry">Retry</string>
     <string name="cancel">Cancel</string>
-    <string name="create">Create</string>
     <string name="back">Back</string>
     <string name="settings">Settings</string>
-    <string name="downloads">Downloads</string>
-    <string name="reading_lists">Reading Lists</string>
     <string name="search">Search</string>
-    <string name="clear">Clear</string>
-    <string name="sort">Sort</string>
 
     <string name="session_expired_title">Session expired</string>
     <string name="session_expired_message">Kavita no longer accepts your saved sign-in. You can keep browsing what is already loaded, or sign in again.</string>
@@ -17,14 +12,6 @@
     <string name="session_expired_dismiss">Not now</string>
 
     <!-- Folder Picker -->
-    <string name="select_download_folder">Select Download Folder</string>
-    <string name="select_this_folder">Select This Folder</string>
-    <string name="create_new_folder">Create New Folder</string>
-    <string name="folder_name">Folder Name</string>
-    <string name="create_folder_desc">Create Folder</string>
-    <string name="up_desc">Up</string>
-    <string name="folder_desc">Folder</string>
-    <string name="parent_dir_up">.. (Up one level)</string>
 
     <!-- Mass Download -->
     <string name="mass_download_issues">Mass Download Issues</string>
@@ -61,18 +48,12 @@
     <string name="incognito_active_message">Incognito Mode Active: Reading progress is private and won\'t sync to Kavita.</string>
     <string name="on_deck_title">On Deck (Continue Reading)</string>
     <string name="recently_updated_title">Recently Updated</string>
-    <string name="libraries_title">Libraries</string>
 
     <!-- Reader -->
     <string name="page_indicator">Page %1$d of %2$d</string>
     <string name="page_desc">Page %d</string>
 
     <!-- Reading List & Series Detail / Downloads -->
-    <string name="mass_download">Mass Download</string>
-    <string name="cancel_download">Cancel Download</string>
-    <string name="download_failed_retry">Download Failed - Tap to Retry</string>
-    <string name="downloaded">Downloaded</string>
-    <string name="download_chapter">Download Chapter</string>
 
     <!-- Reading Modes -->
     <string name="reading_mode_rtl">Right to Left</string>
@@ -85,8 +66,6 @@
     <string name="fit_mode_screen">Fit Screen</string>
 
     <!-- Download Locations -->
-    <string name="download_location_documents">Documents</string>
-    <string name="download_location_downloads">Downloads</string>
 
     <!-- Auto Delete Options -->
     <string name="auto_delete_never">Off</string>
@@ -120,14 +99,9 @@
     <string name="speech_bubble_boxes">Speech Bubble Boxes</string>
     <string name="speech_bubble_boxes_subtitle">Outline detected speech bubbles on page</string>
     <string name="detection_confidence">Detection Confidence: %1$d%%</string>
-    <string name="default_storage_folder">Default Storage Folder</string>
-    <string name="download_file_format">Download File Format</string>
-    <string name="custom_download_folder_path">Custom Download Folder Path</string>
-    <string name="default_documents_sigurvita">Default: Documents/Sigurvita</string>
     <string name="auto_delete_local_downloads">Auto-Delete Local Downloads</string>
     <string name="auto_delete_subtitle">Automatically clean up local files after reading X amount of chapters</string>
     <string name="disconnect_logout">Disconnect Server &amp; Logout</string>
-    <string name="browse_folder">Browse Folder</string>
     <string name="panel_aware_order">Panel-Aware Reading Order</string>
     <string name="panel_aware_order_subtitle">Traverse speech bubbles by comic panel order during volume key navigation</string>
     <string name="panel_debug_overlay">Panel Debug Overlay</string>
