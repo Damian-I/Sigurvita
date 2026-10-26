@@ -69,14 +69,7 @@ data class DetectedBubbleData(
 
 object DetectionsCacheHelper {
     fun toPageBubbles(data: PageDetectionData, pageIndex: Int): PageBubbles {
-        val lb = LetterboxParams(
-            inputSize = data.letterbox.inputSize,
-            originalWidth = data.letterbox.originalWidth,
-            originalHeight = data.letterbox.originalHeight,
-            gain = data.letterbox.gain,
-            padX = data.letterbox.padX,
-            padY = data.letterbox.padY
-        )
+        val lb = data.letterbox.toModel()
 
         val bubbles = data.bubbles.map { bData ->
             val probsBytes = if (bData.maskProbsBase64.isNotBlank()) {
@@ -102,16 +95,7 @@ object DetectionsCacheHelper {
     }
 
     fun toPanelMap(data: PageDetectionData): PanelMap {
-
-        val lb = LetterboxParams(
-            inputSize = data.letterbox.inputSize,
-            originalWidth = data.letterbox.originalWidth,
-            originalHeight = data.letterbox.originalHeight,
-            gain = data.letterbox.gain,
-            padX = data.letterbox.padX,
-            padY = data.letterbox.padY
-        )
-
+        val lb = data.letterbox.toModel()
         val panels = data.panels.map { pData ->
             PanelInfo(
                 label = pData.label,
@@ -146,14 +130,7 @@ object DetectionsCacheHelper {
         panelMap: PanelMap?
     ): PageDetectionData {
         val lb = pageBubbles?.letterbox ?: panelMap?.letterbox ?: LetterboxParams(640, 1000, 1000, 1f, 0f, 0f)
-        val lbData = LetterboxParamsData(
-            inputSize = lb.inputSize,
-            originalWidth = lb.originalWidth,
-            originalHeight = lb.originalHeight,
-            gain = lb.gain,
-            padX = lb.padX,
-            padY = lb.padY
-        )
+        val lbData = lb.toData()
 
         val bubbleDataList = pageBubbles?.bubbles?.map { b ->
             val b64Mask = if (b.mask.probs.isNotEmpty()) {
@@ -213,3 +190,21 @@ object DetectionsCacheHelper {
 private fun encodeBase64(bytes: ByteArray): String = java.util.Base64.getEncoder().encodeToString(bytes)
 
 private fun decodeBase64(text: String): ByteArray = java.util.Base64.getDecoder().decode(text)
+
+fun LetterboxParamsData.toModel() = LetterboxParams(
+    inputSize = inputSize,
+    originalWidth = originalWidth,
+    originalHeight = originalHeight,
+    gain = gain,
+    padX = padX,
+    padY = padY
+)
+
+fun LetterboxParams.toData() = LetterboxParamsData(
+    inputSize = inputSize,
+    originalWidth = originalWidth,
+    originalHeight = originalHeight,
+    gain = gain,
+    padX = padX,
+    padY = padY
+)

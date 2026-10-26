@@ -1,11 +1,9 @@
 package com.zemmy.sigurvita.ui.screens.reader
 
-import androidx.compose.ui.layout.ContentScale
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.data.api.dto.SeriesMetadataDto
-import com.zemmy.sigurvita.core.model.AutoDeleteOption
 import com.zemmy.sigurvita.core.model.Chapter
 import com.zemmy.sigurvita.core.model.DownloadStatus
 import com.zemmy.sigurvita.core.model.FitMode
@@ -16,15 +14,12 @@ import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
 import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
 import com.zemmy.sigurvita.core.util.orderBubbles
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -81,61 +76,20 @@ class ReaderViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
-    private val progressSaveFlow = MutableSharedFlow<ProgressEvent>(extraBufferCapacity = 1)
-    private var cachedLibraryId: Int = 0
-    private var progressJob: Job? = null
     private var sessionReadingModeOverride: ReadingMode? = null
 
-    private data class ProgressEvent(
-        val seriesId: Int,
-        val volumeId: Int,
-        val chapterId: Int,
-        val pageNum: Int,
-        val totalPages: Int
+    private val progress = ReaderProgressTracker(
+        scope = viewModelScope,
+        state = _uiState,
+        readerRepository = readerRepository,
+        downloadRepository = downloadRepository,
+        preferencesRepository = preferencesRepository
     )
 
-    init {
-        startProgressDebounce()
-    }
-
-    @OptIn(FlowPreview::class)
-    private fun startProgressDebounce() {
-        progressJob = viewModelScope.launch {
-            progressSaveFlow
-                .debounce(3.seconds)
-                .collect { event ->
-                    readerRepository.saveProgress(
-                        seriesId = event.seriesId,
-                        volumeId = event.volumeId,
-                        chapterId = event.chapterId,
-                        pageNum = event.pageNum,
-                        totalPages = event.totalPages,
-                        resolvedLibraryId = cachedLibraryId
-                    )
-                }
-        }
-    }
-
     // Flush any pending debounced progress immediately (called on chapter exit).
-    suspend fun flushProgressSync() {
-        val state = _uiState.value
-        if (state.pages.isNotEmpty() && state.chapterId > 0) {
-            readerRepository.saveProgress(
-                seriesId = state.seriesId,
-                volumeId = state.volumeId,
-                chapterId = state.chapterId,
-                pageNum = state.currentPageIndex + 1,
-                totalPages = state.pages.size,
-                resolvedLibraryId = cachedLibraryId
-            )
-        }
-    }
+    suspend fun flushProgressSync() = progress.flushSync()
 
-    fun flushProgress() {
-        viewModelScope.launch {
-            flushProgressSync()
-        }
-    }
+    fun flushProgress() = progress.flush()
 
     private var markedPageJob: Job? = null
     private var loadChapterJob: Job? = null
@@ -147,21 +101,14 @@ class ReaderViewModel : ViewModel() {
         nextChapterOf = { s -> findNeighbors(s.chapterId, s.seriesId, s.readingListId).second }
     )
 
-    /**
-     * Speech-bubble navigation mode. It lives in [ReaderUiState.bubbleNavActive] so the UI (the reader options
-     * switch) always shows the real state; the rest of this class keeps reading and writing it as a plain property.
-     * This is independent of the persisted panel-aware reading order, which only decides the order bubbles are visited in.
-     */
-    private var isBubbleNavActive: Boolean
-        get() = _uiState.value.bubbleNavActive
-        set(value) {
-            _uiState.update { if (it.bubbleNavActive == value) it else it.copy(bubbleNavActive = value) }
-        }
-    private var completedForwardBubblePageIndex: Int = -1
-    private var completedBackwardBubblePageIndex: Int = -1
-
-    // +1 = current page was reached going forward, -1 = going backward, 0 = unknown
-    private var pageArrivalDirection: Int = 0
+    private val bubbleNav = ReaderBubbleNavigator(
+        app = app,
+        scope = viewModelScope,
+        state = _uiState,
+        detection = detection,
+        nextPage = { nextPage() },
+        previousPage = { previousPage() }
+    )
     fun loadChapter(
         chapterId: Int,
         totalPages: Int,
@@ -176,10 +123,9 @@ class ReaderViewModel : ViewModel() {
         // A newer load supersedes any load still in flight
         loadChapterJob?.cancel()
         // Reset cached library ID for new chapter context
-        cachedLibraryId = 0
+        progress.libraryId = 0
         detection.cancelPageJobs()
-        completedForwardBubblePageIndex = -1
-        completedBackwardBubblePageIndex = -1
+        bubbleNav.onNewChapter()
         _uiState.update {
             it.copy(
                 bubblesByPage = emptyMap(),
@@ -231,7 +177,7 @@ class ReaderViewModel : ViewModel() {
                         val libraryRes = libraryRepository.getLibraries()
                         val library = libraryRes.getOrNull()?.find { it.id == series.libraryId }
                         if (library != null) {
-                            cachedLibraryId = library.id
+                            progress.libraryId = library.id
                             fetchedLibraryName = library.name
                             isManga = library.isManga
                             defaultMode = if (isManga) ReadingMode.RTL else ReadingMode.LTR
@@ -421,99 +367,7 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
-    private var screenWidthPx: Int = 1080
-    private var screenHeightPx: Int = 2400
-
-    fun updateScreenSize(widthPx: Int, heightPx: Int) {
-        if (widthPx > 0 && heightPx > 0) {
-            screenWidthPx = widthPx
-            screenHeightPx = heightPx
-        }
-    }
-
-    private data class PageLayout(
-        val originX: Float,
-        val originY: Float,
-        val dispW: Float,
-        val dispH: Float
-    )
-
-    private fun calculatePageScreenLayout(
-        pageWidth: Int,
-        pageHeight: Int,
-        screenWidthPx: Float,
-        screenHeightPx: Float,
-        fitMode: FitMode,
-        readingMode: ReadingMode
-    ): PageLayout {
-        val boxW = if (screenWidthPx > 0f) screenWidthPx else 1080f
-        val boxH = if (screenHeightPx > 0f) screenHeightPx else 2400f
-        val pageW = if (pageWidth > 0) pageWidth.toFloat() else boxW
-        val pageH = if (pageHeight > 0) pageHeight.toFloat() else boxH
-
-        val contentScale = when {
-            readingMode == ReadingMode.WEBTOON -> ContentScale.FillWidth
-            fitMode == FitMode.FIT_WIDTH -> ContentScale.FillWidth
-            fitMode == FitMode.FIT_HEIGHT -> ContentScale.FillHeight
-            else -> ContentScale.Fit
-        }
-
-        val s = when (contentScale) {
-            ContentScale.FillWidth -> boxW / pageW
-            ContentScale.FillHeight -> boxH / pageH
-            else -> minOf(boxW / pageW, boxH / pageH)
-        }
-
-        val dispW = pageW * s
-        val dispH = pageH * s
-        val originX = (boxW - dispW) / 2f
-        val originY = (boxH - dispH) / 2f
-
-        return PageLayout(originX, originY, dispW, dispH)
-    }
-
-    private fun magnifyBubbleObject(
-        pageIndex: Int,
-        bubble: com.zemmy.sigurvita.core.model.DetectedBubble,
-        pageBubbles: com.zemmy.sigurvita.core.model.PageBubbles
-    ) {
-        isBubbleNavActive = true
-        val state = _uiState.value
-        val page = state.pages.getOrNull(pageIndex) ?: return
-
-        val layout = calculatePageScreenLayout(
-            pageWidth = pageBubbles.pageWidth,
-            pageHeight = pageBubbles.pageHeight,
-            screenWidthPx = screenWidthPx.toFloat(),
-            screenHeightPx = screenHeightPx.toFloat(),
-            fitMode = state.settings.fitMode,
-            readingMode = state.settings.readingMode
-        )
-
-        viewModelScope.launch {
-            val cropResult = app.bubbleRepository.cropBubble(app, page, bubble, pageBubbles.letterbox, state.settings.speechBubbleBoxesEnabled, state.chapterId)
-            if (cropResult != null) {
-                val anchorX = layout.originX + cropResult.anchorNormX * layout.dispW
-                val anchorY = layout.originY + cropResult.anchorNormY * layout.dispH
-                val cropWOnScreen = (cropResult.cropRightNorm - cropResult.cropLeftNorm) * layout.dispW
-                val cropHOnScreen = (cropResult.cropBottomNorm - cropResult.cropTopNorm) * layout.dispH
-
-                _uiState.update {
-                    it.copy(
-                        magnifiedBubble = com.zemmy.sigurvita.core.model.MagnifiedBubble(
-                            pageIndex = pageIndex,
-                            bubbleId = bubble.id,
-                            bitmap = cropResult.bitmap,
-                            anchorScreenPx = androidx.compose.ui.geometry.Offset(anchorX, anchorY),
-                            cropSizeOnScreen = androidx.compose.ui.geometry.Size(cropWOnScreen, cropHOnScreen),
-                            tipRelOffset = androidx.compose.ui.geometry.Offset(cropResult.relTipX, cropResult.relTipY),
-                            isLiteralBox = cropResult.isLiteralBox
-                        )
-                    )
-                }
-            }
-        }
-    }
+    fun updateScreenSize(widthPx: Int, heightPx: Int) = bubbleNav.updateScreenSize(widthPx, heightPx)
 
     @Suppress("UNUSED_PARAMETER")
     fun onBubbleLongPress(
@@ -521,121 +375,23 @@ class ReaderViewModel : ViewModel() {
         bubbleId: Int,
         centerOffsetPx: androidx.compose.ui.geometry.Offset,
         bubbleSizePx: androidx.compose.ui.geometry.Size
-    ) {
-        isBubbleNavActive = true
-        val state = _uiState.value
-        val pageBubbles = state.bubblesByPage[pageIndex] ?: return
-        val bubble = pageBubbles.bubbles.find { it.id == bubbleId } ?: return
-        val page = state.pages.getOrNull(pageIndex) ?: return
+    ) = bubbleNav.onBubbleLongPress(pageIndex, bubbleId)
 
-        val layout = calculatePageScreenLayout(
-            pageWidth = pageBubbles.pageWidth,
-            pageHeight = pageBubbles.pageHeight,
-            screenWidthPx = screenWidthPx.toFloat(),
-            screenHeightPx = screenHeightPx.toFloat(),
-            fitMode = state.settings.fitMode,
-            readingMode = state.settings.readingMode
-        )
+    fun resetBubbleNavMode() = bubbleNav.resetBubbleNavMode()
 
-        viewModelScope.launch {
-            val cropResult = app.bubbleRepository.cropBubble(app, page, bubble, pageBubbles.letterbox, state.settings.speechBubbleBoxesEnabled, state.chapterId)
-            if (cropResult != null) {
-                val anchorX = layout.originX + cropResult.anchorNormX * layout.dispW
-                val anchorY = layout.originY + cropResult.anchorNormY * layout.dispH
-                val cropWOnScreen = (cropResult.cropRightNorm - cropResult.cropLeftNorm) * layout.dispW
-                val cropHOnScreen = (cropResult.cropBottomNorm - cropResult.cropTopNorm) * layout.dispH
+    fun updateBubbleNavActive(enabled: Boolean) = bubbleNav.updateBubbleNavActive(enabled)
 
-                _uiState.update {
-                    it.copy(
-                        magnifiedBubble = com.zemmy.sigurvita.core.model.MagnifiedBubble(
-                            pageIndex = pageIndex,
-                            bubbleId = bubbleId,
-                            bitmap = cropResult.bitmap,
-                            anchorScreenPx = androidx.compose.ui.geometry.Offset(anchorX, anchorY),
-                            cropSizeOnScreen = androidx.compose.ui.geometry.Size(cropWOnScreen, cropHOnScreen),
-                            tipRelOffset = androidx.compose.ui.geometry.Offset(cropResult.relTipX, cropResult.relTipY),
-                            isLiteralBox = cropResult.isLiteralBox
-                        )
-                    )
-                }
-            }
-        }
-    }
+    fun toggleBubbleNavMode(): Boolean = bubbleNav.toggleBubbleNavMode()
 
-    fun resetBubbleNavMode() {
-        completedForwardBubblePageIndex = -1
-        completedBackwardBubblePageIndex = -1
-        // One atomic update, so the magnifier never lingers for a frame after the mode reads as off.
-        _uiState.update {
-            if (it.bubbleNavActive || it.magnifiedBubble != null) {
-                it.copy(bubbleNavActive = false, magnifiedBubble = null)
-            } else {
-                it
-            }
-        }
-    }
+    fun dismissBubble() = bubbleNav.resetBubbleNavMode()
 
-    /** Bubble navigation needs detection on and a paged (non-webtoon) reading mode. */
-    private fun canUseBubbleNav(state: ReaderUiState): Boolean =
-        state.settings.speechBubbleDetectionEnabled &&
-            state.settings.readingMode != ReadingMode.WEBTOON &&
-            state.pages.isNotEmpty()
-
-    /**
-     * Reader options switch. Turning it on only arms the mode (the next edge tap or volume key magnifies the first
-     * bubble); turning it off is the same full reset as tapping the centre of the screen.
-     */
-    fun updateBubbleNavActive(enabled: Boolean) {
-        if (!enabled) {
-            resetBubbleNavMode()
-            return
-        }
-        if (canUseBubbleNav(_uiState.value)) isBubbleNavActive = true
-    }
-
-    /**
-     * Hold-both-volume-keys toggle. Off -> on behaves like a long-press on a bubble: it arms the mode and magnifies a
-     * bubble (the first one in reading order, since no bubble was pressed). On -> off is a full reset.
-     * Returns whether the mode changed, so the caller only gives feedback for a real toggle.
-     */
-    fun toggleBubbleNavMode(): Boolean {
-        if (isBubbleNavActive) {
-            resetBubbleNavMode()
-            return true
-        }
-        val state = _uiState.value
-        if (!canUseBubbleNav(state)) return false
-        isBubbleNavActive = true
-        val pageIdx = state.currentPageIndex
-        val pageBubbles = state.bubblesByPage[pageIdx]
-        val first = pageBubbles?.bubbles?.firstOrNull()
-        if (pageBubbles != null && first != null) {
-            magnifyBubbleObject(pageIdx, first, pageBubbles)
-        }
-        return true
-    }
-
-    fun dismissBubble() {
-        resetBubbleNavMode()
-    }
-
+    @Suppress("UNUSED_PARAMETER")
     fun onBubbleHover(
         pageIndex: Int,
         bubbleId: Int?,
         centerOffsetPx: androidx.compose.ui.geometry.Offset?,
         bubbleSizePx: androidx.compose.ui.geometry.Size?
-    ) {
-        if (bubbleId == null) {
-            resetBubbleNavMode()
-            return
-        }
-
-        if (_uiState.value.magnifiedBubble?.bubbleId == bubbleId && _uiState.value.magnifiedBubble?.pageIndex == pageIndex) {
-            return
-        }
-
-        onBubbleLongPress(pageIndex, bubbleId, centerOffsetPx ?: androidx.compose.ui.geometry.Offset.Zero, bubbleSizePx ?: androidx.compose.ui.geometry.Size.Zero)
-    }
+    ) = bubbleNav.onBubbleHover(pageIndex, bubbleId)
 
     fun toggleMarkCurrentPage() {
         val state = _uiState.value
@@ -755,21 +511,8 @@ class ReaderViewModel : ViewModel() {
                 isRead = (index + 1 >= totalPages && totalPages > 0)
             )
 
-            // Remember which way the reader just moved so volume-key bubble navigation
-            // can tell "continue" from "reverse". Single-page steps only.
-            val previousIndex = _uiState.value.currentPageIndex
-            if (index == previousIndex + 1) {
-                pageArrivalDirection = 1
-            } else if (index == previousIndex - 1) {
-                pageArrivalDirection = -1
-            }
-
-            if (index != completedForwardBubblePageIndex) {
-                completedForwardBubblePageIndex = -1
-            }
-            if (index != completedBackwardBubblePageIndex) {
-                completedBackwardBubblePageIndex = -1
-            }
+            // Lets volume-key bubble navigation tell "continue" from "reverse" (single-page steps only)
+            bubbleNav.onPageChanged(previousIndex = _uiState.value.currentPageIndex, newIndex = index)
 
             _uiState.update {
                 it.copy(
@@ -783,60 +526,7 @@ class ReaderViewModel : ViewModel() {
             }
 
             detection.onPageChanged(index)
-            progressSaveFlow.tryEmit(
-                ProgressEvent(
-                    seriesId = _uiState.value.seriesId,
-                    volumeId = _uiState.value.volumeId,
-                    chapterId = _uiState.value.chapterId,
-                    pageNum = index + 1,
-                    totalPages = _uiState.value.pages.size
-                )
-            )
-
-            // Auto-delete logic still runs immediately on last page
-            viewModelScope.launch {
-                if (index >= totalPages - 1 && totalPages > 0) {
-                    // Flush progress immediately for the last page
-                    readerRepository.saveProgress(
-                        seriesId = _uiState.value.seriesId,
-                        volumeId = _uiState.value.volumeId,
-                        chapterId = _uiState.value.chapterId,
-                        pageNum = index + 1,
-                        totalPages = totalPages,
-                        resolvedLibraryId = cachedLibraryId
-                    )
-
-                    val settings = _uiState.value.settings
-                    if (settings.isIncognitoMode) return@launch
-                    val currentChapterId = _uiState.value.chapterId
-                    when (settings.autoDeleteOption) {
-                        AutoDeleteOption.IMMEDIATELY -> {
-                            downloadRepository.deleteLocalChapter(currentChapterId)
-                        }
-                        AutoDeleteOption.AFTER_1_ISSUE,
-                        AutoDeleteOption.AFTER_2_ISSUES,
-                        AutoDeleteOption.AFTER_5_ISSUES -> {
-                            preferencesRepository.addCompletedChapter(currentChapterId)
-                            val history = preferencesRepository.completedChapterHistoryFlow.first()
-                            val keepOffset = when (settings.autoDeleteOption) {
-                                AutoDeleteOption.AFTER_1_ISSUE -> 1
-                                AutoDeleteOption.AFTER_2_ISSUES -> 2
-                                AutoDeleteOption.AFTER_5_ISSUES -> 5
-                                else -> 1
-                            }
-                            val cutoffIndex = history.size - 1 - keepOffset
-                            if (cutoffIndex >= 0) {
-                                val toDelete = history.subList(0, cutoffIndex + 1)
-                                toDelete.forEach { chapterIdToDelete ->
-                                    downloadRepository.deleteLocalChapter(chapterIdToDelete)
-                                }
-                                preferencesRepository.removeCompletedChapters(toDelete)
-                            }
-                        }
-                        AutoDeleteOption.NEVER -> {}
-                    }
-                }
-            }
+            progress.onPageShown(index)
         }
     }
 
@@ -947,14 +637,14 @@ class ReaderViewModel : ViewModel() {
     /** Overlay "next chapter" button. */
     fun onNextChapterClick() {
         val next = _uiState.value.nextChapter ?: return
-        pageArrivalDirection = 1
+        bubbleNav.pageArrivalDirection = 1
         openChapter(next)
     }
 
     /** Overlay "previous chapter" button: opens page 1 of the previous chapter. */
     fun onPreviousChapterClick() {
         val prev = _uiState.value.prevChapter ?: return
-        pageArrivalDirection = 1
+        bubbleNav.pageArrivalDirection = 1
         openChapter(prev, forceFirstPage = true)
     }
 
@@ -964,7 +654,7 @@ class ReaderViewModel : ViewModel() {
         viewModelScope.launch {
             val next = findNeighbors(state.chapterId, state.seriesId, state.readingListId).second
                 ?: return@launch
-            pageArrivalDirection = 1
+            bubbleNav.pageArrivalDirection = 1
             openChapter(next)
         }
     }
@@ -975,7 +665,7 @@ class ReaderViewModel : ViewModel() {
         viewModelScope.launch {
             val prev = findNeighbors(state.chapterId, state.seriesId, state.readingListId).first
                 ?: return@launch
-            pageArrivalDirection = -1
+            bubbleNav.pageArrivalDirection = -1
             openChapter(prev, openAtLastPage = true)
         }
     }
@@ -1080,141 +770,15 @@ class ReaderViewModel : ViewModel() {
     val isVolumeKeyNavigationEnabled: Boolean
         get() = _uiState.value.settings.volumeKeyNavigationEnabled
 
-    fun handleVolumeKey(isVolumeUp: Boolean): Boolean {
-        val settings = _uiState.value.settings
-        if (!settings.volumeKeyNavigationEnabled) return false
-        val isNext = if (settings.volumeKeyInvert) isVolumeUp else !isVolumeUp
-        return navigateStep(isNext)
-    }
+    fun handleVolumeKey(isVolumeUp: Boolean): Boolean = bubbleNav.handleVolumeKey(isVolumeUp)
 
-    /**
-     * A tap in one of the page-transition zones. [isNext] already accounts for the reading direction.
-     * Steps through bubbles while bubble navigation mode is active, otherwise turns the page, exactly like a volume key.
-     */
-    fun onEdgeTapNavigate(isNext: Boolean) {
-        navigateStep(isNext)
-    }
-
-    /** The one step-forward / step-back routine shared by the volume keys and the edge taps. Always returns true. */
-    private fun navigateStep(isNext: Boolean): Boolean {
-        val state = _uiState.value
-        val currentMag = state.magnifiedBubble
-        if (currentMag != null) {
-            val pageIdx = state.currentPageIndex
-            val pageBubbles = state.bubblesByPage[pageIdx]
-            val bubbles = pageBubbles?.bubbles ?: emptyList()
-            val currentIdx = bubbles.indexOfFirst { it.id == currentMag.bubbleId }
-
-            if (isNext) {
-                if (currentIdx != -1 && currentIdx < bubbles.size - 1 && pageBubbles != null) {
-                    val nextBubble = bubbles[currentIdx + 1]
-                    magnifyBubbleObject(pageIdx, nextBubble, pageBubbles)
-                    return true
-                } else {
-                    completedForwardBubblePageIndex = pageIdx
-                    _uiState.update { it.copy(magnifiedBubble = null) }
-                    return true
-                }
-            } else {
-                if (currentIdx > 0 && pageBubbles != null) {
-                    val prevBubble = bubbles[currentIdx - 1]
-                    magnifyBubbleObject(pageIdx, prevBubble, pageBubbles)
-                    return true
-                } else {
-                    completedBackwardBubblePageIndex = pageIdx
-                    _uiState.update { it.copy(magnifiedBubble = null) }
-                    return true
-                }
-            }
-        }
-
-        if (isBubbleNavActive && state.settings.speechBubbleDetectionEnabled && state.settings.readingMode != ReadingMode.WEBTOON) {
-            val pageIdx = state.currentPageIndex
-            if (isNext) {
-                if (completedForwardBubblePageIndex == pageIdx) {
-                    nextPage()
-                    return true
-                }
-                // Reversing right after arriving on this page: just turn the page.
-                if (pageArrivalDirection < 0) {
-                    nextPage()
-                    return true
-                }
-                val pageBubbles = state.bubblesByPage[pageIdx]
-                if (pageBubbles != null) {
-                    val bubbles = pageBubbles.bubbles
-                    if (bubbles.isNotEmpty()) {
-                        magnifyBubbleObject(pageIdx, bubbles.first(), pageBubbles)
-                    } else {
-                        completedForwardBubblePageIndex = pageIdx
-                        nextPage()
-                    }
-                } else if (detection.hasJob(pageIdx)) {
-                    viewModelScope.launch {
-                        detection.jobFor(pageIdx)?.join()
-                        if (_uiState.value.currentPageIndex != pageIdx) return@launch
-                        val pb = _uiState.value.bubblesByPage[pageIdx]
-                        val bList = pb?.bubbles ?: emptyList()
-                        if (bList.isNotEmpty() && completedForwardBubblePageIndex != pageIdx) {
-                            magnifyBubbleObject(pageIdx, bList.first(), pb!!)
-                        } else {
-                            completedForwardBubblePageIndex = pageIdx
-                            nextPage()
-                        }
-                    }
-                } else {
-                    nextPage()
-                }
-            } else {
-                if (completedBackwardBubblePageIndex == pageIdx) {
-                    previousPage()
-                    return true
-                }
-                // Reversing right after arriving on this page: just turn the page.
-                if (pageArrivalDirection > 0) {
-                    previousPage()
-                    return true
-                }
-                val pageBubbles = state.bubblesByPage[pageIdx]
-                if (pageBubbles != null) {
-                    val bubbles = pageBubbles.bubbles
-                    if (bubbles.isNotEmpty()) {
-                        magnifyBubbleObject(pageIdx, bubbles.last(), pageBubbles)
-                    } else {
-                        completedBackwardBubblePageIndex = pageIdx
-                        previousPage()
-                    }
-                } else if (detection.hasJob(pageIdx)) {
-                    viewModelScope.launch {
-                        detection.jobFor(pageIdx)?.join()
-                        if (_uiState.value.currentPageIndex != pageIdx) return@launch
-                        val pb = _uiState.value.bubblesByPage[pageIdx]
-                        val bList = pb?.bubbles ?: emptyList()
-                        if (bList.isNotEmpty() && completedBackwardBubblePageIndex != pageIdx) {
-                            magnifyBubbleObject(pageIdx, bList.last(), pb!!)
-                        } else {
-                            completedBackwardBubblePageIndex = pageIdx
-                            previousPage()
-                        }
-                    }
-                } else {
-                    previousPage()
-                }
-            }
-        } else {
-            if (isNext) {
-                nextPage()
-            } else {
-                previousPage()
-            }
-        }
-        return true
-    }
+    /** A tap in one of the page-transition zones. [isNext] already accounts for the reading direction. */
+    fun onEdgeTapNavigate(isNext: Boolean) = bubbleNav.onEdgeTapNavigate(isNext)
 
     /** Stops background detection when the reader screen is left. Results already computed stay cached. */
     fun onReaderClosed() {
         loadChapterJob?.cancel()
         detection.onReaderClosed()
-        pageArrivalDirection = 0
+        bubbleNav.pageArrivalDirection = 0
     }
 }

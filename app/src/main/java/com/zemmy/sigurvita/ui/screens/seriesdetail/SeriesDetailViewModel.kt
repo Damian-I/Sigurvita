@@ -10,6 +10,8 @@ import com.zemmy.sigurvita.core.model.Volume
 import com.zemmy.sigurvita.core.util.naturalCompare
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -146,6 +148,7 @@ class SeriesDetailViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow(SeriesDetailUiState())
     val uiState: StateFlow<SeriesDetailUiState> = _uiState.asStateFlow()
+    private var filterJob: Job? = null
 
     init {
         viewModelScope.launch(Dispatchers.Default) {
@@ -172,7 +175,8 @@ class SeriesDetailViewModel : ViewModel() {
     }
 
     private fun filterData() {
-        viewModelScope.launch(Dispatchers.Default) {
+        filterJob?.cancel()
+        filterJob = viewModelScope.launch(Dispatchers.Default) {
             val state = _uiState.value
             val query = searchQueryFlow.value
             val volumes = state.volumes
@@ -240,6 +244,7 @@ class SeriesDetailViewModel : ViewModel() {
                 }
             }
 
+            ensureActive()
             _uiState.update {
                 it.copy(
                     displayMangaItems = computedDisplayMangaItems,
