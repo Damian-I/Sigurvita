@@ -62,8 +62,8 @@ private fun closeMask(src: BooleanArray, sz: Int): BooleanArray {
 }
 
 /**
- * Extracts a smoothed list of normalized page coordinates `(normX, normY)` (0.0..1.0)
- * along the speech bubble contour using 48 radial raycasts and 3-point moving average smoothing,
+ * Extracts a list of normalized page coordinates `(normX, normY)` (0.0..1.0)
+ * along the speech bubble contour using Marching Squares with linear sub-pixel interpolation,
  * or sharp rectangular corner points for square/rectangular boxes.
  */
 fun extractBubbleNormalizedPoints(

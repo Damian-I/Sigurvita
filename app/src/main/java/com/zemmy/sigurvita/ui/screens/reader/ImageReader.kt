@@ -478,35 +478,35 @@ private fun ZoomableImage(
                         }
 
                         if (bubbles != null && bubbles.bubbles.isNotEmpty()) {
+                            val radius = 12.dp.toPx()
+                            val bgPaint = android.graphics.Paint().apply {
+                                color = android.graphics.Color.argb(220, 20, 20, 20)
+                                style = android.graphics.Paint.Style.FILL
+                                isAntiAlias = true
+                            }
+                            val borderPaint = android.graphics.Paint().apply {
+                                color = android.graphics.Color.rgb(0, 229, 255)
+                                style = android.graphics.Paint.Style.STROKE
+                                strokeWidth = 1.5f.dp.toPx()
+                                isAntiAlias = true
+                            }
+                            val textPaint = android.graphics.Paint().apply {
+                                color = android.graphics.Color.WHITE
+                                textSize = 12.dp.toPx()
+                                isAntiAlias = true
+                                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                textAlign = android.graphics.Paint.Align.CENTER
+                            }
+                            val textYOffset = (textPaint.descent() + textPaint.ascent()) / 2f
+
                             bubbles.bubbles.forEachIndexed { index, bubble ->
                                 val cx = originX + ((bubble.box.left + bubble.box.right) / 2f) * dispW
                                 val cy = originY + ((bubble.box.top + bubble.box.bottom) / 2f) * dispH
 
                                 drawContext.canvas.nativeCanvas.apply {
-                                    val radius = 12.dp.toPx()
-                                    val bgPaint = android.graphics.Paint().apply {
-                                        color = android.graphics.Color.argb(220, 20, 20, 20)
-                                        style = android.graphics.Paint.Style.FILL
-                                        isAntiAlias = true
-                                    }
-                                    val borderPaint = android.graphics.Paint().apply {
-                                        color = android.graphics.Color.rgb(0, 229, 255)
-                                        style = android.graphics.Paint.Style.STROKE
-                                        strokeWidth = 1.5f.dp.toPx()
-                                        isAntiAlias = true
-                                    }
-                                    val textPaint = android.graphics.Paint().apply {
-                                        color = android.graphics.Color.WHITE
-                                        textSize = 12.dp.toPx()
-                                        isAntiAlias = true
-                                        typeface = android.graphics.Typeface.DEFAULT_BOLD
-                                        textAlign = android.graphics.Paint.Align.CENTER
-                                    }
-
                                     drawCircle(cx, cy, radius, bgPaint)
                                     drawCircle(cx, cy, radius, borderPaint)
-                                    val textY = cy - ((textPaint.descent() + textPaint.ascent()) / 2f)
-                                    drawText("${index + 1}", cx, textY, textPaint)
+                                    drawText("${index + 1}", cx, cy - textYOffset, textPaint)
                                 }
                             }
                         }

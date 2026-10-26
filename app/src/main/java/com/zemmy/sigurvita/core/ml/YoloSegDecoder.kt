@@ -201,22 +201,33 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
             val minY = ((cand.topPx * protoSize).toInt() - padY).coerceIn(0, protoSize - 1)
             val maxY = ((cand.bottomPx * protoSize).toInt() + padY).coerceIn(0, protoSize - 1)
 
-            for (py in minY..maxY) {
-                for (px in minX..maxX) {
-                    var sum = 0f
-                    if (isProtoNHWC) {
-                        val cellCoeffs = protoArray[0][py][px]
+            if (isProtoNHWC) {
+                val protoNHWC = protoArray[0]
+                for (py in minY..maxY) {
+                    val row = protoNHWC[py]
+                    val offset = py * protoSize
+                    for (px in minX..maxX) {
+                        val cellCoeffs = row[px]
+                        var sum = 0f
                         for (k in 0 until numCoeffs) {
                             sum += cand.maskCoeffs[k] * cellCoeffs[k]
                         }
-                    } else {
-                        for (k in 0 until numCoeffs) {
-                            sum += cand.maskCoeffs[k] * protoArray[0][k][py][px]
-                        }
+                        val prob = 1f / (1f + exp(-sum))
+                        maskProbs[offset + px] = (prob * 255f).toInt().toByte()
                     }
-
-                    val prob = 1f / (1f + exp(-sum))
-                    maskProbs[py * protoSize + px] = (prob * 255f).toInt().toByte()
+                }
+            } else {
+                val protoNCHW = protoArray[0]
+                for (py in minY..maxY) {
+                    val offset = py * protoSize
+                    for (px in minX..maxX) {
+                        var sum = 0f
+                        for (k in 0 until numCoeffs) {
+                            sum += cand.maskCoeffs[k] * protoNCHW[k][py][px]
+                        }
+                        val prob = 1f / (1f + exp(-sum))
+                        maskProbs[offset + px] = (prob * 255f).toInt().toByte()
+                    }
                 }
             }
 
@@ -344,10 +355,12 @@ class YoloSegDecoder(private val config: BubbleDetectorConfig = BubbleDetectorCo
         val minY2 = (r2.top * sz).toInt().coerceIn(0, sz - 1)
         val maxY2 = (r2.bottom * sz).toInt().coerceIn(0, sz - 1)
 
-        val startX = maxOf(0, minOf(minX1, minX2) - 1)
-        val endX = minOf(sz - 1, maxOf(maxX1, maxX2) + 1)
-        val startY = maxOf(0, minOf(minY1, minY2) - 1)
-        val endY = minOf(sz - 1, maxOf(maxY1, maxY2) + 1)
+        val startX = maxOf(0, maxOf(minX1, minX2 - 1))
+        val endX = minOf(sz - 1, minOf(maxX1, maxX2 + 1))
+        val startY = maxOf(0, maxOf(minY1, minY2 - 1))
+        val endY = minOf(sz - 1, minOf(maxY1, maxY2 + 1))
+
+        if (startX > endX || startY > endY) return false
 
         for (y in startY..endY) {
             val rowOffset = y * sz
