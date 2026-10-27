@@ -29,12 +29,14 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,12 +48,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.zemmy.sigurvita.R
+import com.zemmy.sigurvita.core.model.CustomTapZone
 import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderBackground
 import com.zemmy.sigurvita.core.model.ReaderOrientation
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
+import com.zemmy.sigurvita.core.model.TapZoneLayout
+import com.zemmy.sigurvita.ui.screens.reader.TapZoneEditorDialog
+import com.zemmy.sigurvita.ui.screens.reader.TapZonePreview
 import com.zemmy.sigurvita.ui.screens.reader.fixedColor
+import com.zemmy.sigurvita.ui.screens.reader.tapRegionsFor
 
 /**
  * Every reader option the user can change. Each host screen (Settings, in-reader sheet)
@@ -73,7 +80,11 @@ data class ReaderSettingsActions(
     val onPanelDebugOverlay: (Boolean) -> Unit,
     val onReadingMode: (ReadingMode) -> Unit = {},
     // Only the in-reader sheet supplies this; see [ReaderSettingsContent.bubbleNavActive].
-    val onBubbleNavActive: (Boolean) -> Unit = {}
+    val onBubbleNavActive: (Boolean) -> Unit = {},
+    val onTapZoneLayout: (TapZoneLayout) -> Unit = {},
+    val onShowTapZones: (Boolean) -> Unit = {},
+    val onCustomTapZones: (List<CustomTapZone>) -> Unit = {},
+    val onCustomZonesMirrorInRtl: (Boolean) -> Unit = {}
 )
 
 /**
@@ -225,6 +236,9 @@ fun ReaderNavigationSection(
             checked = settings.touchEdgeNavigationEnabled,
             onCheckedChange = actions.onTouchEdgeNavigation
         )
+        if (settings.touchEdgeNavigationEnabled) {
+            TapZoneLayoutPicker(settings, actions)
+        }
     }
 }
 
@@ -337,7 +351,67 @@ fun ReaderDebugSection(
         )
     }
 }
+@Composable
+private fun TapZoneLayoutPicker(settings: ReaderSettings, actions: ReaderSettingsActions) {
+    var showEditor by remember { mutableStateOf(false) }
 
+    Column(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 6.dp)) {
+        Text(stringResource(R.string.tap_zone_layout), style = MaterialTheme.typography.bodyLarge)
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.horizontalScroll(rememberScrollState())
+        ) {
+            TapZoneLayout.entries.forEach { layout ->
+                OptionTile(
+                    selected = settings.tapZoneLayout == layout,
+                    label = stringResource(layout.stringRes),
+                    onClick = { actions.onTapZoneLayout(layout) }
+                ) {
+                    // Always left-to-right: the Settings screen has no reading direction of its own.
+                    TapZonePreview(
+                        regions = tapRegionsFor(layout, settings.customTapZones, settings.customZonesMirrorInRtl, false),
+                        modifier = Modifier.size(width = 32.dp, height = 48.dp)
+                    )
+                }
+            }
+        }
+        Text(
+            stringResource(R.string.tap_zone_preview_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = LocalContentColor.current.copy(alpha = 0.7f),
+            modifier = Modifier.padding(top = 4.dp)
+        )
+        SettingSwitchRow(
+            title = stringResource(R.string.show_tap_zones),
+            subtitle = stringResource(R.string.show_tap_zones_subtitle),
+            checked = settings.showTapZones,
+            onCheckedChange = actions.onShowTapZones
+        )
+        if (settings.tapZoneLayout == TapZoneLayout.CUSTOM) {
+            SettingSwitchRow(
+                title = stringResource(R.string.custom_zones_mirror_rtl),
+                subtitle = stringResource(R.string.custom_zones_mirror_rtl_subtitle),
+                checked = settings.customZonesMirrorInRtl,
+                onCheckedChange = actions.onCustomZonesMirrorInRtl
+            )
+            OutlinedButton(onClick = { showEditor = true }) {
+                Text(stringResource(R.string.edit_custom_zones))
+            }
+        }
+    }
+
+    if (showEditor) {
+        TapZoneEditorDialog(
+            initial = settings.customTapZones,
+            onSave = {
+                actions.onCustomTapZones(it)
+                showEditor = false
+            },
+            onDismiss = { showEditor = false }
+        )
+    }
+}
 // ---------------------------------------------------------------------------------------------
 // Reusable building blocks
 // ---------------------------------------------------------------------------------------------

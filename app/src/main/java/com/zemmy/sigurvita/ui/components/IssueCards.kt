@@ -21,14 +21,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.zemmy.sigurvita.core.model.DownloadTask
-import androidx.compose.ui.graphics.Color
 import com.zemmy.sigurvita.ui.theme.colorScapeBorder
+
 @Immutable
 data class IssueUi(
     val id: Int,

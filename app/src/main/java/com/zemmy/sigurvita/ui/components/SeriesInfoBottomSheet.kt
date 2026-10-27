@@ -1,6 +1,5 @@
 package com.zemmy.sigurvita.ui.components
 
-import com.zemmy.sigurvita.core.util.getPersonCoverUrl
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,9 +47,10 @@ import coil.request.ImageRequest
 import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.data.api.dto.PersonDto
 import com.zemmy.sigurvita.core.data.api.dto.SeriesMetadataDto
-import com.zemmy.sigurvita.core.model.ServerConfig
 import com.zemmy.sigurvita.core.model.Series
+import com.zemmy.sigurvita.core.model.ServerConfig
 import com.zemmy.sigurvita.core.model.Volume
+import com.zemmy.sigurvita.core.util.getPersonCoverUrl
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)

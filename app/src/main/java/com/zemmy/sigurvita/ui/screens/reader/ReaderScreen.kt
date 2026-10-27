@@ -65,6 +65,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -93,6 +94,8 @@ import com.zemmy.sigurvita.ui.components.LoadingState
 import com.zemmy.sigurvita.ui.components.settings.ReaderSettingsActions
 import com.zemmy.sigurvita.ui.components.settings.ReaderSettingsContent
 import com.zemmy.sigurvita.ui.theme.readableOn
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 private fun Context.findActivity(): ComponentActivity? {
@@ -181,6 +184,36 @@ fun ReaderScreen(
     val chromeSurface = scapeAccent?.tint ?: Color.Black
     val chromeAccent = (scapeAccent?.source?.primary ?: MaterialTheme.colorScheme.primary)
         .readableOn(chromeSurface)
+    val isRtlMode = state.settings.readingMode == ReadingMode.RTL
+    val tapRegions = remember(
+        state.settings.tapZoneLayout,
+        state.settings.customTapZones,
+        state.settings.customZonesMirrorInRtl,
+        isRtlMode
+    ) {
+        tapRegionsFor(
+            state.settings.tapZoneLayout,
+            state.settings.customTapZones,
+            state.settings.customZonesMirrorInRtl,
+            isRtlMode
+        )
+    }
+    val zonesActive = state.settings.touchEdgeNavigationEnabled &&
+            state.settings.readingMode != ReadingMode.WEBTOON
+    var zoneFlash by remember { mutableStateOf(false) }
+    // Flashes once the chapter has loaded, and again when the layout, zones, direction or the toggle change.
+    // It waits for the load (the ViewModel is activity-scoped, so stale state exists on reopen) and always resets.
+    LaunchedEffect(tapRegions, zonesActive, state.settings.showTapZones) {
+        if (zonesActive && state.settings.showTapZones) {
+            try {
+                snapshotFlow { !state.isLoading && state.chapterId == chapterId }.first { it }
+                zoneFlash = true
+                delay(3000)
+            } finally {
+                zoneFlash = false
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -230,6 +263,7 @@ fun ReaderScreen(
                 },
                 fitMode = state.settings.fitMode,
                 touchEdgeNavigationEnabled = state.settings.touchEdgeNavigationEnabled,
+                tapRegions = tapRegions,
                 bubblesByPage = state.bubblesByPage,
                 panelMapsByPage = state.panelMapsByPage,
                 speechBubbleDetectionEnabled = state.settings.speechBubbleDetectionEnabled,
@@ -241,7 +275,11 @@ fun ReaderScreen(
                 readerBackground = state.settings.readerBackground,
                 onPageBackground = { index, color -> pageBackgrounds[index] = color }
             )
-
+            TapZoneOverlay(
+                regions = tapRegions,
+                visible = zoneFlash && zonesActive && state.settings.showTapZones,
+                modifier = Modifier.fillMaxSize()
+            )
             state.magnifiedBubble?.let { magBubble ->
                 BubbleMagnifierOverlay(
                     magnifiedBubble = magBubble,
@@ -257,7 +295,7 @@ fun ReaderScreen(
                     onBubbleHover = { pageIdx, bubbleId, centerPx, bubbleSizePx -> viewModel.onBubbleHover(pageIdx, bubbleId, centerPx, bubbleSizePx) },
                     edgeTapNavigationEnabled = state.settings.touchEdgeNavigationEnabled &&
                         state.settings.readingMode != ReadingMode.WEBTOON,
-                    isRtl = state.settings.readingMode == ReadingMode.RTL,
+                    tapRegions = tapRegions,
                     onEdgeTap = { isNext -> viewModel.onEdgeTapNavigate(isNext) }
                 )
             }
@@ -672,6 +710,10 @@ fun ReaderScreen(
                                     onVolumeKeyNavigation = viewModel::updateVolumeKeyNavigation,
                                     onVolumeKeyInvert = viewModel::updateVolumeKeyInvert,
                                     onTouchEdgeNavigation = viewModel::updateTouchEdgeNav,
+                                    onTapZoneLayout = viewModel::updateTapZoneLayout,
+                                    onShowTapZones = viewModel::updateShowTapZones,
+                                    onCustomTapZones = viewModel::updateCustomTapZones,
+                                    onCustomZonesMirrorInRtl = viewModel::updateCustomZonesMirrorInRtl,
                                     onShowPageNumber = viewModel::updateShowPageNumber,
                                     onKeepScreenOn = viewModel::updateKeepScreenOn,
                                     onSpeechBubbleDetection = viewModel::updateSpeechBubbleDetectionEnabled,

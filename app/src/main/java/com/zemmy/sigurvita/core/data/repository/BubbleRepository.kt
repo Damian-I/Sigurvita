@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
 import android.util.LruCache
+import androidx.core.graphics.createBitmap
 import com.zemmy.sigurvita.core.ml.BubbleDetector
 import com.zemmy.sigurvita.core.ml.PageBitmapLoader
 import com.zemmy.sigurvita.core.model.DetectedBubble
@@ -14,7 +15,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import androidx.core.graphics.createBitmap
 
 private const val TAG = "BubbleRepository"
 

@@ -7,8 +7,10 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.zemmy.sigurvita.core.data.api.KavitaApi
 import com.zemmy.sigurvita.core.data.api.NetworkClient
+import com.zemmy.sigurvita.core.data.cache.SnapshotStore
 import com.zemmy.sigurvita.core.data.db.SigurvitaDatabase
 import com.zemmy.sigurvita.core.data.repository.AuthRepository
+import com.zemmy.sigurvita.core.data.repository.DetectionRepository
 import com.zemmy.sigurvita.core.data.repository.DownloadRepository
 import com.zemmy.sigurvita.core.data.repository.LibraryRepository
 import com.zemmy.sigurvita.core.data.repository.ReaderRepository
@@ -18,8 +20,6 @@ import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import com.zemmy.sigurvita.core.data.repository.DetectionRepository
-import com.zemmy.sigurvita.core.data.cache.SnapshotStore
 
 class SigurvitaApp : Application(), ImageLoaderFactory {
 

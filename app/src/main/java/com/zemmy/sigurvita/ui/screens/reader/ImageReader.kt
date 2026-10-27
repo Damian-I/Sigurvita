@@ -1,6 +1,11 @@
 package com.zemmy.sigurvita.ui.screens.reader
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
@@ -32,34 +37,29 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import com.zemmy.sigurvita.R
 import coil.compose.AsyncImage
 import coil.imageLoader
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import com.zemmy.sigurvita.R
 import com.zemmy.sigurvita.core.data.repository.extractBubbleNormalizedPoints
 import com.zemmy.sigurvita.core.model.FitMode
+import com.zemmy.sigurvita.core.model.MagnifiedBubble
 import com.zemmy.sigurvita.core.model.PageBubbles
+import com.zemmy.sigurvita.core.model.ReaderBackground
 import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReadingMode
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculatePan
-import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.ui.input.pointer.positionChanged
-import androidx.compose.ui.graphics.nativeCanvas
 import com.zemmy.sigurvita.core.util.PanelMap
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.PointerType
-import com.zemmy.sigurvita.core.model.MagnifiedBubble
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.foundation.background
-import com.zemmy.sigurvita.core.model.ReaderBackground
 
 @Composable
 fun ImageReader(
@@ -73,6 +73,7 @@ fun ImageReader(
     modifier: Modifier = Modifier,
     fitMode: FitMode = FitMode.FIT_WIDTH,
     touchEdgeNavigationEnabled: Boolean = true,
+    tapRegions: List<TapRegion> = defaultTapRegions,
     bubblesByPage: Map<Int, PageBubbles> = emptyMap(),
     panelMapsByPage: Map<Int, PanelMap> = emptyMap(),
     speechBubbleDetectionEnabled: Boolean = true,
@@ -128,6 +129,7 @@ fun ImageReader(
                         page = page,
                         fitMode = fitMode,
                         touchEdgeNavigationEnabled = touchEdgeNavigationEnabled,
+                        tapRegions = tapRegions,
                         readingMode = readingMode,
                         bubbles = bubblesByPage[idx],
                         panelMap = panelMapsByPage[idx],
@@ -176,6 +178,7 @@ fun ImageReader(
                     page = pages[pageIdx],
                     fitMode = fitMode,
                     touchEdgeNavigationEnabled = touchEdgeNavigationEnabled,
+                    tapRegions = tapRegions,
                     readingMode = readingMode,
                     bubbles = bubblesByPage[pageIdx],
                     panelMap = panelMapsByPage[pageIdx],
@@ -203,6 +206,7 @@ private fun ZoomableImage(
     page: ReaderPage,
     fitMode: FitMode,
     touchEdgeNavigationEnabled: Boolean,
+    tapRegions: List<TapRegion>,
     readingMode: ReadingMode,
     bubbles: PageBubbles? = null,
     panelMap: PanelMap? = null,
@@ -340,14 +344,14 @@ private fun ZoomableImage(
             .background(pageBackground)
             .then(transformModifier)
             .then(stylusHoverMagnifyModifier)
-            .pointerInput(touchEdgeNavigationEnabled, readingMode) {
+            .pointerInput(touchEdgeNavigationEnabled, readingMode, tapRegions) {
                 detectTapGestures(
                     onTap = { offset ->
                         val width = size.width.toFloat()
                         if (readingMode != ReadingMode.WEBTOON && touchEdgeNavigationEnabled && scale <= 1.05f && width > 0f) {
-                            // The edge zones navigate (pages, or bubbles while bubble navigation mode is on);
-                            // the centre is the "other" zone: it toggles the controls and leaves bubble navigation mode.
-                            when (classifyTapZone(offset.x, width, isRtl = readingMode == ReadingMode.RTL)) {
+                            // The tap zones navigate (pages, or bubbles while bubble navigation mode is on);
+                            // a tap outside every zone toggles the controls and leaves bubble navigation mode.
+                            when (classifyTap(offset.x, offset.y, width, size.height.toFloat(), tapRegions)) {
                                 TapZone.NEXT -> latestOnNextPage()
                                 TapZone.PREVIOUS -> latestOnPreviousPage()
                                 TapZone.CENTER -> latestOnTap()

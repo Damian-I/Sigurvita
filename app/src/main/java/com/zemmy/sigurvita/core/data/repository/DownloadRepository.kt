@@ -11,6 +11,7 @@ import androidx.work.WorkManager
 import com.zemmy.sigurvita.core.data.db.SigurvitaDatabase
 import com.zemmy.sigurvita.core.data.db.entity.DownloadTaskEntity
 import com.zemmy.sigurvita.core.download.DownloadWorker
+import com.zemmy.sigurvita.core.ml.DetectionStore
 import com.zemmy.sigurvita.core.model.DownloadStatus
 import com.zemmy.sigurvita.core.model.DownloadTask
 import com.zemmy.sigurvita.core.model.Series
@@ -21,7 +22,6 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
-import com.zemmy.sigurvita.core.ml.DetectionStore
 
 data class BulkDownloadItem(
     val chapterId: Int,

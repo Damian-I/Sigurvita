@@ -10,25 +10,25 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.compose.foundation.isSystemInDarkTheme
+import com.zemmy.sigurvita.core.data.api.SessionEvents
+import com.zemmy.sigurvita.core.model.AppThemeMode
 import com.zemmy.sigurvita.ui.components.LoadingState
 import com.zemmy.sigurvita.ui.navigation.Screen
 import com.zemmy.sigurvita.ui.navigation.SigurvitaNavGraph
 import com.zemmy.sigurvita.ui.screens.reader.ReaderViewModel
 import com.zemmy.sigurvita.ui.screens.reader.VolumeChordDetector
 import com.zemmy.sigurvita.ui.theme.SigurvitaTheme
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.ui.res.stringResource
-import com.zemmy.sigurvita.core.data.api.SessionEvents
-import com.zemmy.sigurvita.core.model.AppThemeMode
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : ComponentActivity() {
 

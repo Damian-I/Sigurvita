@@ -12,6 +12,7 @@ import com.zemmy.sigurvita.core.datastore.SeriesReadContext
 import com.zemmy.sigurvita.core.model.Library
 import com.zemmy.sigurvita.core.model.ReadingList
 import com.zemmy.sigurvita.core.model.Series
+import com.zemmy.sigurvita.core.util.matchesQuery
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -24,7 +25,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
-import com.zemmy.sigurvita.core.util.matchesQuery
 
 data class HomeUiState(
     val libraries: List<Library> = emptyList(),

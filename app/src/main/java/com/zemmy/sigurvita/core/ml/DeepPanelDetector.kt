@@ -8,6 +8,8 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
 import android.util.Log
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
 import com.zemmy.sigurvita.core.model.LetterboxParams
 import com.zemmy.sigurvita.core.model.NormRect
 import com.zemmy.sigurvita.core.util.PanelInfo
@@ -20,11 +22,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 import java.util.concurrent.Executors
-import kotlin.math.min
-import androidx.core.graphics.createBitmap
 import kotlin.math.abs
 import kotlin.math.max
-import androidx.core.graphics.scale
+import kotlin.math.min
 
 private const val TAG = "DeepPanelDetector"
 

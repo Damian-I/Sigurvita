@@ -2,6 +2,7 @@ package com.zemmy.sigurvita.core.model
 
 import androidx.annotation.StringRes
 import com.zemmy.sigurvita.R
+import kotlinx.serialization.Serializable
 
 enum class ReadingMode(@param:StringRes val stringRes: Int) {
     RTL(R.string.reading_mode_rtl),
@@ -46,12 +47,34 @@ enum class AutoDeleteOption(@param:StringRes val stringRes: Int) {
     AFTER_5_ISSUES(R.string.auto_delete_after_5)
 }
 
+enum class TapZoneLayout(@param:StringRes val stringRes: Int) {
+    EDGES(R.string.tap_layout_edges),
+    TOP_BOTTOM(R.string.tap_layout_top_bottom),
+    L_SHAPE(R.string.tap_layout_l_shape),
+    KINDLE(R.string.tap_layout_kindle),
+    CUSTOM(R.string.tap_layout_custom)
+}
+
+@Serializable
+enum class TapAction { PREVIOUS, NEXT }
+
+/** A point as a fraction (0..1) of the screen width/height. */
+@Serializable
+data class NormPoint(val x: Float, val y: Float)
+
+/** A user-drawn zone: a polygon (a rectangle is 4 points) plus what tapping it does. */
+@Serializable
+data class CustomTapZone(val action: TapAction, val points: List<NormPoint>)
 data class ReaderSettings(
     val readingMode: ReadingMode = ReadingMode.RTL,
     val fitMode: FitMode = FitMode.FIT_WIDTH,
     val volumeKeyNavigationEnabled: Boolean = true,
     val volumeKeyInvert: Boolean = false,
     val touchEdgeNavigationEnabled: Boolean = true,
+    val tapZoneLayout: TapZoneLayout = TapZoneLayout.EDGES,
+    val showTapZones: Boolean = true,
+    val customTapZones: List<CustomTapZone> = emptyList(),
+    val customZonesMirrorInRtl: Boolean = true,
     val keepScreenOn: Boolean = true,
     val autoDeleteOption: AutoDeleteOption = AutoDeleteOption.NEVER,
     val isIncognitoMode: Boolean = false,

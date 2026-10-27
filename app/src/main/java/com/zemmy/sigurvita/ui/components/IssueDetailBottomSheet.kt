@@ -1,5 +1,6 @@
 package com.zemmy.sigurvita.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,18 +40,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.data.api.dto.SeriesMetadataDto
+import com.zemmy.sigurvita.core.data.repository.ColorScapeKind
 import com.zemmy.sigurvita.core.model.Chapter
 import com.zemmy.sigurvita.core.model.ServerConfig
 import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
-import java.util.Locale
-import androidx.compose.foundation.background
-import androidx.compose.material3.ButtonDefaults
-import com.zemmy.sigurvita.core.data.repository.ColorScapeKind
 import com.zemmy.sigurvita.ui.theme.accent
 import com.zemmy.sigurvita.ui.theme.headerBrush
 import com.zemmy.sigurvita.ui.theme.isSyntheticPlaceholder
 import com.zemmy.sigurvita.ui.theme.onAccent
 import com.zemmy.sigurvita.ui.theme.rememberColorScape
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

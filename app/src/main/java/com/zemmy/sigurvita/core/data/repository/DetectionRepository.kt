@@ -2,22 +2,23 @@ package com.zemmy.sigurvita.core.data.repository
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.SystemClock
 import android.util.Log
 import android.util.LruCache
 import com.zemmy.sigurvita.core.ml.DetectionStore
 import com.zemmy.sigurvita.core.model.PageBubbles
 import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.util.PanelMap
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlin.math.roundToInt
-import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.roundToInt
+
 private const val TAG = "DetectionRepository"
 
 /**

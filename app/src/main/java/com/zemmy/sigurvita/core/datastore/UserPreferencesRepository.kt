@@ -10,14 +10,16 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.zemmy.sigurvita.core.model.AppearanceSettings
 import com.zemmy.sigurvita.core.model.AppThemeMode
+import com.zemmy.sigurvita.core.model.AppearanceSettings
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
+import com.zemmy.sigurvita.core.model.CustomTapZone
 import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderBackground
 import com.zemmy.sigurvita.core.model.ReaderOrientation
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ServerConfig
+import com.zemmy.sigurvita.core.model.TapZoneLayout
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -62,6 +64,10 @@ class UserPreferencesRepository(private val context: Context) {
         val VOLUME_KEY_NAV = booleanPreferencesKey("volume_key_nav")
         val VOLUME_KEY_INVERT = booleanPreferencesKey("volume_key_invert")
         val TOUCH_EDGE_NAV = booleanPreferencesKey("touch_edge_nav")
+        val TAP_ZONE_LAYOUT = stringPreferencesKey("tap_zone_layout")
+        val SHOW_TAP_ZONES = booleanPreferencesKey("show_tap_zones")
+        val CUSTOM_TAP_ZONES = stringPreferencesKey("custom_tap_zones")
+        val CUSTOM_ZONES_MIRROR_RTL = booleanPreferencesKey("custom_zones_mirror_rtl")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val AUTO_DELETE_OPTION = stringPreferencesKey("auto_delete_option")
         val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")
@@ -121,12 +127,24 @@ class UserPreferencesRepository(private val context: Context) {
             val showPageNumber = preferences[Keys.SHOW_PAGE_NUMBER] ?: false
             val orientation = preferences.enumOrDefault(Keys.READER_ORIENTATION, ReaderOrientation.FREE)
             val readerBackground = preferences.enumOrDefault(Keys.READER_BACKGROUND, ReaderBackground.BLACK)
+            val tapZoneLayout = preferences.enumOrDefault(Keys.TAP_ZONE_LAYOUT, TapZoneLayout.EDGES)
+            val customTapZones = preferences[Keys.CUSTOM_TAP_ZONES]?.let { raw ->
+                try {
+                    Json.decodeFromString<List<CustomTapZone>>(raw)
+                } catch (_: Exception) {
+                    null
+                }
+            } ?: emptyList()
 
             ReaderSettings(
                 fitMode = fitMode,
                 volumeKeyNavigationEnabled = preferences[Keys.VOLUME_KEY_NAV] ?: true,
                 volumeKeyInvert = preferences[Keys.VOLUME_KEY_INVERT] ?: false,
                 touchEdgeNavigationEnabled = preferences[Keys.TOUCH_EDGE_NAV] ?: true,
+                tapZoneLayout = tapZoneLayout,
+                showTapZones = preferences[Keys.SHOW_TAP_ZONES] ?: true,
+                customTapZones = customTapZones,
+                customZonesMirrorInRtl = preferences[Keys.CUSTOM_ZONES_MIRROR_RTL] ?: true,
                 keepScreenOn = preferences[Keys.KEEP_SCREEN_ON] ?: true,
                 autoDeleteOption = autoDeleteOption,
                 isIncognitoMode = incognito,
@@ -220,6 +238,29 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun updateTouchEdgeNavigation(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[Keys.TOUCH_EDGE_NAV] = enabled
+        }
+    }
+    suspend fun updateTapZoneLayout(layout: TapZoneLayout) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.TAP_ZONE_LAYOUT] = layout.name
+        }
+    }
+
+    suspend fun updateShowTapZones(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.SHOW_TAP_ZONES] = enabled
+        }
+    }
+
+    suspend fun updateCustomTapZones(zones: List<CustomTapZone>) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.CUSTOM_TAP_ZONES] = Json.encodeToString(zones)
+        }
+    }
+
+    suspend fun updateCustomZonesMirrorInRtl(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.CUSTOM_ZONES_MIRROR_RTL] = enabled
         }
     }
 

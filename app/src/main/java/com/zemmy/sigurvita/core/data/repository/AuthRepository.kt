@@ -1,8 +1,8 @@
 package com.zemmy.sigurvita.core.data.repository
 
 import com.zemmy.sigurvita.core.data.api.KavitaApi
-import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import com.zemmy.sigurvita.core.data.api.SessionEvents
+import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import com.zemmy.sigurvita.core.model.ServerConfig
 import com.zemmy.sigurvita.core.util.HttpFailure
 import kotlinx.coroutines.Dispatchers

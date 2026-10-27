@@ -1,7 +1,7 @@
 package com.zemmy.sigurvita.core.data.api
 
-import android.util.Log
 import android.content.pm.ApplicationInfo
+import android.util.Log
 import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.datastore.UserPreferencesRepository
 import kotlinx.serialization.json.Json

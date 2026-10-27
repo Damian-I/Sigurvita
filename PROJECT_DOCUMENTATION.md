@@ -122,6 +122,10 @@ When developing new screens, components or settings dialogues, adhere to these s
 | `server_url`, `api_key`, `jwt_token`, `user_id` | Server session (stored unencrypted). |
 | `fit_mode` | Stored reader fit mode. Reading mode is not stored; see [11.1](#111-reader). |
 | `volume_key_nav`, `volume_key_invert`, `touch_edge_nav`, `keep_screen_on` | Reader behaviour toggles. |
+| `tap_zone_layout` | `TapZoneLayout` enum name (default `EDGES`; unreadable falls back to `EDGES`). |
+| `show_tap_zones` | Highlight tap zones overlay toggle (default `true`). |
+| `custom_tap_zones` | JSON list of `CustomTapZone` (screen fractions for LTR; unreadable falls back to empty list). |
+| `custom_zones_mirror_rtl` | Mirror custom zones for RTL toggle (default `true`). |
 | `auto_delete_option` | Auto-delete policy for downloads. |
 | `incognito_mode` | Global Incognito toggle. |
 | `speech_bubble_detection_enabled` | Speech-bubble detection on/off (default `true`; legacy key `speech_bubbles_enabled` is read as a fallback). |
@@ -250,10 +254,10 @@ It is **not** the panel-aware reading order. `panel_aware_order` is a persisted 
 | Hold **volume up + down** for about 2 s | Arms the mode and magnifies the first bubble of the current page (a long-press has no bubble to pick, so reading order decides). The device gives a short haptic buzz. If detection is off or the mode is Webtoon nothing happens. |
 | Reader options → **Speech Bubble Navigation** switch | Arms the mode only; the next step magnifies the first bubble. |
 
-**Stepping.** Edge taps and volume keys both call the same `ReaderViewModel.navigateStep`. The page-transition zones are the outer 30% on each side (`classifyTapZone` in `TapZones.kt`); the left edge is *previous* in LTR and *next* in RTL. The page (`ImageReader`) and the magnifier overlay (`BubbleMagnifierOverlay`, which sits on top while a bubble is magnified) use the same classifier, so the zones are identical with or without a magnified bubble.
+**Stepping.** Edge taps and volume keys both call the same `ReaderViewModel.navigateStep`. The page-transition zones are the zones of the selected tap-zone layout (default: outer 30% each side), resolved by `classifyTap` in `TapZones.kt` and mirrored for RTL. The page (`ImageReader`) and the magnifier overlay (`BubbleMagnifierOverlay`, which sits on top while a bubble is magnified) use the same classifier, so the zones are identical with or without a magnified bubble.
 
 **Leaving the mode** (all of these reset it, and the reader options switch follows):
-- Tap the **centre** of the screen, the non-transition zone: on the page this also toggles the controls, as before; on the magnifier overlay it only dismisses.
+- Tap outside every zone: on the page this also toggles the controls, as before; on the magnifier overlay it only dismisses.
 - Any tap when there are no zones: Edge Touch Page Navigation is off, or the page is zoomed past 1.05×.
 - Back while a bubble is magnified, an S-Pen press on the screen, the switch, holding both volume keys again, tapping a timeline thumbnail or dragging the thumbnail strip, changing the detection toggle or confidence, switching to Webtoon mode, or leaving the reader.
 
@@ -350,7 +354,8 @@ Pinned hero with the cover, summary, "Read more...", chapter/page progress (acce
 ### 6.6 Reader (`ReaderScreen`)
 
 - **Paging & zoom**: horizontal pager (RTL/LTR) or vertical webtoon scrolling. Pinch zoom and pan state are read in the draw phase through a lambda `graphicsLayer`, so zooming does not recompose the page. In webtoon mode a one-finger drag scrolls the list at 1×, a two-finger pinch zooms, and once zoomed one finger pans.
-- **Navigation**: edge taps (the outer 30% of each side) and volume keys perform standard page-by-page navigation by default. Entering [bubble navigation mode](#410-speech-bubble-navigation-mode) (long-press a bubble, S-Pen hover, hold both volume keys for about 2 s, or the reader options switch) makes the same edge taps and volume keys step through speech bubbles instead, continuously across page and chapter/issue transitions. Tapping the centre of the screen, the non-transition zone, leaves the mode, as do the other exits listed in 4.10. Holding both volume keys again toggles it off.
+- **Navigation**: tap zones (layout selectable: Edges, Top/bottom, L-shape, Kindle, Custom) and volume keys perform standard page-by-page navigation by default. Entering [bubble navigation mode](#410-speech-bubble-navigation-mode) (long-press a bubble, S-Pen hover, hold both volume keys for about 2 s, or the reader options switch) makes the same tap zones and volume keys step through speech bubbles instead, continuously across page and chapter/issue transitions. Tapping outside every zone leaves the mode, as do the other exits listed in 4.10. Holding both volume keys again toggles it off.
+- **Tap zone highlight**: a highlight overlay (`TapZoneOverlay`) fades in for 3 s once the chapter has loaded and whenever the layout, custom zones, reading direction or toggle change; controlled by the `show_tap_zones` setting.
 - **Background work**: `ReaderDetectionScheduler` preloads detection for the current page first, then the rest of the chapter (restarting from the current page on every page turn), prefetches images for streamed pages, and pre-detects the upcoming chapter.
 - **Chrome**: control overlay auto-dismiss, issue detail bottom sheet, swipeable multi-thumbnail timeline preview strip, timeline slider, bottom speech-bubble indicator, previous-chapter navigation, open-at-last-page support and **S-Pen hover magnification**.
 
@@ -359,7 +364,7 @@ Pinned hero with the cover, summary, "Read more...", chapter/page progress (acce
 - **Background colour** (`ReaderBackground`: Black, Gray, White, Auto). Black, Gray and White are fixed colours (`ReaderBackground.fixedColor()`). **Auto** is decided per page: once a page has loaded, `estimatePageEdgeColor` (`ReaderBackgroundColor.kt`) decodes a 256 px copy through Coil (memory cache disabled) and takes the per-channel median of a thin ring of pixels just inside the edges, so artwork touching the edge does not skew the result. The colour is computed once per page, stored in `ReaderScreen.pageBackgrounds` (cleared when the chapter changes), and the root background follows the current page's colour. Until it is computed, or if the image cannot be read, the background is black.
 - **Screen orientation** (`ReaderOrientation`: Free, Portrait, Locked portrait, Reverse portrait, Landscape, Locked landscape). Applied through `Activity.requestedOrientation` in a `DisposableEffect`; leaving the reader resets it to `SCREEN_ORIENTATION_UNSPECIFIED`. Portrait/Landscape follow the sensor within that axis; the Locked variants do not.
 - **Page number** toggle: shows `current / total` at the bottom centre only while the controls overlay is hidden.
-- Touch edge navigation, keep screen on, speech-bubble detection, a live **Speech Bubble Navigation** switch, highlight boxes, confidence slider, panel-aware order and panel debug overlay (feature options first, debug last, per [section 3](#3-app-design--ux-principles)). The Speech Bubble Navigation switch is not a stored setting: it mirrors [bubble navigation mode](#410-speech-bubble-navigation-mode), so it follows the mode however it was entered or left. It only appears while detection is on, is disabled in Webtoon mode, and exists only in this sheet (`ReaderSettingsContent(bubbleNavActive = …)`), not on the global Settings screen.
+- Touch edge navigation (with layout picker where previews are always left-to-right, highlight toggle, and for Custom the RTL mirror toggle and full-screen editor supporting rectangle or freehand zones, Next/Back actions, drag to move, and pinch to resize), keep screen on, speech-bubble detection, a live **Speech Bubble Navigation** switch, highlight boxes, confidence slider, panel-aware order and panel debug overlay (feature options first, debug last, per [section 3](#3-app-design--ux-principles)). The Speech Bubble Navigation switch is not a stored setting: it mirrors [bubble navigation mode](#410-speech-bubble-navigation-mode), so it follows the mode however it was entered or left. It only appears while detection is on, is disabled in Webtoon mode, and exists only in this sheet (`ReaderSettingsContent(bubbleNavActive = …)`), not on the global Settings screen.
 
 ### 6.7 Reading lists (`ReadingListScreen`)
 
@@ -375,7 +380,7 @@ Testing and cleanup workspace for flagged pages (`marked_pages`). Supports **rev
 
 ### 6.10 Settings (`SettingsScreen`)
 
-**Appearance**: theme mode chips (System / Light / Dark / AMOLED — AMOLED forces a true-black background and a brighter primary) and a Material You dynamic-colour toggle (Android 12+, disabled with an explanatory hint below). Also the global ColorScape switch, reader configuration (fit mode, volume keys, edge tap, keep screen on, speech-bubble detection, highlight boxes, confidence threshold, panel-aware order, panel map debug overlay), offline download auto-delete options, account session refresh, and logout.
+**Appearance**: theme mode chips (System / Light / Dark / AMOLED — AMOLED forces a true-black background and a brighter primary) and a Material You dynamic-colour toggle (Android 12+, disabled with an explanatory hint below). Also the global ColorScape switch, reader configuration (fit mode, volume keys, edge tap and tap zone layout/custom editor, keep screen on, speech-bubble detection, highlight boxes, confidence threshold, panel-aware order, panel map debug overlay), offline download auto-delete options, account session refresh, and logout.
 
 Appearance is persisted in DataStore (`APP_THEME_MODE`, `APP_DYNAMIC_COLOR`) and applied in `MainActivity`, which also sets light/dark status- and navigation-bar icon appearance to match the resolved background.
 
@@ -452,7 +457,8 @@ Requirements: JDK 17, Android SDK 35, and the Gradle wrapper. `model.tflite` is 
 | `core/util/NaturalSortTest.kt` | `naturalCompare`, chapter-number extraction, display titles, reading-list title cleaning and hierarchy parsing. |
 | `core/util/ReadingOrderTest.kt`, `ReadingOrderUnitTest.kt` | Reading-order engine and panel sorting. |
 | `core/util/WebLinksTest.kt` | External-link recognition, de-duplication and primary-link preference. |
-| `ui/screens/reader/TapZonesTest.kt` | `classifyTapZone`: LTR/RTL edge mapping, centre, strict 30%/70% boundaries, zero width. |
+| `ui/screens/reader/TapZonesTest.kt` | Legacy `classifyTapZone`: LTR/RTL edge mapping, centre, strict 30%/70% boundaries, zero width. |
+| `ui/screens/reader/TapRegionsTest.kt` | Preset layouts, RTL mirroring, custom zones, overlap order, freehand polygons, label point. |
 | `ui/screens/reader/VolumeChordDetectorTest.kt` | Volume chord with a fake clock: grace-window stepping, quick taps, auto-repeat, 2 s hold, early release, re-arming, reset. |
 
 `app/src/androidTest/` contains only the generated `ExampleInstrumentedTest`; there is no real instrumentation coverage.
@@ -476,6 +482,7 @@ Requirements: JDK 17, Android SDK 35, and the Gradle wrapper. `model.tflite` is 
 - **Downloaded chapter**: open a downloaded chapter offline; `ReaderRepository` should log the archive path and extraction, not `has no usable local copy, streaming`.
 - **Incognito**: enable it, read a chapter and toggle read state; the server must not receive progress/mark requests.
 - **Bubble navigation** ([4.10](#410-speech-bubble-navigation-mode)): long-press a bubble, step with the left/right edge zones and with the volume keys, tap the centre to leave; hold both volume keys for about 2 s to toggle it on and off; check that the **Speech Bubble Navigation** switch in the reader options follows every one of those. Also check plain page turning (mode off) with edge taps and volume keys, in both RTL and LTR.
+- **Tap zone layouts & editor**: test each preset layout (Edges, Top/bottom, L-shape, Kindle) in both RTL and LTR; test the custom editor (create rectangle or freehand zones, select, move, pinch to resize, delete, save); verify highlight overlay fades in on reader open and after layout changes; verify tapping outside zones leaves bubble navigation mode for non-edge layouts (e.g. Kindle top strip, L-shape corners).
 - **Token renewal**: not verified against a live expiring JWT (see [11.5](#115-build-licensing--testing-gaps)).
 
 ---
@@ -523,7 +530,7 @@ app/src/main/java/com/zemmy/sigurvita/
     ├── screens/                     # Auth, Downloads, Home, Library, MarkedPages, Reader, ReadingList, SeriesDetail, Settings
     │   ├── seriesdetail/            # ExternalLinkButton, SeriesDetailScreen, SeriesDetailViewModel, SeriesHeader, SeriesLayouts, SeriesToolbar
     │   └── reader/                  # BubbleHitTest, BubbleMagnifierOverlay, ImageReader, ReaderBackgroundColor, ReaderBubbleNavigator,
-    │                                # ReaderDetectionScheduler, ReaderProgressTracker, ReaderScreen, ReaderViewModel, TapZones, VolumeChordDetector
+    │                                # ReaderDetectionScheduler, ReaderProgressTracker, ReaderScreen, ReaderViewModel, TapZoneViews, TapZones (tap-zone layouts, polygon hit testing), VolumeChordDetector
     ├── theme/                       # Color, ColorScape, Dimens, Shape, Theme, Type
     └── util/                        # OnResumeEffect
 
@@ -566,6 +573,11 @@ A single global flag (`incognito_mode`, DataStore). While on:
 - **The mode is not persisted and is not on the global Settings screen.** It resets when the reader closes; it also resets when switching to Webtoon mode. The reader options switch simply mirrors it.
 - **The magnifier overlay ignores page zoom.** Its edge zones apply even if the page underneath was zoomed (its geometry already assumes 1×). On the page itself, taps while zoomed past 1.05× have no zones and leave the mode.
 - **Moving the timeline slider does not leave bubble navigation mode**, unlike tapping a thumbnail or dragging the thumbnail strip.
+- **Tap zones do not exist in Webtoon mode.**
+- **Custom tap zones are stored as left-to-right fractions** and mirrored horizontally at read time when RTL mirroring is enabled.
+- **Custom zone editor resizes uniformly** using two-finger pinch zoom without per-corner adjustment handles.
+- **Tap zone highlight shows once per reader open**, not per chapter transition within the same session.
+- **The legacy edge classifier and new tap zone layout boundary differ by one pixel** at the exact 70% boundary and exact right edge due to float vs integer truncation.
 
 ### 11.2 Detection & ML
 

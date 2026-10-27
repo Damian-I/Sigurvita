@@ -3,6 +3,7 @@ package com.zemmy.sigurvita.ui.screens.reader
 import android.content.Context
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.ui.graphics.Color
+import androidx.core.graphics.get
 import coil.imageLoader
 import coil.request.CachePolicy
 import coil.request.ImageRequest
@@ -11,7 +12,6 @@ import com.zemmy.sigurvita.core.model.ReaderBackground
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import androidx.core.graphics.get
 
 val ReaderGray = Color(0xFF7A7A7A)
 

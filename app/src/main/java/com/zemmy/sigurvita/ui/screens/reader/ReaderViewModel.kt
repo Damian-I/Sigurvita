@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
 import com.zemmy.sigurvita.core.data.api.dto.SeriesMetadataDto
 import com.zemmy.sigurvita.core.model.Chapter
+import com.zemmy.sigurvita.core.model.CustomTapZone
 import com.zemmy.sigurvita.core.model.DownloadStatus
 import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderBackground
@@ -12,6 +13,7 @@ import com.zemmy.sigurvita.core.model.ReaderOrientation
 import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
+import com.zemmy.sigurvita.core.model.TapZoneLayout
 import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
 import com.zemmy.sigurvita.core.util.orderBubbles
 import kotlinx.coroutines.Job
@@ -712,7 +714,25 @@ class ReaderViewModel : ViewModel() {
             preferencesRepository.updateTouchEdgeNavigation(enabled)
         }
     }
+    fun updateTapZoneLayout(layout: TapZoneLayout) {
+        _uiState.update { it.copy(settings = it.settings.copy(tapZoneLayout = layout)) }
+        viewModelScope.launch { preferencesRepository.updateTapZoneLayout(layout) }
+    }
 
+    fun updateShowTapZones(enabled: Boolean) {
+        _uiState.update { it.copy(settings = it.settings.copy(showTapZones = enabled)) }
+        viewModelScope.launch { preferencesRepository.updateShowTapZones(enabled) }
+    }
+
+    fun updateCustomTapZones(zones: List<CustomTapZone>) {
+        _uiState.update { it.copy(settings = it.settings.copy(customTapZones = zones)) }
+        viewModelScope.launch { preferencesRepository.updateCustomTapZones(zones) }
+    }
+
+    fun updateCustomZonesMirrorInRtl(enabled: Boolean) {
+        _uiState.update { it.copy(settings = it.settings.copy(customZonesMirrorInRtl = enabled)) }
+        viewModelScope.launch { preferencesRepository.updateCustomZonesMirrorInRtl(enabled) }
+    }
     fun updateKeepScreenOn(keep: Boolean) {
         val currentSettings = _uiState.value.settings
         _uiState.update { it.copy(settings = currentSettings.copy(keepScreenOn = keep)) }

@@ -3,22 +3,24 @@ package com.zemmy.sigurvita.ui.screens.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zemmy.sigurvita.SigurvitaApp
-import com.zemmy.sigurvita.core.model.AppearanceSettings
 import com.zemmy.sigurvita.core.model.AppThemeMode
+import com.zemmy.sigurvita.core.model.AppearanceSettings
 import com.zemmy.sigurvita.core.model.AutoDeleteOption
+import com.zemmy.sigurvita.core.model.CustomTapZone
 import com.zemmy.sigurvita.core.model.FitMode
 import com.zemmy.sigurvita.core.model.ReaderBackground
 import com.zemmy.sigurvita.core.model.ReaderOrientation
 import com.zemmy.sigurvita.core.model.ReaderSettings
+import com.zemmy.sigurvita.core.model.TapZoneLayout
+import com.zemmy.sigurvita.core.util.toUserMessage
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import com.zemmy.sigurvita.core.util.toUserMessage
 
 class SettingsViewModel : ViewModel() {
 
@@ -79,7 +81,29 @@ class SettingsViewModel : ViewModel() {
             preferencesRepository.updateTouchEdgeNavigation(enabled)
         }
     }
+    fun updateTapZoneLayout(layout: TapZoneLayout) {
+        viewModelScope.launch {
+            preferencesRepository.updateTapZoneLayout(layout)
+        }
+    }
 
+    fun updateShowTapZones(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updateShowTapZones(enabled)
+        }
+    }
+
+    fun updateCustomTapZones(zones: List<CustomTapZone>) {
+        viewModelScope.launch {
+            preferencesRepository.updateCustomTapZones(zones)
+        }
+    }
+
+    fun updateCustomZonesMirrorInRtl(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updateCustomZonesMirrorInRtl(enabled)
+        }
+    }
     fun updateKeepScreenOn(keep: Boolean) {
         viewModelScope.launch {
             preferencesRepository.updateKeepScreenOn(keep)

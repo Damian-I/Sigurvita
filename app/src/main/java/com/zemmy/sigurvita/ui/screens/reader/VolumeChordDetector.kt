@@ -111,7 +111,7 @@ class VolumeChordDetector(
 
     companion object {
         /** How long both keys must be held to toggle bubble navigation mode. */
-        const val DEFAULT_HOLD_MILLIS = 2000L
+        const val DEFAULT_HOLD_MILLIS = 500L
 
         /**
          * Window in which a second key turns a first key's step into a chord. It is also the delay before a single

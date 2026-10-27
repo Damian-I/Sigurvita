@@ -43,8 +43,8 @@ fun BubbleMagnifierOverlay(
     onBubbleHover: ((Int, Int?, Offset?, Size?) -> Unit)? = null,
     // When true (and the page is paged, not webtoon) the page-transition zones step bubbles instead of dismissing.
     edgeTapNavigationEnabled: Boolean = false,
-    isRtl: Boolean = false,
-    // Called with `isNext` for a tap in a page-transition zone; [isRtl] is already applied.
+    tapRegions: List<TapRegion> = defaultTapRegions,
+    // Called with `isNext` for a tap in a page-transition zone; the regions already account for reading direction.
     onEdgeTap: (isNext: Boolean) -> Unit = {}
 ) {
     BackHandler(enabled = true) {
@@ -118,12 +118,12 @@ fun BubbleMagnifierOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(edgeTapNavigationEnabled, isRtl) {
+            .pointerInput(edgeTapNavigationEnabled, tapRegions) {
                 detectTapGestures(onTap = { tap ->
                     // Same zones as the page underneath: the edges step bubbles, the centre (or any tap when
                     // edge navigation is off) dismisses the magnifier and leaves bubble navigation mode.
                     if (edgeTapNavigationEnabled) {
-                        when (classifyTapZone(tap.x, size.width.toFloat(), isRtl)) {
+                        when (classifyTap(tap.x, tap.y, size.width.toFloat(), size.height.toFloat(), tapRegions)) {
                             TapZone.NEXT -> latestOnEdgeTap(true)
                             TapZone.PREVIOUS -> latestOnEdgeTap(false)
                             TapZone.CENTER -> latestOnDismiss()

@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.util.Log
+import androidx.core.graphics.createBitmap
 import com.zemmy.sigurvita.core.model.LetterboxParams
 import com.zemmy.sigurvita.core.model.PageBubbles
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -20,7 +21,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 import java.util.concurrent.Executors
-import androidx.core.graphics.createBitmap
 import kotlin.math.min
 import kotlin.math.roundToInt
 
