@@ -83,6 +83,33 @@ class ReadingListRepository(
             Result.failure(e)
         }
     }
+
+    /** Lists without progress: one request, no per-list item calls. Totals stay 0. Used to find the "next" list. */
+    suspend fun getReadingListSummaries(): Result<List<ReadingList>> = withContext(Dispatchers.IO) {
+        try {
+            val res = api.getReadingLists()
+            val dtos = if (res.isSuccessful) res.body().orEmpty() else emptyList()
+            Result.success(
+                dtos.filter { it.id > 0 && !it.title.isNullOrBlank() }.map { dto ->
+                    ReadingList(
+                        id = dto.id,
+                        title = dto.title ?: "",
+                        summary = dto.summary,
+                        itemCount = if (dto.itemCount > 0) dto.itemCount else 0,
+                        coverUrl = null,
+                        promoted = dto.promoted,
+                        totalPages = 0,
+                        pagesRead = 0,
+                        issuesRead = 0
+                    )
+                }
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
     /**
      * @param resolveDetails false = everything comes straight from the list response (a single request).
      * Use it when only navigation data is needed (previous/next chapter, preloading, "which lists contain

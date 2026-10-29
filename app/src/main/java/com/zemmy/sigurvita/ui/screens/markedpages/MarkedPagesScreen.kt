@@ -92,6 +92,8 @@ fun MarkedPagesScreen(
     var showSortMenu by remember { mutableStateOf(false) }
     var showSettingsSheet by remember { mutableStateOf(false) }
 
+    com.zemmy.sigurvita.ui.util.OnResumeEffect { viewModel.pruneDeletedMarks() }
+
     if (showClearAllDialog) {
         AlertDialog(
             onDismissRequest = { showClearAllDialog = false },
@@ -628,8 +630,8 @@ private fun MarkedPageCard(
                     ) {
                         Icon(
                             Icons.Default.PlayArrow,
-                            contentDescription = "Open in Reader",
-                            tint = MaterialTheme.colorScheme.secondary
+                            contentDescription = "Open in Reader (Incognito)",
+                            tint = com.zemmy.sigurvita.ui.theme.SigurvitaTheme.colors.incognito
                         )
                     }
 

@@ -323,7 +323,7 @@ URLs built outside the Retrofit interface (they still go through the same placeh
 | ReadingLists | `reading_lists?eraName={eraName}` | optional `eraName` |
 | ReadingListDetail | `reading_list_detail/{listId}` | `listId` integer |
 | SeriesDetail | `series_detail/{seriesId}` | `seriesId` integer |
-| Reader | `reader/{chapterId}/{totalPages}?seriesId={seriesId}&volumeId={volumeId}&readingListId={readingListId}` | optional `seriesId`, `volumeId`, `readingListId` (default `0`) |
+| Reader | `reader/{chapterId}/{totalPages}?seriesId={seriesId}&volumeId={volumeId}&readingListId={readingListId}&incognito={incognito}` | optional `seriesId`, `volumeId`, `readingListId`, `incognito` integer (`0` or `1`, default `0`) |
 | Downloads | `downloads` | none |
 | MarkedPages | `marked_pages` | none |
 | Settings | `settings` | none |
@@ -334,7 +334,7 @@ Hybrid navigation: a `ModalNavigationDrawer` wraps a `Scaffold` whose bottom bar
 
 The drawer is the deep-navigation surface: branded header with server host, sectioned labels, Home/Libraries (reorderable drag handles), the reading-list **hierarchical tree** (**Era** → **Collapsible Major Part** → **Subparts**), Downloads, Page Review and Settings. Top-level screens expose it through a menu icon (Home, Library, Reading Lists at root, Downloads); elsewhere it is available by edge swipe.
 
-Drawer state is owned by `DrawerViewModel` (activity-scoped, obtained once in `SigurvitaNavGraph`). It restores the last `drawer.json` snapshot immediately, refreshes libraries and reading lists in parallel when the logged-in account changes, writes a new snapshot after a successful fetch, persists library order and chosen lists, and derives the Era → Part → Subpart hierarchy on `Dispatchers.Default`. Rendering is split into `AppDrawer` (shell and sections), `DrawerLibraries` (reorderable libraries) and `DrawerListTree` (collapsible tree); `NavGraph` only wires routes, the bottom bar and inset policy.
+Drawer state is owned by `DrawerViewModel` (activity-scoped, obtained once in `SigurvitaNavGraph`). It restores the last `drawer.json` snapshot immediately, refreshes libraries and reading lists in parallel when the logged-in account changes, writes a new snapshot after a successful fetch, persists library order and chosen lists, derives the Era → Part → Subpart hierarchy on `Dispatchers.Default`, and automatically refreshes reading-list progress (`refreshReadingLists()`) whenever the user leaves the reader. Rendering is split into `AppDrawer` (shell and sections), `DrawerLibraries` (reorderable libraries) and `DrawerListTree` (collapsible tree); `NavGraph` only wires routes, the bottom bar and inset policy.
 
 When the bottom bar is visible, root `Scaffold` uses `contentWindowInsets = WindowInsets(0)` and consumes the navigation-bar insets so inner screen Scaffolds do not double-pad. When it is hidden, insets propagate normally to the screen.
 
@@ -357,7 +357,7 @@ Pinned hero with the cover, summary, "Read more...", chapter/page progress (acce
 - **Paging & zoom**: horizontal pager (RTL/LTR) or vertical webtoon scrolling. Pinch zoom and pan state are read in the draw phase through a lambda `graphicsLayer`, so zooming does not recompose the page. In webtoon mode a one-finger drag scrolls the list at 1×, a two-finger pinch zooms, and once zoomed one finger pans.
 - **Navigation**: tap zones (layout selectable: Edges, Top/bottom, L-shape, Kindle, Custom) and volume keys perform standard page-by-page navigation by default. Entering [bubble navigation mode](#410-speech-bubble-navigation-mode) (long-press a bubble, S-Pen hover, hold both volume keys for about 2 s, or the reader options switch) makes the same tap zones and volume keys step through speech bubbles instead, continuously across page and chapter/issue transitions. Tapping outside every zone leaves the mode, as do the other exits listed in 4.10. Holding both volume keys again toggles it off.
 - **Tap zone highlight**: a highlight overlay (`TapZoneOverlay`) fades in for 3 s once the chapter has loaded and whenever the layout, custom zones, reading direction or toggle change; controlled by the `show_tap_zones` setting.
-- **Background work**: `ReaderDetectionScheduler` preloads detection for the current page first, then the rest of the chapter (restarting from the current page on every page turn), prefetches images for streamed pages, and pre-detects the upcoming chapter.
+- **Background work**: `ReaderDetectionScheduler` preloads detection for the current page first, then the rest of the chapter (restarting from the current page on every page turn), prefetches images for streamed pages, and pre-detects the upcoming chapter. At the end of a Marvel reading list, auto-advance automatically transitions into the next Marvel reading list, displaying `ReadingListTransitionOverlay`.
 - **Chrome**: control overlay auto-dismiss, issue detail bottom sheet, swipeable multi-thumbnail timeline preview strip, timeline slider, bottom speech-bubble indicator, previous-chapter navigation, open-at-last-page support and **S-Pen hover magnification**.
 - **Large pages**:
   - **`PageViewportController`**: Owns zoom and pan state (`PageTransform`) for every visible page, identifies large pages (`width ÷ height >= large_page_aspect`, default `1.10`, in paged reading mode), builds view targets for guided or scroll stepping, and runs smooth view animations (`animateTo`).
@@ -384,7 +384,7 @@ A summary card (active / completed / failed) sits above expandable series group 
 
 ### 6.9 Page Review (`MarkedPagesScreen`)
 
-Testing and cleanup workspace for flagged pages (`marked_pages`). Supports **review tags** (`DEBUG` / `REMOVE` — warning and error semantic colours), filtering, grouping, sorting, live TFLite speech-bubble and DeepPanel map detection testing, persisted local image cleanup, and full-screen `ImageReader` preview inspection.
+Testing and cleanup workspace for flagged pages (`marked_pages`). Supports **review tags** (`DEBUG` / `REMOVE` — warning and error semantic colours), filtering, grouping, sorting, live TFLite speech-bubble and DeepPanel map detection testing, persisted local image cleanup, and full-screen `ImageReader` preview inspection. The open-in-reader button launches a session-only incognito reader (`incognito = true`), and `pruneDeletedMarks()` removes stale `REMOVE` marks on screen open and on app resume by live-checking chapter page counts against the server via `getServerPageCount()`.
 
 ### 6.10 Settings (`SettingsScreen`)
 
@@ -562,6 +562,8 @@ A single global flag (`incognito_mode`, DataStore). While on:
 - `ReaderRepository.saveProgress` does nothing.
 - Reading progress is still **read** from the server.
 - UI cues: tertiary-coloured banner on Home/Library/Reading Lists, tertiary Resume button, and an "Incognito" chip in the reader.
+
+Additionally, **Session Incognito** (`sessionIncognito`) is a session-only incognito state used when launching the reader from Page Review (`incognito = true` route argument). When active, the entire reader session is write-free (skipping progress saves, read state toggles, series read context saves, and auto-delete), while still reading progress normally.
 
 **Large-page & Panel Map Notes:**
 - Guided mode falls back to page halves when no panel map exists yet.

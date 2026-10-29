@@ -13,6 +13,7 @@ import com.zemmy.sigurvita.core.model.ServerConfig
 import com.zemmy.sigurvita.core.util.ReadingListEraGroup
 import com.zemmy.sigurvita.core.util.parseReadingListHierarchy
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -96,6 +98,25 @@ class DrawerViewModel : ViewModel() {
     fun setReadingListChosen(listId: Int, chosen: Boolean) {
         viewModelScope.launch {
             if (chosen) prefs.addChosenReadingList(listId) else prefs.removeChosenReadingList(listId)
+        }
+    }
+
+    private var refreshJob: Job? = null
+
+    /**
+     * Re-reads reading-list progress with the same call the Reading Lists screen uses, so READ / in-progress in the
+     * sidebar follows what was just read. Libraries are not re-fetched.
+     */
+    fun refreshReadingLists() {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            if (!prefs.serverConfigFlow.first().isLoggedIn) return@launch
+            val res = readingListRepo.getReadingLists()
+            if (res.isSuccess) {
+                val fetched = res.getOrDefault(emptyList())
+                readingLists.value = fetched
+                inProgressIds.value = fetched.filter { it.pagesRead > 0 }.map { it.id }.toSet()
+            }
         }
     }
 

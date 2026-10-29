@@ -376,4 +376,8 @@ class SeriesRepository(
             Result.failure(e)
         }
     }
+
+    /** Live page count of a chapter on the server, or null when it cannot be determined (offline, error, missing). */
+    suspend fun getServerPageCount(chapterId: Int): Int? =
+        getChapterDto(chapterId).getOrNull()?.pages?.takeIf { it > 0 }
 }

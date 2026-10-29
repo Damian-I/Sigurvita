@@ -119,6 +119,7 @@ fun ReaderScreen(
     seriesId: Int = 0,
     volumeId: Int = 0,
     readingListId: Int = 0,
+    incognito: Boolean = false,
     onBackClick: () -> Unit
 ) {
     val context = LocalContext.current
@@ -147,6 +148,7 @@ fun ReaderScreen(
     }
 
     LaunchedEffect(chapterId) {
+        viewModel.startReaderSession(incognito)
         viewModel.loadChapter(chapterId, totalPages, seriesId, volumeId, readingListId)
     }
 
@@ -256,6 +258,13 @@ fun ReaderScreen(
                         Text("Start from Beginning")
                     }
                 }
+            )
+        }
+
+        state.listTransition?.let { transition ->
+            ReadingListTransitionOverlay(
+                transition = transition,
+                onDismiss = viewModel::dismissListTransition
             )
         }
 

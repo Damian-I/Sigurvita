@@ -14,7 +14,9 @@ import com.zemmy.sigurvita.core.model.ReaderPage
 import com.zemmy.sigurvita.core.model.ReaderSettings
 import com.zemmy.sigurvita.core.model.ReadingMode
 import com.zemmy.sigurvita.core.model.TapZoneLayout
+import com.zemmy.sigurvita.core.util.cleanReadingListTitle
 import com.zemmy.sigurvita.core.util.formatChapterDisplayTitle
+import com.zemmy.sigurvita.core.util.nextMarvelReadingList
 import com.zemmy.sigurvita.core.util.orderBubbles
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -53,8 +55,11 @@ data class ReaderUiState(
     /** Speech-bubble navigation mode: edge taps and volume keys step through bubbles. Session-only, never persisted. */
     val bubbleNavActive: Boolean = false,
     val prevChapter: ChapterRef? = null,
-    val nextChapter: ChapterRef? = null
-)
+    val nextChapter: ChapterRef? = null,
+    /** Reader launched from Page Review: this session never writes progress or read state. */
+    val sessionIncognito: Boolean = false,
+    /** Shown over the reader while the first chapter of the next reading list loads. */
+    val listTransition: ReadingListTransition? = null)
 
 /** A chapter the reader can jump to, resolved from the active context (reading list or series order). */
 data class ChapterRef(
@@ -64,6 +69,9 @@ data class ChapterRef(
     val volumeId: Int,
     val readingListId: Int
 )
+
+/** "A new reading list has started" card shown before the first chapter of the next list. */
+data class ReadingListTransition(val title: String)
 
 class ReaderViewModel : ViewModel() {
 
@@ -114,6 +122,11 @@ class ReaderViewModel : ViewModel() {
         nextPage = { if (!stepViewport(isNext = true)) nextPage() },
         previousPage = { if (!stepViewport(isNext = false)) previousPage() }
     )
+
+    /** Called by the reader screen before [loadChapter]; [incognito] makes the whole session write-free. */
+    fun startReaderSession(incognito: Boolean) {
+        _uiState.update { it.copy(sessionIncognito = incognito) }
+    }
     fun loadChapter(
         chapterId: Int,
         totalPages: Int,
@@ -241,7 +254,7 @@ class ReaderViewModel : ViewModel() {
             val activeReadingMode = sessionReadingModeOverride ?: defaultMode
             val effectiveSettings = userSettings.copy(
                 readingMode = activeReadingMode,
-                isIncognitoMode = userSettings.isIncognitoMode
+                isIncognitoMode = userSettings.isIncognitoMode || _uiState.value.sessionIncognito
             )
 
             if (targetSeriesId > 0 && !effectiveSettings.isIncognitoMode) {
@@ -476,6 +489,7 @@ class ReaderViewModel : ViewModel() {
         _uiState.update { it.copy(currentChapter = updatedChapter) }
 
         viewModelScope.launch {
+            if (_uiState.value.sessionIncognito) return@launch
             if (newReadState) {
                 seriesRepository.markChapterRead(chapter.id, chapter.seriesId)
             } else {
@@ -672,16 +686,74 @@ class ReaderViewModel : ViewModel() {
         openChapter(prev, forceFirstPage = true)
     }
 
-    /** Auto-advance after the last page. */
+    /** Auto-advance after the last page. At the end of a Marvel reading list it rolls into the next list. */
     fun loadNextChapter() {
+        if (_uiState.value.listTransition != null) return
         val state = _uiState.value
         viewModelScope.launch {
             val next = state.nextChapter
                 ?: findNeighbors(state.chapterId, state.seriesId, state.readingListId).second
-                ?: return@launch
+            if (next != null) {
+                bubbleNav.pageArrivalDirection = 1
+                openChapter(next)
+                return@launch
+            }
+            val (listTitle, firstChapter) =
+                findNextReadingListStart(state.chapterId, state.seriesId, state.readingListId) ?: return@launch
             bubbleNav.pageArrivalDirection = 1
-            openChapter(next)
+            showListTransition(listTitle)
+            openChapter(firstChapter)
         }
+    }
+
+    /**
+     * At the last chapter of a reading list: (title, first chapter) of the next Marvel list, or null when this is
+     * not a list end, not a Marvel list, or there is no next list.
+     */
+    private suspend fun findNextReadingListStart(
+        chapterId: Int,
+        seriesId: Int,
+        readingListId: Int
+    ): Pair<String, ChapterRef>? {
+        val currentListId = if (readingListId > 0) {
+            readingListId
+        } else if (seriesId > 0) {
+            val saved = preferencesRepository.seriesReadContextsFlow.first()[seriesId]
+            if (saved?.originType == "READING_LIST" && saved.readingListId > 0) saved.readingListId else 0
+        } else 0
+        if (currentListId <= 0) return null
+
+        val currentItems = readingListRepository.getReadingListItems(currentListId, resolveDetails = false)
+            .getOrNull() ?: return null
+        val lastChapterId = currentItems.lastOrNull { (it.chapterId ?: 0) > 0 }?.chapterId ?: return null
+        if (lastChapterId != chapterId) return null
+
+        val lists = readingListRepository.getReadingListSummaries().getOrNull() ?: return null
+        val nextList = nextMarvelReadingList(lists, currentListId) ?: return null
+
+        val nextItems = readingListRepository.getReadingListItems(nextList.id, resolveDetails = false)
+            .getOrNull() ?: return null
+        val first = nextItems.firstOrNull { (it.chapterId ?: 0) > 0 && !it.isRead }
+            ?: nextItems.firstOrNull { (it.chapterId ?: 0) > 0 }
+            ?: return null
+        return cleanReadingListTitle(nextList.title) to
+            ChapterRef(first.chapterId!!, first.pages, first.seriesId, first.volumeId ?: 0, nextList.id)
+    }
+
+    private var listTransitionJob: Job? = null
+
+    private fun showListTransition(title: String) {
+        listTransitionJob?.cancel()
+        _uiState.update { it.copy(listTransition = ReadingListTransition(title)) }
+        listTransitionJob = viewModelScope.launch {
+            delay(2500)
+            _uiState.update { it.copy(listTransition = null) }
+        }
+    }
+
+    fun dismissListTransition() {
+        listTransitionJob?.cancel()
+        _uiState.update { it.copy(listTransition = null) }
     }
 
     /** Swipe/tap back from page 1: opens the previous chapter at its last page. */
@@ -847,5 +919,6 @@ class ReaderViewModel : ViewModel() {
         loadChapterJob?.cancel()
         detection.onReaderClosed()
         bubbleNav.pageArrivalDirection = 0
+        dismissListTransition()
     }
 }

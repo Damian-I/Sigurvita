@@ -51,6 +51,7 @@ class ReaderProgressTracker(
             progressSaveFlow
                 .debounce(3.seconds)
                 .collect { event ->
+                    if (state.value.sessionIncognito) return@collect
                     readerRepository.saveProgress(
                         seriesId = event.seriesId,
                         volumeId = event.volumeId,
@@ -66,6 +67,7 @@ class ReaderProgressTracker(
     /** Saves the current position now (called on chapter exit). */
     suspend fun flushSync() {
         val current = state.value
+        if (current.sessionIncognito) return
         if (current.pages.isNotEmpty() && current.chapterId > 0) {
             readerRepository.saveProgress(
                 seriesId = current.seriesId,
@@ -100,6 +102,7 @@ class ReaderProgressTracker(
 
         // Auto-delete logic still runs immediately on last page
         scope.launch {
+            if (state.value.sessionIncognito) return@launch
             if (index >= totalPages - 1 && totalPages > 0) {
                 // Flush progress immediately for the last page
                 readerRepository.saveProgress(

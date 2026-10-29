@@ -76,6 +76,7 @@ class MarkedPagesViewModel : ViewModel() {
     private val app = SigurvitaApp.instance
     private val repository = app.markedPageRepository
     private val preferencesRepository = app.userPreferencesRepository
+    private val seriesRepository = app.seriesRepository
 
     private val searchQueryFlow = MutableStateFlow("")
 
@@ -109,6 +110,31 @@ class MarkedPagesViewModel : ViewModel() {
                 if (currentPreview != null) {
                     testMlOnPage(currentPreview)
                 }
+            }
+        }
+    }
+
+    private var pruneJob: Job? = null
+
+    /**
+     * Removes REMOVE-tagged marks whose page no longer exists on the server (live check, never the download):
+     * the chapter now has fewer pages than the mark's index. One request per chapter, so several marks in the
+     * same chapter are judged against the same server page count. Unknown results never remove anything.
+     */
+    fun pruneDeletedMarks() {
+        if (pruneJob?.isActive == true) return
+        pruneJob = viewModelScope.launch(Dispatchers.IO) {
+            val removeMarks = repository.markedPagesFlow.first().filter { it.reviewTag == "REMOVE" }
+            val removedIds = mutableSetOf<Int>()
+            removeMarks.groupBy { it.chapterId }.forEach { (chapterId, marks) ->
+                val serverPages = seriesRepository.getServerPageCount(chapterId) ?: return@forEach
+                marks.filter { it.pageIndex >= serverPages }.forEach { mark ->
+                    repository.deleteMarkedPageById(mark.id)
+                    removedIds += mark.id
+                }
+            }
+            if (_uiState.value.previewingPage?.id?.let { it in removedIds } == true) {
+                setPreviewPage(null)
             }
         }
     }

@@ -277,3 +277,26 @@ fun parsePartAndSubpart(title: String): Pair<String, String> {
     }
     return Pair("Part 01", clean)
 }
+
+private fun marvelEraStartYear(title: String): Int? =
+    YEAR_RANGE_EXTRACT_REGEX.find(title)?.groupValues?.get(1)?.substringBefore('-')?.toIntOrNull()
+
+/**
+ * Next list in reading order, Marvel lists only (year-range eras; Star Wars, Alternate Universes, other
+ * brackets and General are excluded). Order: Era (chronological by start year) > Part > Subpart.
+ * Null when [currentListId] is not a Marvel list or is the last one.
+ */
+fun nextMarvelReadingList(
+    lists: List<com.zemmy.sigurvita.core.model.ReadingList>,
+    currentListId: Int
+): com.zemmy.sigurvita.core.model.ReadingList? {
+    val marvel = lists.filter { extractEraInfo(it.title).years != null }
+    if (marvel.none { it.id == currentListId }) return null
+    val ordered = parseReadingListHierarchy(marvel)
+        .sortedBy { era ->
+            era.parts.firstOrNull()?.subparts?.firstOrNull()?.list?.title?.let(::marvelEraStartYear) ?: Int.MAX_VALUE
+        }
+        .flatMap { era -> era.parts.flatMap { part -> part.subparts.map { it.list } } }
+    val index = ordered.indexOfFirst { it.id == currentListId }
+    return ordered.getOrNull(index + 1)
+}

@@ -10,9 +10,13 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -50,6 +54,15 @@ fun SigurvitaNavGraph(
     val currentLibraryId = if (currentRoute?.startsWith("library/") == true) {
         navBackStackEntry?.arguments?.getInt("libraryId")
     } else null
+
+    // Progress changes in the reader: refresh the sidebar's reading-list progress when the reader is left.
+    var previousRoute by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(currentRoute) {
+        if (previousRoute?.startsWith("reader/") == true && currentRoute?.startsWith("reader/") != true) {
+            drawerViewModel.refreshReadingLists()
+        }
+        previousRoute = currentRoute
+    }
 
     fun navigateFromDrawer(route: String) {
         scope.launch { drawerState.close() }
@@ -242,7 +255,8 @@ fun SigurvitaNavGraph(
                     navArgument("totalPages") { type = NavType.IntType },
                     navArgument("seriesId") { type = NavType.IntType; defaultValue = 0 },
                     navArgument("volumeId") { type = NavType.IntType; defaultValue = 0 },
-                    navArgument("readingListId") { type = NavType.IntType; defaultValue = 0 }
+                    navArgument("readingListId") { type = NavType.IntType; defaultValue = 0 },
+                    navArgument("incognito") { type = NavType.IntType; defaultValue = 0 }
                 )
             ) { backStackEntry ->
                 val chapterId = backStackEntry.arguments?.getInt("chapterId") ?: 0
@@ -250,6 +264,7 @@ fun SigurvitaNavGraph(
                 val seriesId = backStackEntry.arguments?.getInt("seriesId") ?: 0
                 val volumeId = backStackEntry.arguments?.getInt("volumeId") ?: 0
                 val readingListId = backStackEntry.arguments?.getInt("readingListId") ?: 0
+                val incognito = backStackEntry.arguments?.getInt("incognito") == 1
 
                 ReaderScreen(
                     chapterId = chapterId,
@@ -257,6 +272,7 @@ fun SigurvitaNavGraph(
                     seriesId = seriesId,
                     volumeId = volumeId,
                     readingListId = readingListId,
+                    incognito = incognito,
                     onBackClick = { navController.popBackStack() }
                 )
             }
@@ -287,7 +303,8 @@ fun SigurvitaNavGraph(
                                 chapterId = chapterId,
                                 totalPages = totalPages,
                                 seriesId = seriesId,
-                                volumeId = volumeId
+                                volumeId = volumeId,
+                                incognito = true
                             )
                         )
                     }
