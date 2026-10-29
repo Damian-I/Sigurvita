@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.zemmy.sigurvita"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.zemmy.sigurvita"
