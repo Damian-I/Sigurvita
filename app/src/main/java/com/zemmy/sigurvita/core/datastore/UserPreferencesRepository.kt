@@ -80,6 +80,7 @@ class UserPreferencesRepository(private val context: Context) {
         val SHOW_PAGE_NUMBER = booleanPreferencesKey("show_page_number")
         val READER_ORIENTATION = stringPreferencesKey("reader_orientation")
         val READER_BACKGROUND = stringPreferencesKey("reader_background")
+        val LARGE_PAGE_ASPECT = floatPreferencesKey("large_page_aspect")
         val COMPLETED_CHAPTER_HISTORY = stringPreferencesKey("completed_chapter_history")
         val LIBRARY_ORDER = stringPreferencesKey("library_order")
         val CHOSEN_READING_LISTS = stringPreferencesKey("chosen_reading_lists")
@@ -156,6 +157,7 @@ class UserPreferencesRepository(private val context: Context) {
                 showPageNumber = showPageNumber,
                 orientation = orientation,
                 readerBackground = readerBackground,
+                largePageAspectThreshold = preferences[Keys.LARGE_PAGE_ASPECT] ?: 1.1f,
                 colorScapeEnabled = preferences[Keys.COLOR_SCAPE_ENABLED] ?: true
             )
         }
@@ -330,6 +332,11 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun updateReaderBackground(background: ReaderBackground) {
         context.dataStore.edit { preferences ->
             preferences[Keys.READER_BACKGROUND] = background.name
+        }
+    }
+    suspend fun updateLargePageAspect(value: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.LARGE_PAGE_ASPECT] = value
         }
     }
     suspend fun updateColorScapeEnabled(enabled: Boolean) {

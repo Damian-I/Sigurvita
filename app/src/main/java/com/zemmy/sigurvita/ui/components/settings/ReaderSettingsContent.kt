@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -84,7 +85,8 @@ data class ReaderSettingsActions(
     val onTapZoneLayout: (TapZoneLayout) -> Unit = {},
     val onShowTapZones: (Boolean) -> Unit = {},
     val onCustomTapZones: (List<CustomTapZone>) -> Unit = {},
-    val onCustomZonesMirrorInRtl: (Boolean) -> Unit = {}
+    val onCustomZonesMirrorInRtl: (Boolean) -> Unit = {},
+    val onLargePageAspect: (Float) -> Unit = {}
 )
 
 /**
@@ -239,6 +241,25 @@ fun ReaderNavigationSection(
         if (settings.touchEdgeNavigationEnabled) {
             TapZoneLayoutPicker(settings, actions)
         }
+        var sliderAspect by remember(settings.largePageAspectThreshold) {
+            mutableFloatStateOf(settings.largePageAspectThreshold)
+        }
+        Text(
+            stringResource(R.string.large_page_threshold, "%.2f".format(sliderAspect)),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+        Text(
+            stringResource(R.string.large_page_threshold_subtitle),
+            style = MaterialTheme.typography.bodySmall,
+            color = LocalContentColor.current.copy(alpha = 0.7f)
+        )
+        Slider(
+            value = sliderAspect,
+            onValueChange = { sliderAspect = (it * 20f).roundToInt() / 20f },
+            onValueChangeFinished = { actions.onLargePageAspect(sliderAspect) },
+            valueRange = 0.8f..2.5f
+        )
     }
 }
 

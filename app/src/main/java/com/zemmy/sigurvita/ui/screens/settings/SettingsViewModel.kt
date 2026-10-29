@@ -140,6 +140,12 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
+    fun updateLargePageAspect(value: Float) {
+        viewModelScope.launch {
+            preferencesRepository.updateLargePageAspect(value)
+        }
+    }
+
     fun updateAutoDeleteOption(option: AutoDeleteOption) {
         viewModelScope.launch {
             preferencesRepository.updateAutoDeleteOption(option)

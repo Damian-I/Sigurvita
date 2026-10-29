@@ -141,6 +141,7 @@ When developing new screens, components or settings dialogues, adhere to these s
 | `chosen_reading_lists` | Comma-separated reading-list IDs. |
 | `series_read_contexts` | Serialized last-read context for Smart On Deck. |
 | `color_scape_enabled` | Global ColorScape switch (default `true`). |
+| `large_page_aspect` | Aspect ratio threshold (`width ÷ height`, float, default `1.10`) from which a page in paged mode counts as a large page. |
 | `app_theme_mode` | `AppThemeMode` enum name (default `SYSTEM`; unreadable values fall back to `SYSTEM`). |
 | `app_dynamic_color` | Material You dynamic colour (default `true`). |
 
@@ -358,6 +359,13 @@ Pinned hero with the cover, summary, "Read more...", chapter/page progress (acce
 - **Tap zone highlight**: a highlight overlay (`TapZoneOverlay`) fades in for 3 s once the chapter has loaded and whenever the layout, custom zones, reading direction or toggle change; controlled by the `show_tap_zones` setting.
 - **Background work**: `ReaderDetectionScheduler` preloads detection for the current page first, then the rest of the chapter (restarting from the current page on every page turn), prefetches images for streamed pages, and pre-detects the upcoming chapter.
 - **Chrome**: control overlay auto-dismiss, issue detail bottom sheet, swipeable multi-thumbnail timeline preview strip, timeline slider, bottom speech-bubble indicator, previous-chapter navigation, open-at-last-page support and **S-Pen hover magnification**.
+- **Large pages**:
+  - **`PageViewportController`**: Owns zoom and pan state (`PageTransform`) for every visible page, identifies large pages (`width ÷ height >= large_page_aspect`, default `1.10`, in paged reading mode), builds view targets for guided or scroll stepping, and runs smooth view animations (`animateTo`).
+  - **Layout & decoding**: Large pages are laid out whole with `ContentScale.Fit` so panel zoom and scrolling can reach all page regions, and are decoded at 3× box size (`3 × boxWidth` × `3 × boxHeight` via Coil request sizing) so zoomed panels and scroll windows remain crisp.
+  - **Modes**: Guided mode steps through detected panels (`PanelMap`), while Scroll mode steps through full-height horizontally scrolling windows across the page. Guided mode applies while bubble navigation is active (`bubbleNavActive == true`), otherwise Scroll mode applies by default.
+  - **Step sequence**: Navigating a large page follows the sequence: whole page (1×) → targets (panels or scroll windows) → whole page (1×) → turn page.
+  - **Manual-zoom rule**: If the user manually pinches or pans a large page (`free = true`), the next navigation step resets the view back to the whole page (1×), and the following step turns the page.
+  - **Mode chip**: A chip (`GUIDED` or `SCROLL`) appears at the bottom-right of the reader on large pages while controls are hidden, allowing manual mode toggles (`toggleLargePageMode`).
 
 **Reader options sheet** (scrollable; settings persist through `UserPreferencesRepository` and are applied immediately via `ReaderViewModel`, except reading mode — see [11.1](#111-reader)):
 - **Reading mode** and **fit mode** (chips).
@@ -554,6 +562,11 @@ A single global flag (`incognito_mode`, DataStore). While on:
 - `ReaderRepository.saveProgress` does nothing.
 - Reading progress is still **read** from the server.
 - UI cues: tertiary-coloured banner on Home/Library/Reading Lists, tertiary Resume button, and an "Incognito" chip in the reader.
+
+**Large-page & Panel Map Notes:**
+- Guided mode falls back to page halves when no panel map exists yet.
+- Panel maps are only produced while detection runs.
+- Large-page transforms live in `PageViewportController`, not in `ZoomableImage`.
 
 ---
 

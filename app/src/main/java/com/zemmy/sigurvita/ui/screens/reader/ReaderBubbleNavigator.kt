@@ -27,6 +27,7 @@ class ReaderBubbleNavigator(
     private val scope: CoroutineScope,
     private val state: MutableStateFlow<ReaderUiState>,
     private val detection: ReaderDetectionScheduler,
+    private val viewport: PageViewportController,
     private val nextPage: () -> Unit,
     private val previousPage: () -> Unit
 ) {
@@ -90,7 +91,8 @@ class ReaderBubbleNavigator(
         screenWidthPx: Float,
         screenHeightPx: Float,
         fitMode: FitMode,
-        readingMode: ReadingMode
+        readingMode: ReadingMode,
+        largePage: Boolean
     ): PageLayout {
         val boxW = if (screenWidthPx > 0f) screenWidthPx else 1080f
         val boxH = if (screenHeightPx > 0f) screenHeightPx else 2400f
@@ -99,6 +101,7 @@ class ReaderBubbleNavigator(
 
         val contentScale = when {
             readingMode == ReadingMode.WEBTOON -> ContentScale.FillWidth
+            largePage -> ContentScale.Fit
             fitMode == FitMode.FIT_WIDTH -> ContentScale.FillWidth
             fitMode == FitMode.FIT_HEIGHT -> ContentScale.FillHeight
             else -> ContentScale.Fit
@@ -127,13 +130,23 @@ class ReaderBubbleNavigator(
         val current = state.value
         val page = current.pages.getOrNull(pageIndex) ?: return
 
+        // Large pages are zoomed to a panel or scrolled: bring this bubble's area into view first.
+        viewport.focusBubble(
+            pageIndex = pageIndex,
+            box = bubble.box,
+            panelMap = current.panelMapsByPage[pageIndex],
+            rtl = current.settings.readingMode == ReadingMode.RTL,
+            bubbleNavActive = true
+        )
+
         val layout = calculatePageScreenLayout(
             pageWidth = pageBubbles.pageWidth,
             pageHeight = pageBubbles.pageHeight,
-            screenWidthPx = screenWidthPx.toFloat(),
-            screenHeightPx = screenHeightPx.toFloat(),
+            screenWidthPx = viewport.boxWidth.takeIf { it > 0f } ?: screenWidthPx.toFloat(),
+            screenHeightPx = viewport.boxHeight.takeIf { it > 0f } ?: screenHeightPx.toFloat(),
             fitMode = current.settings.fitMode,
-            readingMode = current.settings.readingMode
+            readingMode = current.settings.readingMode,
+            largePage = viewport.isLarge(pageIndex)
         )
 
         scope.launch {

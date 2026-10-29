@@ -6,6 +6,10 @@ import android.content.pm.ActivityInfo
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.draw.clip
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -214,7 +218,16 @@ fun ReaderScreen(
             }
         }
     }
-
+    SideEffect {
+        viewModel.viewport.sync(
+            aspectThreshold = state.settings.largePageAspectThreshold,
+            paged = state.settings.readingMode != ReadingMode.WEBTOON
+        )
+    }
+    // Toggling bubble navigation returns large pages to their default mode (guided / scroll).
+    LaunchedEffect(state.bubbleNavActive) {
+        viewModel.viewport.clearModeOverride()
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -273,7 +286,8 @@ fun ReaderScreen(
                 onBubbleHover = { pageIdx, bubbleId, centerPx, bubbleSizePx -> viewModel.onBubbleHover(pageIdx, bubbleId, centerPx, bubbleSizePx) },
                 magnifiedBubble = state.magnifiedBubble,
                 readerBackground = state.settings.readerBackground,
-                onPageBackground = { index, color -> pageBackgrounds[index] = color }
+                onPageBackground = { index, color -> pageBackgrounds[index] = color },
+                viewport = viewModel.viewport
             )
             TapZoneOverlay(
                 regions = tapRegions,
@@ -288,10 +302,12 @@ fun ReaderScreen(
                     bubbles = state.bubblesByPage[magBubble.pageIndex],
                     contentScale = when {
                         state.settings.readingMode == ReadingMode.WEBTOON -> ContentScale.FillWidth
+                        viewModel.viewport.isLarge(magBubble.pageIndex) -> ContentScale.Fit
                         state.settings.fitMode == FitMode.FIT_WIDTH -> ContentScale.FillWidth
                         state.settings.fitMode == FitMode.FIT_HEIGHT -> ContentScale.FillHeight
                         else -> ContentScale.Fit
                     },
+                    transform = viewModel.viewport.transformFor(magBubble.pageIndex),
                     onBubbleHover = { pageIdx, bubbleId, centerPx, bubbleSizePx -> viewModel.onBubbleHover(pageIdx, bubbleId, centerPx, bubbleSizePx) },
                     edgeTapNavigationEnabled = state.settings.touchEdgeNavigationEnabled &&
                         state.settings.readingMode != ReadingMode.WEBTOON,
@@ -312,6 +328,49 @@ fun ReaderScreen(
                         .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 )
+            }
+
+            // Large-page chip: shows the current mode, tap to switch Panels <-> Scroll (hidden with the controls)
+            val onLargePage = state.settings.readingMode != ReadingMode.WEBTOON &&
+                    viewModel.viewport.isLarge(state.currentPageIndex)
+            AnimatedVisibility(
+                visible = onLargePage && !state.controlsVisible,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(12.dp)
+            ) {
+                val guided = viewModel.viewport.effectiveMode(state.bubbleNavActive) == LargePageMode.GUIDED
+                Surface(
+                    color = chromeSurface.copy(alpha = 0.85f),
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { viewModel.toggleLargePageMode() }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (guided) Icons.Default.ZoomIn else Icons.Default.SwapHoriz,
+                            contentDescription = null,
+                            tint = chromeAccent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = stringResource(
+                                if (guided) R.string.large_page_mode_panels else R.string.large_page_mode_scroll
+                            ),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White
+                        )
+                    }
+                }
             }
 
             // Top Control Overlay
@@ -722,7 +781,8 @@ fun ReaderScreen(
                                     onPanelAwareOrder = viewModel::updatePanelAwareOrder,
                                     onPanelDebugOverlay = viewModel::updatePanelDebugOverlay,
                                     onReadingMode = viewModel::updateReadingMode,
-                                    onBubbleNavActive = viewModel::updateBubbleNavActive
+                                    onBubbleNavActive = viewModel::updateBubbleNavActive,
+                                    onLargePageAspect = viewModel::updateLargePageAspect
                                 )
                             },
                             showReadingMode = true,

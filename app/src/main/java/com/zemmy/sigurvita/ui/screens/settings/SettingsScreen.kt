@@ -83,7 +83,8 @@ fun SettingsScreen(
             onSpeechBubbleBoxes = viewModel::updateSpeechBubbleBoxesEnabled,
             onSpeechBubbleConfidence = viewModel::updateSpeechBubbleConfidence,
             onPanelAwareOrder = viewModel::updatePanelAwareOrder,
-            onPanelDebugOverlay = viewModel::updatePanelDebugOverlay
+            onPanelDebugOverlay = viewModel::updatePanelDebugOverlay,
+            onLargePageAspect = viewModel::updateLargePageAspect
         )
     }
 

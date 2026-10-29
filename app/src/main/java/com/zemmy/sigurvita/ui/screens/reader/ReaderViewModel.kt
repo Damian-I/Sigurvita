@@ -103,13 +103,16 @@ class ReaderViewModel : ViewModel() {
         nextChapterOf = { s -> s.nextChapter ?: findNeighbors(s.chapterId, s.seriesId, s.readingListId).second }
     )
 
+    val viewport = PageViewportController()
+
     private val bubbleNav = ReaderBubbleNavigator(
         app = app,
         scope = viewModelScope,
         state = _uiState,
         detection = detection,
-        nextPage = { nextPage() },
-        previousPage = { previousPage() }
+        viewport = viewport,
+        nextPage = { if (!stepViewport(isNext = true)) nextPage() },
+        previousPage = { if (!stepViewport(isNext = false)) previousPage() }
     )
     fun loadChapter(
         chapterId: Int,
@@ -128,6 +131,7 @@ class ReaderViewModel : ViewModel() {
         progress.libraryId = 0
         detection.cancelPageJobs()
         bubbleNav.onNewChapter()
+        viewport.onNewChapter()
         _uiState.update {
             it.copy(
                 bubblesByPage = emptyMap(),
@@ -523,7 +527,17 @@ class ReaderViewModel : ViewModel() {
 
             // Lets volume-key bubble navigation tell "continue" from "reverse" (single-page steps only)
             bubbleNav.onPageChanged(previousIndex = _uiState.value.currentPageIndex, newIndex = index)
-
+            val viewportPrevious = _uiState.value.currentPageIndex
+            if (index != viewportPrevious) {
+                viewport.onPageChanged(
+                    index,
+                    direction = when (index) {
+                        viewportPrevious + 1 -> 1
+                        viewportPrevious - 1 -> -1
+                        else -> 0
+                    }
+                )
+            }
             _uiState.update {
                 it.copy(
                     currentPageIndex = index,
@@ -713,6 +727,29 @@ class ReaderViewModel : ViewModel() {
         viewModelScope.launch {
             preferencesRepository.updateTouchEdgeNavigation(enabled)
         }
+    }
+    fun updateLargePageAspect(value: Float) {
+        _uiState.update { it.copy(settings = it.settings.copy(largePageAspectThreshold = value)) }
+        viewModelScope.launch { preferencesRepository.updateLargePageAspect(value) }
+    }
+
+    /** The on-screen chip: switches the current large page between guided panels and scrolling. */
+    fun toggleLargePageMode() {
+        val s = _uiState.value
+        viewport.toggleMode(s.bubbleNavActive, s.currentPageIndex)
+    }
+
+    /** True when the large-page viewport consumed the step (panel zoom / scroll); false means turn the page. */
+    private fun stepViewport(isNext: Boolean): Boolean {
+        val s = _uiState.value
+        if (s.settings.readingMode == ReadingMode.WEBTOON) return false
+        return viewport.step(
+            isNext = isNext,
+            pageIndex = s.currentPageIndex,
+            panelMap = s.panelMapsByPage[s.currentPageIndex],
+            rtl = s.settings.readingMode == ReadingMode.RTL,
+            bubbleNavActive = s.bubbleNavActive
+        )
     }
     fun updateTapZoneLayout(layout: TapZoneLayout) {
         _uiState.update { it.copy(settings = it.settings.copy(tapZoneLayout = layout)) }

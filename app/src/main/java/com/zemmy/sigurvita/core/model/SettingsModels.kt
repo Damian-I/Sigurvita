@@ -83,6 +83,7 @@ data class ReaderSettings(
     val speechBubbleConfidence: Float = 0.10f,
     val panelAwareOrderEnabled: Boolean = true,
     val panelDebugOverlayEnabled: Boolean = false,
+    val largePageAspectThreshold: Float = 1.1f,
     val showPageNumber: Boolean = false,
     val orientation: ReaderOrientation = ReaderOrientation.FREE,
     val readerBackground: ReaderBackground = ReaderBackground.BLACK,

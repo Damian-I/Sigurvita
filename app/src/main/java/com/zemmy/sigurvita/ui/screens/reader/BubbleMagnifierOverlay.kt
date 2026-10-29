@@ -40,6 +40,7 @@ fun BubbleMagnifierOverlay(
     onDismiss: () -> Unit,
     bubbles: PageBubbles? = null,
     contentScale: ContentScale = ContentScale.Fit,
+    transform: PageTransform? = null,
     onBubbleHover: ((Int, Int?, Offset?, Size?) -> Unit)? = null,
     // When true (and the page is paged, not webtoon) the page-transition zones step bubbles instead of dismissing.
     edgeTapNavigationEnabled: Boolean = false,
@@ -78,8 +79,8 @@ fun BubbleMagnifierOverlay(
                             pageW = bubbles.pageWidth,
                             pageH = bubbles.pageHeight,
                             contentScale = contentScale,
-                            zoom = 1f,
-                            pan = Offset.Zero
+                            zoom = transform?.scale ?: 1f,
+                            pan = Offset(transform?.offsetX ?: 0f, transform?.offsetY ?: 0f)
                         )
                         val hitId = if (norm != null) hitBubble(bubbles, norm) else null
                         if (hitId != null && hitId != magnifiedBubble.bubbleId) {
@@ -140,15 +141,23 @@ fun BubbleMagnifierOverlay(
             val screenW = screenSize.width.toFloat()
             val screenH = screenSize.height.toFloat()
 
-            val magFactor = 2.0f
-            val cropW = if (magnifiedBubble.cropSizeOnScreen.width > 0f) magnifiedBubble.cropSizeOnScreen.width else 150f
-            val cropH = if (magnifiedBubble.cropSizeOnScreen.height > 0f) magnifiedBubble.cropSizeOnScreen.height else 100f
+            val zoom = transform?.scale ?: 1f
+            val panX = transform?.offsetX ?: 0f
+            val panY = transform?.offsetY ?: 0f
+            val midX = screenW / 2f
+            val midY = screenH / 2f
+
+            // The page may be zoomed/panned (panel zoom, scrolling): map the layout-space anchor to the screen.
+            val anchorX = midX + panX + zoom * (magnifiedBubble.anchorScreenPx.x - midX)
+            val anchorY = midY + panY + zoom * (magnifiedBubble.anchorScreenPx.y - midY)
+
+            // A zoomed page already shows the bubble larger: overall enlargement is max(zoom, 2).
+            val magFactor = (2.0f / zoom).coerceAtLeast(1.0f)
+            val cropW = (if (magnifiedBubble.cropSizeOnScreen.width > 0f) magnifiedBubble.cropSizeOnScreen.width else 150f) * zoom
+            val cropH = (if (magnifiedBubble.cropSizeOnScreen.height > 0f) magnifiedBubble.cropSizeOnScreen.height else 100f) * zoom
 
             val magW = cropW * magFactor
             val magH = cropH * magFactor
-
-            val anchorX = magnifiedBubble.anchorScreenPx.x
-            val anchorY = magnifiedBubble.anchorScreenPx.y
 
             val relTipX = magnifiedBubble.tipRelOffset.x.coerceIn(0f, 1f)
             val relTipY = magnifiedBubble.tipRelOffset.y.coerceIn(0f, 1f)

@@ -5,6 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.layout.onSizeChanged
+import coil.size.Scale
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -83,11 +86,17 @@ fun ImageReader(
     onBubbleHover: (pageIndex: Int, bubbleId: Int?, centerPx: Offset?, bubbleSizePx: Size?) -> Unit = { _, _, _, _ -> },
     magnifiedBubble: MagnifiedBubble? = null,
     readerBackground: ReaderBackground = ReaderBackground.BLACK,
-    onPageBackground: (pageIndex: Int, color: Color) -> Unit = { _, _ -> }
+    onPageBackground: (pageIndex: Int, color: Color) -> Unit = { _, _ -> },
+    viewport: PageViewportController = remember { PageViewportController() }
 ) {
     if (pages.isEmpty()) return
 
     val context = LocalContext.current
+
+    val viewRequest = viewport.request
+    LaunchedEffect(viewRequest?.id) {
+        viewRequest?.let { viewport.run(it) }
+    }
 
     // Prefetch adjacent pages into Coil memory cache
     LaunchedEffect(currentPageIndex) {
@@ -144,6 +153,7 @@ fun ImageReader(
                         onTap = onTap,
                         readerBackground = readerBackground,
                         onPageBackground = onPageBackground,
+                        viewport = viewport,
                         modifier = Modifier
                             .fillMaxWidth()
                             .wrapContentHeight()
@@ -193,6 +203,7 @@ fun ImageReader(
                     onTap = onTap,
                     readerBackground = readerBackground,
                     onPageBackground = onPageBackground,
+                    viewport = viewport,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -208,6 +219,7 @@ private fun ZoomableImage(
     touchEdgeNavigationEnabled: Boolean,
     tapRegions: List<TapRegion>,
     readingMode: ReadingMode,
+    viewport: PageViewportController,
     bubbles: PageBubbles? = null,
     panelMap: PanelMap? = null,
     speechBubbleDetectionEnabled: Boolean = true,
@@ -229,12 +241,16 @@ private fun ZoomableImage(
     val latestOnPreviousPage by rememberUpdatedState(onPreviousPage)
     val latestOnTap by rememberUpdatedState(onTap)
 
-    var scale by remember(page.pageNumber) { mutableFloatStateOf(1f) }
-    var offsetX by remember(page.pageNumber) { mutableFloatStateOf(0f) }
-    var offsetY by remember(page.pageNumber) { mutableFloatStateOf(0f) }
+    val transform = viewport.transformFor(page.index)
+    DisposableEffect(page.index) {
+        onDispose { viewport.release(page.index) }
+    }
+    // Large pages are laid out whole (Fit) so panel zoom / scrolling can reach every part of the page.
+    val largePage = readingMode != ReadingMode.WEBTOON && viewport.isLarge(page.index)
 
     val contentScale = when {
         readingMode == ReadingMode.WEBTOON -> ContentScale.FillWidth
+        largePage -> ContentScale.Fit
         fitMode == FitMode.FIT_WIDTH -> ContentScale.FillWidth
         fitMode == FitMode.FIT_HEIGHT -> ContentScale.FillHeight
         else -> ContentScale.Fit
@@ -253,18 +269,12 @@ private fun ZoomableImage(
                 do {
                     val event = awaitPointerEvent()
                     val multiTouch = event.changes.count { it.pressed } >= 2
-                    if (multiTouch || scale > 1.01f) {
+                    if (multiTouch || transform.scale > 1.01f) {
                         val zoom = event.calculateZoom()
                         val pan = event.calculatePan()
                         if (zoom != 1f || pan != Offset.Zero) {
-                            scale = (scale * zoom).coerceIn(1f, 4f)
-                            if (scale > 1f) {
-                                offsetX += pan.x
-                                offsetY += pan.y
-                            } else {
-                                offsetX = 0f
-                                offsetY = 0f
-                            }
+                            transform.applyGesture(zoom, pan)
+                            viewport.onManualTransform(page.index)
                             event.changes.forEach { if (it.positionChanged()) it.consume() }
                         }
                     }
@@ -272,14 +282,8 @@ private fun ZoomableImage(
             }
         } else {
             detectTransformGestures { _, pan, zoom, _ ->
-                scale = (scale * zoom).coerceIn(1f, 4f)
-                if (scale > 1f) {
-                    offsetX += pan.x
-                    offsetY += pan.y
-                } else {
-                    offsetX = 0f
-                    offsetY = 0f
-                }
+                transform.applyGesture(zoom, pan)
+                viewport.onManualTransform(page.index)
             }
         }
     }
@@ -288,7 +292,7 @@ private fun ZoomableImage(
 
     // S-Pen Hover Magnification Modifier:
     // Magnifies when hovered over a speech bubble. Returns to normal ONLY when PRESSING on screen with the S-Pen, NOT when unhovering.
-    val stylusHoverMagnifyModifier = Modifier.pointerInput(page.pageNumber, speechBubbleDetectionEnabled, bubbles, magnifiedBubbleId) {
+    val stylusHoverMagnifyModifier = Modifier.pointerInput(page.pageNumber, speechBubbleDetectionEnabled, bubbles, magnifiedBubbleId, contentScale) {
         awaitPointerEventScope {
             while (true) {
                 val pointerEvent = awaitPointerEvent()
@@ -306,8 +310,8 @@ private fun ZoomableImage(
                                 pageW = bubbles.pageWidth,
                                 pageH = bubbles.pageHeight,
                                 contentScale = contentScale,
-                                zoom = scale,
-                                pan = Offset(offsetX, offsetY)
+                                zoom = transform.scale,
+                                pan = Offset(transform.offsetX, transform.offsetY)
                             )
                             val hitBubbleId = if (normPoint != null) hitBubble(bubbles, normPoint) else null
                             if (hitBubbleId != null && hitBubbleId != magnifiedBubbleId && hitBubbleId != lastHoveredBubbleId) {
@@ -342,13 +346,16 @@ private fun ZoomableImage(
     Box(
         modifier = boxModifier
             .background(pageBackground)
+            .onSizeChanged {
+                if (readingMode != ReadingMode.WEBTOON) viewport.reportBoxSize(it.width, it.height)
+            }
             .then(transformModifier)
             .then(stylusHoverMagnifyModifier)
-            .pointerInput(touchEdgeNavigationEnabled, readingMode, tapRegions) {
+            .pointerInput(touchEdgeNavigationEnabled, readingMode, tapRegions, largePage, contentScale, bubbles) {
                 detectTapGestures(
                     onTap = { offset ->
                         val width = size.width.toFloat()
-                        if (readingMode != ReadingMode.WEBTOON && touchEdgeNavigationEnabled && scale <= 1.05f && width > 0f) {
+                        if (readingMode != ReadingMode.WEBTOON && touchEdgeNavigationEnabled && (transform.scale <= 1.05f || largePage) && width > 0f) {
                             // The tap zones navigate (pages, or bubbles while bubble navigation mode is on);
                             // a tap outside every zone toggles the controls and leaves bubble navigation mode.
                             when (classifyTap(offset.x, offset.y, width, size.height.toFloat(), tapRegions)) {
@@ -368,8 +375,8 @@ private fun ZoomableImage(
                                 pageW = bubbles.pageWidth,
                                 pageH = bubbles.pageHeight,
                                 contentScale = contentScale,
-                                zoom = scale,
-                                pan = Offset(offsetX, offsetY)
+                                zoom = transform.scale,
+                                pan = Offset(transform.offsetX, transform.offsetY)
                             )
                             if (norm != null) {
                                 val hitId = hitBubble(bubbles, norm)
@@ -410,19 +417,19 @@ private fun ZoomableImage(
                 .fillMaxWidth()
                 .wrapContentHeight()
                 .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = offsetX
-                    translationY = offsetY
+                    scaleX = transform.scale
+                    scaleY = transform.scale
+                    translationX = transform.offsetX
+                    translationY = transform.offsetY
                 }
         } else {
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = offsetX
-                    translationY = offsetY
+                    scaleX = transform.scale
+                    scaleY = transform.scale
+                    translationX = transform.offsetX
+                    translationY = transform.offsetY
                 }
         }
 
@@ -432,10 +439,21 @@ private fun ZoomableImage(
                 .crossfade(true)
                 .memoryCachePolicy(CachePolicy.ENABLED)
                 .diskCachePolicy(CachePolicy.ENABLED)
+                .apply {
+                    // Zoomed panels need more pixels than the screen shows at 1x.
+                    if (largePage && viewport.boxWidth > 0f) {
+                        size((viewport.boxWidth * 3f).toInt(), (viewport.boxHeight * 3f).toInt())
+                        scale(Scale.FIT)
+                    }
+                }
                 .build(),
             contentDescription = stringResource(R.string.page_desc, page.pageNumber),
             contentScale = contentScale,
-            onSuccess = { pageLoaded = true },
+            onSuccess = { success ->
+                pageLoaded = true
+                val d = success.result.drawable
+                viewport.reportPageSize(page.index, d.intrinsicWidth, d.intrinsicHeight)
+            },
             modifier = imageModifier
         )
 

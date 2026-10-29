@@ -162,4 +162,8 @@
     <string name="theme_amoled">AMOLED</string>
     <string name="colorscape_title">ColorScape</string>
     <string name="colorscape_subtitle">Tint series, volume and chapter screens with colors from their covers</string>
+    <string name="large_page_threshold">Large page aspect ratio: %1$s</string>
+    <string name="large_page_threshold_subtitle">Pages at least this wide (width ÷ height) get panel zoom or scrolling. Single pages are usually about 0.65–0.75, double-page spreads above 1.2.</string>
+    <string name="large_page_mode_panels">Panels</string>
+    <string name="large_page_mode_scroll">Scroll</string>
 </resources>
